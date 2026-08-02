@@ -1,0 +1,1059 @@
+{
+    "formatVersion": 1,
+    "generatorVersion": "3",
+    "schemaSha256": "8039a1222460b3846a3688c61eb4b2626b451d61b9c2b36b83fea0ce341ce0be",
+    "clientRequests": [
+        {
+            "method": "account/login/cancel",
+            "variant": "Account/login/cancelRequest",
+            "paramsType": "CancelLoginAccountParams",
+            "responseType": "CancelLoginAccountResponse",
+            "serialization": "global(\"account-auth\")"
+        },
+        {
+            "method": "account/login/start",
+            "variant": "Account/login/startRequest",
+            "paramsType": "LoginAccountParams",
+            "responseType": "LoginAccountResponse",
+            "serialization": "global(\"account-auth\")",
+            "inspectParams": true
+        },
+        {
+            "method": "account/logout",
+            "variant": "Account/logoutRequest",
+            "paramsType": "Unit",
+            "responseType": "LogoutAccountResponse",
+            "serialization": "global(\"account-auth\")"
+        },
+        {
+            "method": "account/rateLimitResetCredit/consume",
+            "variant": "Account/rateLimitResetCredit/consumeRequest",
+            "paramsType": "ConsumeAccountRateLimitResetCreditParams",
+            "responseType": "ConsumeAccountRateLimitResetCreditResponse",
+            "serialization": "global(\"account-auth\")"
+        },
+        {
+            "method": "account/rateLimits/read",
+            "variant": "Account/rateLimits/readRequest",
+            "paramsType": "Unit",
+            "responseType": "GetAccountRateLimitsResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "account/read",
+            "variant": "Account/readRequest",
+            "paramsType": "GetAccountParams",
+            "responseType": "GetAccountResponse",
+            "serialization": "global(\"account-auth\")"
+        },
+        {
+            "method": "account/sendAddCreditsNudgeEmail",
+            "variant": "Account/sendAddCreditsNudgeEmailRequest",
+            "paramsType": "SendAddCreditsNudgeEmailParams",
+            "responseType": "SendAddCreditsNudgeEmailResponse",
+            "serialization": "global(\"account-auth\")"
+        },
+        {
+            "method": "account/usage/read",
+            "variant": "Account/usage/readRequest",
+            "paramsType": "Unit",
+            "responseType": "GetAccountTokenUsageResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "account/workspaceMessages/read",
+            "variant": "Account/workspaceMessages/readRequest",
+            "paramsType": "Unit",
+            "responseType": "GetWorkspaceMessagesResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "app/installed",
+            "variant": "App/installedRequest",
+            "paramsType": "AppsInstalledParams",
+            "responseType": "AppsInstalledResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "app/list",
+            "variant": "App/listRequest",
+            "paramsType": "AppsListParams",
+            "responseType": "AppsListResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "app/read",
+            "variant": "App/readRequest",
+            "paramsType": "AppsReadParams",
+            "responseType": "AppsReadResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "command/exec",
+            "variant": "Command/execRequest",
+            "paramsType": "CommandExecParams",
+            "responseType": "CommandExecResponse",
+            "serialization": "optional_command_process_id(params.process_id)",
+            "inspectParams": true
+        },
+        {
+            "method": "command/exec/resize",
+            "variant": "Command/exec/resizeRequest",
+            "paramsType": "CommandExecResizeParams",
+            "responseType": "CommandExecResizeResponse",
+            "serialization": "command_process_id(params.process_id)"
+        },
+        {
+            "method": "command/exec/terminate",
+            "variant": "Command/exec/terminateRequest",
+            "paramsType": "CommandExecTerminateParams",
+            "responseType": "CommandExecTerminateResponse",
+            "serialization": "command_process_id(params.process_id)"
+        },
+        {
+            "method": "command/exec/write",
+            "variant": "Command/exec/writeRequest",
+            "paramsType": "CommandExecWriteParams",
+            "responseType": "CommandExecWriteResponse",
+            "serialization": "command_process_id(params.process_id)"
+        },
+        {
+            "method": "config/batchWrite",
+            "variant": "Config/batchWriteRequest",
+            "paramsType": "ConfigBatchWriteParams",
+            "responseType": "ConfigWriteResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "config/mcpServer/reload",
+            "variant": "Config/mcpServer/reloadRequest",
+            "paramsType": "Unit",
+            "responseType": "McpServerRefreshResponse",
+            "serialization": "global(\"mcp-registry\")"
+        },
+        {
+            "method": "config/read",
+            "variant": "Config/readRequest",
+            "paramsType": "ConfigReadParams",
+            "responseType": "ConfigReadResponse",
+            "serialization": "global_shared_read(\"config\")"
+        },
+        {
+            "method": "config/value/write",
+            "variant": "Config/value/writeRequest",
+            "paramsType": "ConfigValueWriteParams",
+            "responseType": "ConfigWriteResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "configRequirements/read",
+            "variant": "ConfigRequirements/readRequest",
+            "paramsType": "Unit",
+            "responseType": "ConfigRequirementsReadResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "experimentalFeature/enablement/set",
+            "variant": "ExperimentalFeature/enablement/setRequest",
+            "paramsType": "ExperimentalFeatureEnablementSetParams",
+            "responseType": "ExperimentalFeatureEnablementSetResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "experimentalFeature/list",
+            "variant": "ExperimentalFeature/listRequest",
+            "paramsType": "ExperimentalFeatureListParams",
+            "responseType": "ExperimentalFeatureListResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "externalAgentConfig/detect",
+            "variant": "ExternalAgentConfig/detectRequest",
+            "paramsType": "ExternalAgentConfigDetectParams",
+            "responseType": "ExternalAgentConfigDetectResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "externalAgentConfig/import",
+            "variant": "ExternalAgentConfig/importRequest",
+            "paramsType": "ExternalAgentConfigImportParams",
+            "responseType": "ExternalAgentConfigImportResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "externalAgentConfig/import/readHistories",
+            "variant": "ExternalAgentConfig/import/readHistoriesRequest",
+            "paramsType": "Unit",
+            "responseType": "ExternalAgentConfigImportHistoriesReadResponse",
+            "serialization": "global_shared_read(\"config\")"
+        },
+        {
+            "method": "feedback/upload",
+            "variant": "Feedback/uploadRequest",
+            "paramsType": "FeedbackUploadParams",
+            "responseType": "FeedbackUploadResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "fs/copy",
+            "variant": "Fs/copyRequest",
+            "paramsType": "FsCopyParams",
+            "responseType": "FsCopyResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "fs/createDirectory",
+            "variant": "Fs/createDirectoryRequest",
+            "paramsType": "FsCreateDirectoryParams",
+            "responseType": "FsCreateDirectoryResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "fs/getMetadata",
+            "variant": "Fs/getMetadataRequest",
+            "paramsType": "FsGetMetadataParams",
+            "responseType": "FsGetMetadataResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "fs/readDirectory",
+            "variant": "Fs/readDirectoryRequest",
+            "paramsType": "FsReadDirectoryParams",
+            "responseType": "FsReadDirectoryResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "fs/readFile",
+            "variant": "Fs/readFileRequest",
+            "paramsType": "FsReadFileParams",
+            "responseType": "FsReadFileResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "fs/remove",
+            "variant": "Fs/removeRequest",
+            "paramsType": "FsRemoveParams",
+            "responseType": "FsRemoveResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "fs/unwatch",
+            "variant": "Fs/unwatchRequest",
+            "paramsType": "FsUnwatchParams",
+            "responseType": "FsUnwatchResponse",
+            "serialization": "fs_watch_id(params.watch_id)"
+        },
+        {
+            "method": "fs/watch",
+            "variant": "Fs/watchRequest",
+            "paramsType": "FsWatchParams",
+            "responseType": "FsWatchResponse",
+            "serialization": "fs_watch_id(params.watch_id)"
+        },
+        {
+            "method": "fs/writeFile",
+            "variant": "Fs/writeFileRequest",
+            "paramsType": "FsWriteFileParams",
+            "responseType": "FsWriteFileResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "fuzzyFileSearch",
+            "variant": "FuzzyFileSearchRequest",
+            "paramsType": "FuzzyFileSearchParams",
+            "responseType": "FuzzyFileSearchResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "hooks/list",
+            "variant": "Hooks/listRequest",
+            "paramsType": "HooksListParams",
+            "responseType": "HooksListResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "initialize",
+            "variant": "InitializeRequest",
+            "paramsType": "InitializeParams",
+            "responseType": "InitializeResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "marketplace/add",
+            "variant": "Marketplace/addRequest",
+            "paramsType": "MarketplaceAddParams",
+            "responseType": "MarketplaceAddResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "marketplace/remove",
+            "variant": "Marketplace/removeRequest",
+            "paramsType": "MarketplaceRemoveParams",
+            "responseType": "MarketplaceRemoveResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "marketplace/upgrade",
+            "variant": "Marketplace/upgradeRequest",
+            "paramsType": "MarketplaceUpgradeParams",
+            "responseType": "MarketplaceUpgradeResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "mcpServer/oauth/login",
+            "variant": "McpServer/oauth/loginRequest",
+            "paramsType": "McpServerOauthLoginParams",
+            "responseType": "McpServerOauthLoginResponse",
+            "serialization": "mcp_oauth_server(params.name)"
+        },
+        {
+            "method": "mcpServer/resource/read",
+            "variant": "McpServer/resource/readRequest",
+            "paramsType": "McpResourceReadParams",
+            "responseType": "McpResourceReadResponse",
+            "serialization": "optional_thread_id(params.thread_id)"
+        },
+        {
+            "method": "mcpServer/tool/call",
+            "variant": "McpServer/tool/callRequest",
+            "paramsType": "McpServerToolCallParams",
+            "responseType": "McpServerToolCallResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "mcpServerStatus/list",
+            "variant": "McpServerStatus/listRequest",
+            "paramsType": "ListMcpServerStatusParams",
+            "responseType": "ListMcpServerStatusResponse",
+            "serialization": "global(\"mcp-registry\")"
+        },
+        {
+            "method": "model/list",
+            "variant": "Model/listRequest",
+            "paramsType": "ModelListParams",
+            "responseType": "ModelListResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "modelProvider/capabilities/read",
+            "variant": "ModelProvider/capabilities/readRequest",
+            "paramsType": "ModelProviderCapabilitiesReadParams",
+            "responseType": "ModelProviderCapabilitiesReadResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "permissionProfile/list",
+            "variant": "PermissionProfile/listRequest",
+            "paramsType": "PermissionProfileListParams",
+            "responseType": "PermissionProfileListResponse",
+            "serialization": "global_shared_read(\"config\")"
+        },
+        {
+            "method": "plugin/install",
+            "variant": "Plugin/installRequest",
+            "paramsType": "PluginInstallParams",
+            "responseType": "PluginInstallResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "plugin/installed",
+            "variant": "Plugin/installedRequest",
+            "paramsType": "PluginInstalledParams",
+            "responseType": "PluginInstalledResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "plugin/list",
+            "variant": "Plugin/listRequest",
+            "paramsType": "PluginListParams",
+            "responseType": "PluginListResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "plugin/read",
+            "variant": "Plugin/readRequest",
+            "paramsType": "PluginReadParams",
+            "responseType": "PluginReadResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "plugin/share/checkout",
+            "variant": "Plugin/share/checkoutRequest",
+            "paramsType": "PluginShareCheckoutParams",
+            "responseType": "PluginShareCheckoutResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "plugin/share/delete",
+            "variant": "Plugin/share/deleteRequest",
+            "paramsType": "PluginShareDeleteParams",
+            "responseType": "PluginShareDeleteResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "plugin/share/list",
+            "variant": "Plugin/share/listRequest",
+            "paramsType": "PluginShareListParams",
+            "responseType": "PluginShareListResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "plugin/share/save",
+            "variant": "Plugin/share/saveRequest",
+            "paramsType": "PluginShareSaveParams",
+            "responseType": "PluginShareSaveResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "plugin/share/updateTargets",
+            "variant": "Plugin/share/updateTargetsRequest",
+            "paramsType": "PluginShareUpdateTargetsParams",
+            "responseType": "PluginShareUpdateTargetsResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "plugin/skill/read",
+            "variant": "Plugin/skill/readRequest",
+            "paramsType": "PluginSkillReadParams",
+            "responseType": "PluginSkillReadResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "plugin/uninstall",
+            "variant": "Plugin/uninstallRequest",
+            "paramsType": "PluginUninstallParams",
+            "responseType": "PluginUninstallResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "review/start",
+            "variant": "Review/startRequest",
+            "paramsType": "ReviewStartParams",
+            "responseType": "ReviewStartResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "skills/config/write",
+            "variant": "Skills/config/writeRequest",
+            "paramsType": "SkillsConfigWriteParams",
+            "responseType": "SkillsConfigWriteResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "skills/extraRoots/set",
+            "variant": "Skills/extraRoots/setRequest",
+            "paramsType": "SkillsExtraRootsSetParams",
+            "responseType": "SkillsExtraRootsSetResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "skills/list",
+            "variant": "Skills/listRequest",
+            "paramsType": "SkillsListParams",
+            "responseType": "SkillsListResponse",
+            "serialization": "global_shared_read(\"config\")"
+        },
+        {
+            "method": "thread/approveGuardianDeniedAction",
+            "variant": "Thread/approveGuardianDeniedActionRequest",
+            "paramsType": "ThreadApproveGuardianDeniedActionParams",
+            "responseType": "ThreadApproveGuardianDeniedActionResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/archive",
+            "variant": "Thread/archiveRequest",
+            "paramsType": "ThreadArchiveParams",
+            "responseType": "ThreadArchiveResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/compact/start",
+            "variant": "Thread/compact/startRequest",
+            "paramsType": "ThreadCompactStartParams",
+            "responseType": "ThreadCompactStartResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/delete",
+            "variant": "Thread/deleteRequest",
+            "paramsType": "ThreadDeleteParams",
+            "responseType": "ThreadDeleteResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/fork",
+            "variant": "Thread/forkRequest",
+            "paramsType": "ThreadForkParams",
+            "responseType": "ThreadForkResponse",
+            "serialization": "thread_or_path(params.thread_id, params.path)",
+            "inspectParams": true
+        },
+        {
+            "method": "thread/goal/clear",
+            "variant": "Thread/goal/clearRequest",
+            "paramsType": "ThreadGoalClearParams",
+            "responseType": "ThreadGoalClearResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/goal/get",
+            "variant": "Thread/goal/getRequest",
+            "paramsType": "ThreadGoalGetParams",
+            "responseType": "ThreadGoalGetResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/goal/set",
+            "variant": "Thread/goal/setRequest",
+            "paramsType": "ThreadGoalSetParams",
+            "responseType": "ThreadGoalSetResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/inject_items",
+            "variant": "Thread/injectItemsRequest",
+            "paramsType": "ThreadInjectItemsParams",
+            "responseType": "ThreadInjectItemsResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/list",
+            "variant": "Thread/listRequest",
+            "paramsType": "ThreadListParams",
+            "responseType": "ThreadListResponse",
+            "serialization": "None",
+            "inspectParams": true
+        },
+        {
+            "method": "thread/loaded/list",
+            "variant": "Thread/loaded/listRequest",
+            "paramsType": "ThreadLoadedListParams",
+            "responseType": "ThreadLoadedListResponse",
+            "serialization": "None"
+        },
+        {
+            "method": "thread/metadata/update",
+            "variant": "Thread/metadata/updateRequest",
+            "paramsType": "ThreadMetadataUpdateParams",
+            "responseType": "ThreadMetadataUpdateResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/name/set",
+            "variant": "Thread/name/setRequest",
+            "paramsType": "ThreadSetNameParams",
+            "responseType": "ThreadSetNameResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/read",
+            "variant": "Thread/readRequest",
+            "paramsType": "ThreadReadParams",
+            "responseType": "ThreadReadResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/resume",
+            "variant": "Thread/resumeRequest",
+            "paramsType": "ThreadResumeParams",
+            "responseType": "ThreadResumeResponse",
+            "serialization": "thread_or_path(params.thread_id, params.path)",
+            "inspectParams": true
+        },
+        {
+            "method": "thread/rollback",
+            "variant": "Thread/rollbackRequest",
+            "paramsType": "ThreadRollbackParams",
+            "responseType": "ThreadRollbackResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/shellCommand",
+            "variant": "Thread/shellCommandRequest",
+            "paramsType": "ThreadShellCommandParams",
+            "responseType": "ThreadShellCommandResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/start",
+            "variant": "Thread/startRequest",
+            "paramsType": "ThreadStartParams",
+            "responseType": "ThreadStartResponse",
+            "serialization": "None",
+            "inspectParams": true
+        },
+        {
+            "method": "thread/unarchive",
+            "variant": "Thread/unarchiveRequest",
+            "paramsType": "ThreadUnarchiveParams",
+            "responseType": "ThreadUnarchiveResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "thread/unsubscribe",
+            "variant": "Thread/unsubscribeRequest",
+            "paramsType": "ThreadUnsubscribeParams",
+            "responseType": "ThreadUnsubscribeResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "turn/interrupt",
+            "variant": "Turn/interruptRequest",
+            "paramsType": "TurnInterruptParams",
+            "responseType": "TurnInterruptResponse",
+            "serialization": "thread_id(params.thread_id)"
+        },
+        {
+            "method": "turn/start",
+            "variant": "Turn/startRequest",
+            "paramsType": "TurnStartParams",
+            "responseType": "TurnStartResponse",
+            "serialization": "thread_id(params.thread_id)",
+            "inspectParams": true
+        },
+        {
+            "method": "turn/steer",
+            "variant": "Turn/steerRequest",
+            "paramsType": "TurnSteerParams",
+            "responseType": "TurnSteerResponse",
+            "serialization": "thread_id(params.thread_id)",
+            "inspectParams": true
+        },
+        {
+            "method": "windowsSandbox/readiness",
+            "variant": "WindowsSandbox/readinessRequest",
+            "paramsType": "Unit",
+            "responseType": "WindowsSandboxReadinessResponse",
+            "serialization": "global(\"config\")"
+        },
+        {
+            "method": "windowsSandbox/setupStart",
+            "variant": "WindowsSandbox/setupStartRequest",
+            "paramsType": "WindowsSandboxSetupStartParams",
+            "responseType": "WindowsSandboxSetupStartResponse",
+            "serialization": "global(\"windows-sandbox-setup\")"
+        }
+    ],
+    "serverRequests": [
+        {
+            "method": "account/chatgptAuthTokens/refresh",
+            "variant": "Account/chatgptAuthTokens/refreshRequest",
+            "paramsType": "ChatgptAuthTokensRefreshParams",
+            "responseType": "ChatgptAuthTokensRefreshResponse"
+        },
+        {
+            "method": "applyPatchApproval",
+            "variant": "ApplyPatchApprovalRequest",
+            "paramsType": "ApplyPatchApprovalParams",
+            "responseType": "ApplyPatchApprovalResponse"
+        },
+        {
+            "method": "attestation/generate",
+            "variant": "Attestation/generateRequest",
+            "paramsType": "AttestationGenerateParams",
+            "responseType": "AttestationGenerateResponse"
+        },
+        {
+            "method": "execCommandApproval",
+            "variant": "ExecCommandApprovalRequest",
+            "paramsType": "ExecCommandApprovalParams",
+            "responseType": "ExecCommandApprovalResponse"
+        },
+        {
+            "method": "item/commandExecution/requestApproval",
+            "variant": "Item/commandExecution/requestApprovalRequest",
+            "paramsType": "CommandExecutionRequestApprovalParams",
+            "responseType": "CommandExecutionRequestApprovalResponse"
+        },
+        {
+            "method": "item/fileChange/requestApproval",
+            "variant": "Item/fileChange/requestApprovalRequest",
+            "paramsType": "FileChangeRequestApprovalParams",
+            "responseType": "FileChangeRequestApprovalResponse"
+        },
+        {
+            "method": "item/permissions/requestApproval",
+            "variant": "Item/permissions/requestApprovalRequest",
+            "paramsType": "PermissionsRequestApprovalParams",
+            "responseType": "PermissionsRequestApprovalResponse"
+        },
+        {
+            "method": "item/tool/call",
+            "variant": "Item/tool/callRequest",
+            "paramsType": "DynamicToolCallParams",
+            "responseType": "DynamicToolCallResponse"
+        },
+        {
+            "method": "item/tool/requestUserInput",
+            "variant": "Item/tool/requestUserInputRequest",
+            "paramsType": "ToolRequestUserInputParams",
+            "responseType": "ToolRequestUserInputResponse"
+        },
+        {
+            "method": "mcpServer/elicitation/request",
+            "variant": "McpServer/elicitation/requestRequest",
+            "paramsType": "McpServerElicitationRequestParams",
+            "responseType": "McpServerElicitationRequestResponse"
+        }
+    ],
+    "serverNotifications": [
+        {
+            "method": "account/login/completed",
+            "variant": "Account/login/completedNotification",
+            "paramsType": "AccountLoginCompletedNotification"
+        },
+        {
+            "method": "account/rateLimits/updated",
+            "variant": "Account/rateLimits/updatedNotification",
+            "paramsType": "AccountRateLimitsUpdatedNotification"
+        },
+        {
+            "method": "account/updated",
+            "variant": "Account/updatedNotification",
+            "paramsType": "AccountUpdatedNotification"
+        },
+        {
+            "method": "app/list/updated",
+            "variant": "App/list/updatedNotification",
+            "paramsType": "AppListUpdatedNotification"
+        },
+        {
+            "method": "command/exec/outputDelta",
+            "variant": "Command/exec/outputDeltaNotification",
+            "paramsType": "CommandExecOutputDeltaNotification"
+        },
+        {
+            "method": "configWarning",
+            "variant": "ConfigWarningNotification",
+            "paramsType": "ConfigWarningNotification"
+        },
+        {
+            "method": "deprecationNotice",
+            "variant": "DeprecationNoticeNotification",
+            "paramsType": "DeprecationNoticeNotification"
+        },
+        {
+            "method": "error",
+            "variant": "ErrorNotification",
+            "paramsType": "ErrorNotification"
+        },
+        {
+            "method": "externalAgentConfig/import/completed",
+            "variant": "ExternalAgentConfig/import/completedNotification",
+            "paramsType": "ExternalAgentConfigImportCompletedNotification"
+        },
+        {
+            "method": "externalAgentConfig/import/progress",
+            "variant": "ExternalAgentConfig/import/progressNotification",
+            "paramsType": "ExternalAgentConfigImportProgressNotification"
+        },
+        {
+            "method": "fs/changed",
+            "variant": "Fs/changedNotification",
+            "paramsType": "FsChangedNotification"
+        },
+        {
+            "method": "fuzzyFileSearch/sessionCompleted",
+            "variant": "FuzzyFileSearch/sessionCompletedNotification",
+            "paramsType": "FuzzyFileSearchSessionCompletedNotification"
+        },
+        {
+            "method": "fuzzyFileSearch/sessionUpdated",
+            "variant": "FuzzyFileSearch/sessionUpdatedNotification",
+            "paramsType": "FuzzyFileSearchSessionUpdatedNotification"
+        },
+        {
+            "method": "guardianWarning",
+            "variant": "GuardianWarningNotification",
+            "paramsType": "GuardianWarningNotification"
+        },
+        {
+            "method": "hook/completed",
+            "variant": "Hook/completedNotification",
+            "paramsType": "HookCompletedNotification"
+        },
+        {
+            "method": "hook/started",
+            "variant": "Hook/startedNotification",
+            "paramsType": "HookStartedNotification"
+        },
+        {
+            "method": "item/agentMessage/delta",
+            "variant": "Item/agentMessage/deltaNotification",
+            "paramsType": "AgentMessageDeltaNotification"
+        },
+        {
+            "method": "item/autoApprovalReview/completed",
+            "variant": "Item/autoApprovalReview/completedNotification",
+            "paramsType": "ItemGuardianApprovalReviewCompletedNotification"
+        },
+        {
+            "method": "item/autoApprovalReview/started",
+            "variant": "Item/autoApprovalReview/startedNotification",
+            "paramsType": "ItemGuardianApprovalReviewStartedNotification"
+        },
+        {
+            "method": "item/commandExecution/outputDelta",
+            "variant": "Item/commandExecution/outputDeltaNotification",
+            "paramsType": "CommandExecutionOutputDeltaNotification"
+        },
+        {
+            "method": "item/commandExecution/terminalInteraction",
+            "variant": "Item/commandExecution/terminalInteractionNotification",
+            "paramsType": "TerminalInteractionNotification"
+        },
+        {
+            "method": "item/completed",
+            "variant": "Item/completedNotification",
+            "paramsType": "ItemCompletedNotification"
+        },
+        {
+            "method": "item/fileChange/outputDelta",
+            "variant": "Item/fileChange/outputDeltaNotification",
+            "paramsType": "FileChangeOutputDeltaNotification"
+        },
+        {
+            "method": "item/fileChange/patchUpdated",
+            "variant": "Item/fileChange/patchUpdatedNotification",
+            "paramsType": "FileChangePatchUpdatedNotification"
+        },
+        {
+            "method": "item/mcpToolCall/progress",
+            "variant": "Item/mcpToolCall/progressNotification",
+            "paramsType": "McpToolCallProgressNotification"
+        },
+        {
+            "method": "item/plan/delta",
+            "variant": "Item/plan/deltaNotification",
+            "paramsType": "PlanDeltaNotification"
+        },
+        {
+            "method": "item/reasoning/summaryPartAdded",
+            "variant": "Item/reasoning/summaryPartAddedNotification",
+            "paramsType": "ReasoningSummaryPartAddedNotification"
+        },
+        {
+            "method": "item/reasoning/summaryTextDelta",
+            "variant": "Item/reasoning/summaryTextDeltaNotification",
+            "paramsType": "ReasoningSummaryTextDeltaNotification"
+        },
+        {
+            "method": "item/reasoning/textDelta",
+            "variant": "Item/reasoning/textDeltaNotification",
+            "paramsType": "ReasoningTextDeltaNotification"
+        },
+        {
+            "method": "item/started",
+            "variant": "Item/startedNotification",
+            "paramsType": "ItemStartedNotification"
+        },
+        {
+            "method": "mcpServer/oauthLogin/completed",
+            "variant": "McpServer/oauthLogin/completedNotification",
+            "paramsType": "McpServerOauthLoginCompletedNotification"
+        },
+        {
+            "method": "mcpServer/startupStatus/updated",
+            "variant": "McpServer/startupStatus/updatedNotification",
+            "paramsType": "McpServerStatusUpdatedNotification"
+        },
+        {
+            "method": "model/rerouted",
+            "variant": "Model/reroutedNotification",
+            "paramsType": "ModelReroutedNotification"
+        },
+        {
+            "method": "model/safetyBuffering/updated",
+            "variant": "Model/safetyBuffering/updatedNotification",
+            "paramsType": "ModelSafetyBufferingUpdatedNotification"
+        },
+        {
+            "method": "model/verification",
+            "variant": "Model/verificationNotification",
+            "paramsType": "ModelVerificationNotification"
+        },
+        {
+            "method": "process/exited",
+            "variant": "Process/exitedNotification",
+            "paramsType": "ProcessExitedNotification"
+        },
+        {
+            "method": "process/outputDelta",
+            "variant": "Process/outputDeltaNotification",
+            "paramsType": "ProcessOutputDeltaNotification"
+        },
+        {
+            "method": "remoteControl/status/changed",
+            "variant": "RemoteControl/status/changedNotification",
+            "paramsType": "RemoteControlStatusChangedNotification"
+        },
+        {
+            "method": "serverRequest/resolved",
+            "variant": "ServerRequest/resolvedNotification",
+            "paramsType": "ServerRequestResolvedNotification"
+        },
+        {
+            "method": "skills/changed",
+            "variant": "Skills/changedNotification",
+            "paramsType": "SkillsChangedNotification"
+        },
+        {
+            "method": "thread/archived",
+            "variant": "Thread/archivedNotification",
+            "paramsType": "ThreadArchivedNotification"
+        },
+        {
+            "method": "thread/closed",
+            "variant": "Thread/closedNotification",
+            "paramsType": "ThreadClosedNotification"
+        },
+        {
+            "method": "thread/compacted",
+            "variant": "Thread/compactedNotification",
+            "paramsType": "ContextCompactedNotification"
+        },
+        {
+            "method": "thread/deleted",
+            "variant": "Thread/deletedNotification",
+            "paramsType": "ThreadDeletedNotification"
+        },
+        {
+            "method": "thread/environment/connected",
+            "variant": "Thread/environment/connectedNotification",
+            "paramsType": "EnvironmentConnectionNotification"
+        },
+        {
+            "method": "thread/environment/disconnected",
+            "variant": "Thread/environment/disconnectedNotification",
+            "paramsType": "EnvironmentConnectionNotification"
+        },
+        {
+            "method": "thread/goal/cleared",
+            "variant": "Thread/goal/clearedNotification",
+            "paramsType": "ThreadGoalClearedNotification"
+        },
+        {
+            "method": "thread/goal/updated",
+            "variant": "Thread/goal/updatedNotification",
+            "paramsType": "ThreadGoalUpdatedNotification"
+        },
+        {
+            "method": "thread/name/updated",
+            "variant": "Thread/name/updatedNotification",
+            "paramsType": "ThreadNameUpdatedNotification"
+        },
+        {
+            "method": "thread/realtime/closed",
+            "variant": "Thread/realtime/closedNotification",
+            "paramsType": "ThreadRealtimeClosedNotification"
+        },
+        {
+            "method": "thread/realtime/error",
+            "variant": "Thread/realtime/errorNotification",
+            "paramsType": "ThreadRealtimeErrorNotification"
+        },
+        {
+            "method": "thread/realtime/itemAdded",
+            "variant": "Thread/realtime/itemAddedNotification",
+            "paramsType": "ThreadRealtimeItemAddedNotification"
+        },
+        {
+            "method": "thread/realtime/outputAudio/delta",
+            "variant": "Thread/realtime/outputAudio/deltaNotification",
+            "paramsType": "ThreadRealtimeOutputAudioDeltaNotification"
+        },
+        {
+            "method": "thread/realtime/sdp",
+            "variant": "Thread/realtime/sdpNotification",
+            "paramsType": "ThreadRealtimeSdpNotification"
+        },
+        {
+            "method": "thread/realtime/started",
+            "variant": "Thread/realtime/startedNotification",
+            "paramsType": "ThreadRealtimeStartedNotification"
+        },
+        {
+            "method": "thread/realtime/transcript/delta",
+            "variant": "Thread/realtime/transcript/deltaNotification",
+            "paramsType": "ThreadRealtimeTranscriptDeltaNotification"
+        },
+        {
+            "method": "thread/realtime/transcript/done",
+            "variant": "Thread/realtime/transcript/doneNotification",
+            "paramsType": "ThreadRealtimeTranscriptDoneNotification"
+        },
+        {
+            "method": "thread/settings/updated",
+            "variant": "Thread/settings/updatedNotification",
+            "paramsType": "ThreadSettingsUpdatedNotification"
+        },
+        {
+            "method": "thread/started",
+            "variant": "Thread/startedNotification",
+            "paramsType": "ThreadStartedNotification"
+        },
+        {
+            "method": "thread/status/changed",
+            "variant": "Thread/status/changedNotification",
+            "paramsType": "ThreadStatusChangedNotification"
+        },
+        {
+            "method": "thread/tokenUsage/updated",
+            "variant": "Thread/tokenUsage/updatedNotification",
+            "paramsType": "ThreadTokenUsageUpdatedNotification"
+        },
+        {
+            "method": "thread/unarchived",
+            "variant": "Thread/unarchivedNotification",
+            "paramsType": "ThreadUnarchivedNotification"
+        },
+        {
+            "method": "turn/completed",
+            "variant": "Turn/completedNotification",
+            "paramsType": "TurnCompletedNotification"
+        },
+        {
+            "method": "turn/diff/updated",
+            "variant": "Turn/diff/updatedNotification",
+            "paramsType": "TurnDiffUpdatedNotification"
+        },
+        {
+            "method": "turn/moderationMetadata",
+            "variant": "Turn/moderationMetadataNotification",
+            "paramsType": "TurnModerationMetadataNotification"
+        },
+        {
+            "method": "turn/plan/updated",
+            "variant": "Turn/plan/updatedNotification",
+            "paramsType": "TurnPlanUpdatedNotification"
+        },
+        {
+            "method": "turn/started",
+            "variant": "Turn/startedNotification",
+            "paramsType": "TurnStartedNotification"
+        },
+        {
+            "method": "warning",
+            "variant": "WarningNotification",
+            "paramsType": "WarningNotification"
+        },
+        {
+            "method": "windows/worldWritableWarning",
+            "variant": "Windows/worldWritableWarningNotification",
+            "paramsType": "WindowsWorldWritableWarningNotification"
+        },
+        {
+            "method": "windowsSandbox/setupCompleted",
+            "variant": "WindowsSandbox/setupCompletedNotification",
+            "paramsType": "WindowsSandboxSetupCompletedNotification"
+        }
+    ],
+    "clientNotifications": [
+        {
+            "method": "initialized",
+            "variant": "InitializedNotification",
+            "paramsType": "Unit"
+        }
+    ]
+}

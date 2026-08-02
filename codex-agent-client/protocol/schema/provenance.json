@@ -1,0 +1,253 @@
+{
+    "formatVersion": 1,
+    "appServerVersion": "0.145.0",
+    "upstreamRepository": "https://github.com/openai/codex",
+    "upstreamTag": "rust-v0.145.0",
+    "upstreamTagObject": "1635de866c61d1b76e50b31928ee6d61482435a8",
+    "upstreamRevision": "25af12f7e61572b0bc18ddb1008be543b91519b0",
+    "inputs": [
+        {
+            "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+            "gitBlob": "e0cfbc1d9f9e5e360b704ab241e059048cdfbc3c",
+            "sha256": "32b26f2ab3fb7a4a409db958f438f48b0ef106e3a01468f8618fdf65bc823cc4"
+        },
+        {
+            "path": "codex-rs/app-server-protocol/src/rpc.rs",
+            "gitBlob": "4e8858ce00a048abe5c0c7ccb056ac2380694f25",
+            "sha256": "27c09a1fbf92a02fe427155798a1b5c738d2b1a7a0483941ca6dff9c748052c0"
+        },
+        {
+            "path": "codex-rs/app-server-protocol/src/protocol/common.rs",
+            "gitBlob": "a4d87e202c7f51c23b702ba4323f7520ff4b6e74",
+            "sha256": "e34bf413ca8b2ad4c8b05216eb2fe722ffc5df8c0bdf8e0e68d38c231e574cc3"
+        },
+        {
+            "path": "codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+            "gitBlob": "b7526b080da1487feb2bd5d1d5f8908b00ef1b88",
+            "sha256": "8039a1222460b3846a3688c61eb4b2626b451d61b9c2b36b83fea0ce341ce0be"
+        },
+        {
+            "path": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+            "gitBlob": "367a4a64c8f22552ecb964b9af07a4b81ab097a2",
+            "sha256": "26c03c5763f0260f9c21b83775749c04d5b86c16807c10f740cb2d705f205a08"
+        },
+        {
+            "path": "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
+            "gitBlob": "af99b4b2e72501c50795df51481f32f11111f0a9",
+            "sha256": "b4f18d8f2014adcb3e562f925d76229d7e506c12834c62784f76e06dafbcf467"
+        }
+    ],
+    "schemaExtraction": "git show rust-v0.145.0:codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json",
+    "wireNote": "The pinned protocol intentionally omits the jsonrpc field.",
+    "completeSchemaExtraction": "git show rust-v0.145.0:codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json",
+    "generator": {
+        "version": "3",
+        "command": "./gradlew updateProtocol -PcodexProtocolSchema=/path/to/codex_app_server_protocol.schemas.json -PcodexProtocolCommon=/path/to/common.rs -PcodexProtocolThread=/path/to/thread.rs -PcodexProtocolTurn=/path/to/turn.rs",
+        "outputs": [
+            {
+                "path": "protocol/schema/descriptors.json",
+                "sha256": "13fc24cbe142d4af560844ac64f7306eed7a85f48bf52995a0eaf6bad78994a9"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolDescriptors.kt",
+                "sha256": "e79570ac89b5cc3ddde9d93c4d70bfbe76fc949d46aaf45e2c6cf52cbc9b514d"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolClientRoutes.kt",
+                "sha256": "604878c108ef4238f1df269b65269f1cc8df57463b35c0ff236f7dca85028c2d"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolClientMethods.kt",
+                "sha256": "bcc8faf1c181a9a46555fbac098bb3db2f53fd09454ed8344152f2d61e70523d"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels001.kt",
+                "sha256": "cc3643af78c1c36f07dff6f92b54b2534d6f01cfe3e2d97ebb1b39142fada5e2"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels002.kt",
+                "sha256": "cca45add6104e298197d06c6ac65b48bac20f936480087cb0953676853400728"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels003.kt",
+                "sha256": "bdee43eeb3b76475f036d10315ac475fddbd95a80ed44424270ca913e51e0a7d"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels004.kt",
+                "sha256": "987033052208f58d06cf9614d8ad239832991a238da332aabb1f513423501fbe"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels005.kt",
+                "sha256": "89120729a9738d41c5c70be35cfc2b02f0ebcd9e5b7dcc8ebd85387c86071e94"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels006.kt",
+                "sha256": "726ffe06a6d200b395083fbc7febc4cedfe4fad718d9f9644bc95c5db257cff3"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels007.kt",
+                "sha256": "b26163441ab8c61ecdd5cada6230314617f726916ade41b7301721ef7d1480cd"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels008.kt",
+                "sha256": "858a728eb0bc8d702dd5239e63bb11506597ada125d88621304a41b70fdf5577"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels009.kt",
+                "sha256": "f2ef18c9d3fbe18083fa3b698024fa2e86e942c5a3447a50527caf96b8fe3431"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels010.kt",
+                "sha256": "aa49ed7c28b573d0e7400af7bb02d093906d57378f8c7f1d6f302a531b6591c2"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels011.kt",
+                "sha256": "f767ac04ce75e75b7c45efcda78c4c7bcd9745f4d0cc8a1fedebe5216c85b3e9"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels012.kt",
+                "sha256": "52ab15ee333c28b7986d505040dc1e8cdacb1b177bdc16bc4954c72d34ac9d82"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels013.kt",
+                "sha256": "91599758a7c7cb09b4911ffe5654c62cb8acbac9c2f9e901b9112681e88029ba"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels014.kt",
+                "sha256": "a0ddc609012dccac981295ba3e08fc02bd1a84d53959d4ed7bdbe23660682255"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels015.kt",
+                "sha256": "bcf5ba9223412c4ae3b1580aa344af3ec84ac095b59230271da37628e375fe7f"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels016.kt",
+                "sha256": "889f3630bbef79216e6d9f6827668d8d7d4f700eac5a03bea800b3161e23a737"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels017.kt",
+                "sha256": "cf2b762ac2d8afd8a47273008aa912c929cb6a9233636c74a09e1fc759bf371f"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels018.kt",
+                "sha256": "04a4049557b575e373181596d306fa83765ba3630ba60a6115c1c15c5e6b7062"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels019.kt",
+                "sha256": "ec83309a59223c423189748b46eb83568b186aee32f9aee1de71ce1e559d1b13"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels020.kt",
+                "sha256": "7c15c7f551ce9a12b531c548dfea41830d9b2448e8797de9dbf8b0cb437f2db1"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels021.kt",
+                "sha256": "bcee48626188d698e2fc34375cf3c8b5e2d60e0b498ffcd5f750c7e7c7ad784f"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels022.kt",
+                "sha256": "0ae0919ee0701982045b11287590dc0dc482363233a3a66963ac3da82d102804"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels023.kt",
+                "sha256": "18b5e90a3615050860c1b38af311c915b87784eaf3d6e890b8afcedcd3e18c08"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels024.kt",
+                "sha256": "cf2bfd827091049a498d1387d68b2f2da28ef77870bc00cf1378da869cc38442"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels025.kt",
+                "sha256": "23af30bc3d494ab0f8e9852049f058c4ff07b31da23cf873d473c2a0f0440d86"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels026.kt",
+                "sha256": "507a045d44dd50da454b75d446ed8d98728cc6b76e6b2e0c8b3f5a8ba20dcf3b"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels027.kt",
+                "sha256": "cac13a2621567d0aeb094b813514df4ab858c7191d625b4c813e5435fb0cd066"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels028.kt",
+                "sha256": "3cf4cd075df243282fdadb5c77517ee4c7fcffe1ecce74f01087da7a87a87e44"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels029.kt",
+                "sha256": "7dbda9b7b68058ac145b09582191011a9a3360177562af5decf586c5507a2aeb"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels030.kt",
+                "sha256": "f5856c409c89736bf7ee39b15510d9174c3c6fa8104fcf50856b08d5a07b5e9e"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels031.kt",
+                "sha256": "6d3783e481845053771ee2ac6b2756d824a0eb0ffc6e7d96791bddaf5c3d6ad6"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels032.kt",
+                "sha256": "c805cfceac072af6847ec9b739a930382c6d33313a05ede999c3ccace7b96958"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels033.kt",
+                "sha256": "cf80b4bd8965037090b0b6247d79f39af30a0cd3829c46761ca2bf7c597d799d"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels034.kt",
+                "sha256": "94816227298f7a6492d38b6cd8203d828fa1f231a48913956a8a5eb47a5dc547"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels035.kt",
+                "sha256": "7117a8e78fa8a7a89519a8e7b7afcbd948c7b6fa0b3f79cebafccc14cd84fdbb"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels036.kt",
+                "sha256": "ada3a4ae46dfadbd6e6d380131b0fcf5716e3a002c4eb80b67add7e6d0cc5f02"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels037.kt",
+                "sha256": "808698037c1806e3ac16f9bbc75a62d09c0117a3727c3f4fb53633c3462620ed"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels038.kt",
+                "sha256": "af2e7a42dc57db582a49c1447219450ce6778370b095f059cad178ebf84642aa"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels039.kt",
+                "sha256": "e3ab3fe94f5c1a30f117520ea7cc02210fa73b0ed2d37677a2a35ea3889501ef"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels040.kt",
+                "sha256": "60c1cc90b225e005b55a41afbbfb4ddc07652d37d886782f609d204b04d00e89"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels041.kt",
+                "sha256": "c50ba8d1a7cb4ce7a0e90f98ffb03613a1146ba2ae838b36223954ef7f5ccec7"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels042.kt",
+                "sha256": "24c1adee0c0cde6519d966847d5d84cf82fe511e7ea0853f4a3472283c419b11"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels043.kt",
+                "sha256": "448f18518fee1fda92f80b9ea9446f3f84c59fdeaad361cf8532ca0ddf3f9a26"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels044.kt",
+                "sha256": "029461c9e8da2abca1c63aa8990dcc6ee11b6e7edeba8c73cae5db76fdceda42"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels045.kt",
+                "sha256": "2b82dedf2e67c206d09fd9aea6206a3e7c3d2703d64aab7f66ea9f37f3514b82"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels046.kt",
+                "sha256": "d769e2018a5dfa77fd9c68abc3aabf3228319606e65567ca51ea11b9035b02ac"
+            },
+            {
+                "path": "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated/GeneratedProtocolModels047.kt",
+                "sha256": "c1a53906822360413ee74d8fc2034d77b49517a5a916e4159633f3deb2cf4965"
+            }
+        ]
+    }
+}
