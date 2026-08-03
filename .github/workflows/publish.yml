@@ -18,6 +18,11 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Install pinned Rust toolchain
+        run: >-
+          rustup toolchain install 1.95.0 --profile minimal
+          --target aarch64-apple-ios,aarch64-apple-ios-sim
+      - run: ./gradlew verifyIosRuntime --stacktrace
       - run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache --stacktrace
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}

@@ -1,0 +1,12 @@
+{
+  "codexVersion": "0.145.0",
+  "gitRevision": "25af12f7e61572b0bc18ddb1008be543b91519b0",
+  "sourceArchive": "https://github.com/openai/codex/archive/25af12f7e61572b0bc18ddb1008be543b91519b0.tar.gz",
+  "sourceArchiveSha256": "42f627a7b32db41582c73a8eafd9ec4b35d6c3ff81bd3d4455cfd6224d79d329",
+  "sourceArchiveBytes": 9976355,
+  "rustToolchain": "1.95.0",
+  "adapterPatchSha256": "96f6fc43d6f8c518f3c65446a76f7ee1167b8db1cc203a6c6ab33f5e184f1f18",
+  "bridgeManifestSha256": "7d171d7a9dd5c78ca2fb9ee709e7ff4baca86c20a0e493ebd1f1022d3479a842",
+  "bridgeSourceSha256": "9234559eeb35572f44b0f9296b3efff42b7a7fbbef9821708c212c237394365e",
+  "cHeaderSha256": "8154ab128c71abe44e574d5ef7d277392b99f6e7271c6933db02e103d38f5440"
+}

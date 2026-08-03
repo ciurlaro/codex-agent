@@ -79,7 +79,9 @@ import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.KSerializer
 
 
-internal suspend fun CodexAgentClient.authenticateAction() = authMutex.withLock {
+internal suspend fun CodexAgentClient.authenticateAction(
+    method: CodexAuthenticationMethod,
+) = authMutex.withLock {
     connection.ensureStarted()
     if (stateLock.withLock { authenticated }) {
         emitAuthenticated()
@@ -91,7 +93,24 @@ internal suspend fun CodexAgentClient.authenticateAction() = authMutex.withLock 
         AppServerClientMethods.AccountRead,
         GetAccountParams(refreshToken = false),
     ).account
-    if (account is AccountChatgptAccount) {
+    val accountMatches = when (method) {
+        CodexAuthenticationMethod.ChatGptBrowser,
+        CodexAuthenticationMethod.ChatGptDeviceCode,
+        -> account is AccountChatgptAccount
+        is CodexAuthenticationMethod.ApiKey -> account is AccountApiKeyAccount
+    }
+    if (accountMatches) {
+        emitAuthenticated()
+        return@withLock
+    }
+
+    if (method is CodexAuthenticationMethod.ApiKey) {
+        check(
+            connection.request(
+                AppServerClientMethods.AccountLoginStart,
+                LoginAccountParamsApiKey(method.value),
+            ) is LoginAccountResponseApiKey,
+        ) { "App-server returned an unexpected login method" }
         emitAuthenticated()
         return@withLock
     }
@@ -103,13 +122,20 @@ internal suspend fun CodexAgentClient.authenticateAction() = authMutex.withLock 
     try {
         val result = connection.request(
             AppServerClientMethods.AccountLoginStart,
-            LoginAccountParamsChatgpt(
-                appBrand = LoginAppBrand.CODEX,
-                useHostedLoginSuccessPage = true,
-            ),
-        ) as? LoginAccountResponseChatgpt
-            ?: error("App-server returned an unexpected login method")
-        val startedLoginId = result.loginId
+            when (method) {
+                CodexAuthenticationMethod.ChatGptBrowser -> LoginAccountParamsChatgpt(
+                    appBrand = LoginAppBrand.CODEX,
+                    useHostedLoginSuccessPage = true,
+                )
+                CodexAuthenticationMethod.ChatGptDeviceCode -> LoginAccountParamsChatgptDeviceCode()
+                is CodexAuthenticationMethod.ApiKey -> error("API-key login is handled synchronously")
+            },
+        )
+        val startedLoginId = when (result) {
+            is LoginAccountResponseChatgpt -> result.loginId
+            is LoginAccountResponseChatgptDeviceCode -> result.loginId
+            else -> error("App-server returned an unexpected login method")
+        }
         val earlyCompletion = loginStateLock.withLock {
             loginStarting = false
             loginCompletedDuringStart
@@ -122,9 +148,13 @@ internal suspend fun CodexAgentClient.authenticateAction() = authMutex.withLock 
         when {
             earlyCompletion != null -> applyLoginCompletion(earlyCompletion)
             stateLock.withLock { authenticated } -> Unit
-            else -> eventsChannel.send(
-                AgentEvent.AuthenticationRequired(
-                    signInUrl = result.authUrl,
+            result is LoginAccountResponseChatgpt -> eventsChannel.send(
+                AgentEvent.AuthenticationRequired(result.authUrl),
+            )
+            result is LoginAccountResponseChatgptDeviceCode -> eventsChannel.send(
+                AgentEvent.DeviceCodeAuthenticationRequired(
+                    verificationUrl = result.verificationUrl,
+                    userCode = result.userCode,
                 ),
             )
         }

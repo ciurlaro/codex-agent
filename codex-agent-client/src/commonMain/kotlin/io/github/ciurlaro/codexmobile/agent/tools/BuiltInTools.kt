@@ -14,6 +14,7 @@ data class BuiltInToolDefinition(
     val description: String,
     val inputSchema: JsonObject,
     val mutation: Boolean = false,
+    val requiresEnabledPlugin: Boolean = true,
 )
 
 data class BuiltInToolCall(
@@ -75,7 +76,9 @@ fun typedMutationAuthority(preset: AgentApprovalPreset): TypedMutationAuthority 
 fun builtInDynamicTools(
     enabledPluginIds: Set<String>,
     definitions: List<BuiltInToolDefinition>,
-): List<DynamicToolSpec> = definitions.filter { it.pluginId in enabledPluginIds }.map { definition ->
+): List<DynamicToolSpec> = definitions.filter { definition ->
+    !definition.requiresEnabledPlugin || definition.pluginId in enabledPluginIds
+}.map { definition ->
     DynamicToolSpecFunctionDynamicToolSpec(
         name = definition.name,
         description = definition.description,

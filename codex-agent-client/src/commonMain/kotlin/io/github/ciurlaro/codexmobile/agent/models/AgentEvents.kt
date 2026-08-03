@@ -7,6 +7,13 @@ sealed interface AgentEvent {
         override fun toString(): String = "AuthenticationRequired"
     }
 
+    data class DeviceCodeAuthenticationRequired(
+        val verificationUrl: String,
+        val userCode: String,
+    ) : AgentEvent {
+        override fun toString(): String = "DeviceCodeAuthenticationRequired"
+    }
+
     data object Authenticated : AgentEvent
 
     data class SessionOpened(

@@ -80,7 +80,7 @@ import kotlinx.serialization.KSerializer
 
 
 internal suspend fun CodexAgentClient.openSessionAction(previous: SessionId?, settings: AgentRuntimeSettings): SessionId {
-    if (builtInToolDispatcher != null) {
+    if (builtInToolDefinitions.any(BuiltInToolDefinition::requiresEnabledPlugin)) {
         connection.ensureStarted()
         refreshBuiltInPluginEnablement(settings.workingDirectory ?: "/")
     }

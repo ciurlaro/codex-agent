@@ -10,7 +10,7 @@ plugins {
 
 allprojects {
     group = "io.github.ciurlaro"
-    version = "0.1.0"
+    version = "0.2.0"
 }
 
 tasks.register("verifyRepository") {
@@ -25,4 +25,10 @@ tasks.register("verifyRepository") {
         ":codex-agent-runtime-android:assembleRelease",
         ":tooling:protocol-generator:test",
     )
+}
+
+tasks.register("verifyIosRuntime") {
+    group = "verification"
+    description = "Runs the embedded iOS runtime, XCFramework, and Swift consumer gates on macOS."
+    dependsOn(":codex-agent-runtime-ios:verifyIosRuntime")
 }

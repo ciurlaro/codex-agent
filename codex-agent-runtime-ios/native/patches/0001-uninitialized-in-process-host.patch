@@ -1,0 +1,250 @@
+diff --git a/codex-rs/Cargo.toml b/codex-rs/Cargo.toml
+index 17edbbf..18013c0 100644
+--- a/codex-rs/Cargo.toml
++++ b/codex-rs/Cargo.toml
+@@ -19,6 +19,7 @@ members = [
+     "feedback",
+     "features",
+     "install-context",
++    "ios-bridge",
+     "codex-backend-openapi-models",
+     "code-mode",
+     "code-mode-host",
+diff --git a/codex-rs/app-server-client/src/lib.rs b/codex-rs/app-server-client/src/lib.rs
+index a46feb5..e165a24 100644
+--- a/codex-rs/app-server-client/src/lib.rs
++++ b/codex-rs/app-server-client/src/lib.rs
+@@ -458,8 +458,28 @@ impl InProcessAppServerClient {
+     /// with overload error instead of being silently dropped.
+     pub async fn start(args: InProcessClientStartArgs) -> IoResult<Self> {
+         let channel_capacity = args.channel_capacity.max(1);
+-        let mut handle =
++        let handle =
+             codex_app_server::in_process::start(args.into_runtime_start_args()).await?;
++        Ok(Self::from_handle(handle, channel_capacity))
++    }
++
++    /// Starts the in-process runtime without performing `initialize` / `initialized`.
++    ///
++    /// This is intended for embedders that already own the App Server handshake.
++    pub async fn start_uninitialized(args: InProcessClientStartArgs) -> IoResult<Self> {
++        let channel_capacity = args.channel_capacity.max(1);
++        let handle = codex_app_server::in_process::start_uninitialized(
++            args.into_runtime_start_args(),
++            codex_app_server::PluginStartupTasks::Skip,
++        )
++        .await?;
++        Ok(Self::from_handle(handle, channel_capacity))
++    }
++
++    fn from_handle(
++        mut handle: codex_app_server::in_process::InProcessClientHandle,
++        channel_capacity: usize,
++    ) -> Self {
+         let request_sender = handle.sender();
+         let (command_tx, mut command_rx) = mpsc::channel::<ClientCommand>(channel_capacity);
+         let (event_tx, event_rx) = mpsc::channel::<InProcessServerEvent>(channel_capacity);
+@@ -568,11 +588,11 @@ impl InProcessAppServerClient {
+             }
+         });
+ 
+-        Ok(Self {
++        Self {
+             command_tx,
+             event_rx,
+             worker_handle,
+-        })
++        }
+     }
+ 
+     pub fn request_handle(&self) -> InProcessAppServerRequestHandle {
+diff --git a/codex-rs/app-server/src/in_process.rs b/codex-rs/app-server/src/in_process.rs
+index 84fec13..ccc654f 100644
+--- a/codex-rs/app-server/src/in_process.rs
++++ b/codex-rs/app-server/src/in_process.rs
+@@ -361,7 +361,7 @@ pub async fn start(mut args: InProcessStartArgs) -> IoResult<InProcessClientHand
+         });
+     }
+     let initialize = args.initialize.clone();
+-    let client = start_uninitialized(args).await?;
++    let client = start_uninitialized(args, crate::PluginStartupTasks::Start).await?;
+ 
+     let initialize_response = client
+         .request(ClientRequest::Initialize {
+@@ -381,7 +381,14 @@ pub async fn start(mut args: InProcessStartArgs) -> IoResult<InProcessClientHand
+     Ok(client)
+ }
+ 
+-async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClientHandle> {
++/// Starts an in-process app-server runtime without performing the client handshake.
++///
++/// Embedders using an existing JSON-RPC client should call this entry point so that
++/// exactly one layer owns `initialize` / `initialized`.
++pub async fn start_uninitialized(
++    args: InProcessStartArgs,
++    plugin_startup_tasks: crate::PluginStartupTasks,
++) -> IoResult<InProcessClientHandle> {
+     let channel_capacity = args.channel_capacity.max(1);
+     let installation_id = resolve_installation_id(&args.config.codex_home).await?;
+     let (client_tx, mut client_rx) = mpsc::channel::<InProcessClientMessage>(channel_capacity);
+@@ -449,7 +456,7 @@ async fn start_uninitialized(args: InProcessStartArgs) -> IoResult<InProcessClie
+                 installation_id,
+                 rpc_transport: AppServerRpcTransport::InProcess,
+                 remote_control_handle: None,
+-                plugin_startup_tasks: crate::PluginStartupTasks::Start,
++                plugin_startup_tasks,
+             }));
+             let mut thread_created_rx = processor.thread_created_receiver();
+             let session = Arc::new(ConnectionSessionState::new());
+diff --git a/codex-rs/code-mode/Cargo.toml b/codex-rs/code-mode/Cargo.toml
+index be14424..6f48b24 100644
+--- a/codex-rs/code-mode/Cargo.toml
++++ b/codex-rs/code-mode/Cargo.toml
+@@ -18,12 +18,14 @@ workspace = true
+ [dependencies]
+ codex-code-mode-protocol = { workspace = true }
+ codex-protocol = { workspace = true }
+-deno_core_icudata = { workspace = true }
+ futures = { workspace = true }
+ serde_json = { workspace = true }
+ tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "sync", "time"] }
+ tokio-util = { workspace = true, features = ["rt"] }
+ tracing = { workspace = true }
++
++[target.'cfg(not(target_os = "ios"))'.dependencies]
++deno_core_icudata = { workspace = true }
+ v8 = { workspace = true }
+ 
+ [dev-dependencies]
+diff --git a/codex-rs/code-mode/src/lib.rs b/codex-rs/code-mode/src/lib.rs
+index 6d332bf..a34d997 100644
+--- a/codex-rs/code-mode/src/lib.rs
++++ b/codex-rs/code-mode/src/lib.rs
+@@ -1,17 +1,43 @@
++#[cfg(not(target_os = "ios"))]
+ mod cell_actor;
++#[cfg(target_os = "ios")]
++mod ios;
++#[cfg(not(target_os = "ios"))]
+ mod remote_session;
++#[cfg(not(target_os = "ios"))]
+ mod runtime;
++#[cfg(not(target_os = "ios"))]
+ mod service;
++#[cfg(not(target_os = "ios"))]
+ mod session_runtime;
++#[cfg(not(target_os = "ios"))]
+ mod v8_init;
+ 
++#[cfg(not(target_os = "ios"))]
+ pub(crate) type TaskFailureHandler = std::sync::Arc<dyn Fn(String) + Send + Sync>;
+ 
+ pub use codex_code_mode_protocol::*;
++#[cfg(target_os = "ios")]
++pub use ios::InProcessCodeModeSessionProvider;
++#[cfg(target_os = "ios")]
++pub use ios::NoopCodeModeSessionDelegate;
++#[cfg(target_os = "ios")]
++pub use ios::ProcessOwnedCodeModeSessionProvider;
++#[cfg(target_os = "ios")]
++pub use ios::V8JitMode;
++#[cfg(target_os = "ios")]
++pub use ios::initialize_v8;
++#[cfg(not(target_os = "ios"))]
+ pub use remote_session::ProcessOwnedCodeModeSession;
++#[cfg(not(target_os = "ios"))]
+ pub use remote_session::ProcessOwnedCodeModeSessionProvider;
++#[cfg(not(target_os = "ios"))]
+ pub use service::InProcessCodeModeSession;
++#[cfg(not(target_os = "ios"))]
+ pub use service::InProcessCodeModeSessionProvider;
++#[cfg(not(target_os = "ios"))]
+ pub use service::NoopCodeModeSessionDelegate;
++#[cfg(not(target_os = "ios"))]
+ pub use v8_init::V8JitMode;
++#[cfg(not(target_os = "ios"))]
+ pub use v8_init::initialize_v8;
+diff --git a/codex-rs/code-mode/src/ios.rs b/codex-rs/code-mode/src/ios.rs
+new file mode 100644
+index 0000000..b0f6654
+--- /dev/null
++++ b/codex-rs/code-mode/src/ios.rs
+@@ -0,0 +1,78 @@
++use std::path::PathBuf;
++use std::sync::Arc;
++
++use codex_code_mode_protocol::CellId;
++use codex_code_mode_protocol::CodeModeNestedToolCall;
++use codex_code_mode_protocol::CodeModeSessionDelegate;
++use codex_code_mode_protocol::CodeModeSessionProvider;
++use codex_code_mode_protocol::CodeModeSessionProviderFuture;
++use codex_code_mode_protocol::NotificationFuture;
++use codex_code_mode_protocol::ToolInvocationFuture;
++use tokio_util::sync::CancellationToken;
++
++const UNSUPPORTED: &str = "code mode is unsupported on iOS";
++
++pub struct NoopCodeModeSessionDelegate;
++
++impl CodeModeSessionDelegate for NoopCodeModeSessionDelegate {
++    fn invoke_tool<'a>(
++        &'a self,
++        _invocation: CodeModeNestedToolCall,
++        _cancellation_token: CancellationToken,
++    ) -> ToolInvocationFuture<'a> {
++        Box::pin(async { Err(UNSUPPORTED.to_string()) })
++    }
++
++    fn notify<'a>(
++        &'a self,
++        _call_id: String,
++        _cell_id: CellId,
++        _text: String,
++        _cancellation_token: CancellationToken,
++    ) -> NotificationFuture<'a> {
++        Box::pin(async { Err(UNSUPPORTED.to_string()) })
++    }
++
++    fn cell_closed(&self, _cell_id: &CellId) {}
++}
++
++#[derive(Default)]
++pub struct InProcessCodeModeSessionProvider;
++
++impl CodeModeSessionProvider for InProcessCodeModeSessionProvider {
++    fn create_session<'a>(
++        &'a self,
++        _delegate: Arc<dyn CodeModeSessionDelegate>,
++    ) -> CodeModeSessionProviderFuture<'a> {
++        Box::pin(async { Err(UNSUPPORTED.to_string()) })
++    }
++}
++
++#[derive(Default)]
++pub struct ProcessOwnedCodeModeSessionProvider;
++
++impl ProcessOwnedCodeModeSessionProvider {
++    pub fn with_host_program(_host_program: PathBuf) -> Self {
++        Self
++    }
++}
++
++impl CodeModeSessionProvider for ProcessOwnedCodeModeSessionProvider {
++    fn create_session<'a>(
++        &'a self,
++        _delegate: Arc<dyn CodeModeSessionDelegate>,
++    ) -> CodeModeSessionProviderFuture<'a> {
++        Box::pin(async { Err(UNSUPPORTED.to_string()) })
++    }
++}
++
++#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
++pub enum V8JitMode {
++    #[default]
++    Enabled,
++    Disabled,
++}
++
++pub fn initialize_v8(_jit_mode: V8JitMode) -> Result<(), String> {
++    Err(UNSUPPORTED.to_string())
++}

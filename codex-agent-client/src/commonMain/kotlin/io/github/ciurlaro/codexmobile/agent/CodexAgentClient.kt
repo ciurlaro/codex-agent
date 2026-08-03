@@ -90,7 +90,8 @@ class CodexAgentClient(
     @Volatile
     internal var builtInToolsByName = builtInToolDefinitions.associateBy(BuiltInToolDefinition::name)
     internal val builtInPluginEnabled = mutableMapOf<String, Boolean>().apply {
-        builtInToolDefinitions.map(BuiltInToolDefinition::pluginId).distinct().forEach { put(it, true) }
+        builtInToolDefinitions.filter(BuiltInToolDefinition::requiresEnabledPlugin)
+            .map(BuiltInToolDefinition::pluginId).distinct().forEach { put(it, true) }
     }
     internal val builtInToolGate = Mutex()
     internal val pluginRequestMutex = Mutex()
@@ -147,7 +148,8 @@ class CodexAgentClient(
 
     override val events: Flow<AgentEvent> = eventsChannel.receiveAsFlow()
 
-    override suspend fun authenticate() = authenticateAction()
+    override suspend fun authenticate() = authenticateAction(CodexAuthenticationMethod.ChatGptBrowser)
+    suspend fun authenticate(method: CodexAuthenticationMethod) = authenticateAction(method)
     override suspend fun cancelAuthentication() = cancelAuthenticationAction()
     override suspend fun signOut() = signOutAction()
     override suspend fun listModels(): List<AgentModel> = listModelsAction()

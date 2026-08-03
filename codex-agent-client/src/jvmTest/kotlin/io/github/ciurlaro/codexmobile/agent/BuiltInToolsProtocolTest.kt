@@ -34,6 +34,47 @@ import kotlinx.serialization.json.putJsonObject
 
 internal class BuiltInToolsProtocolTest : BuiltInToolsProtocolTestBase() {
     @Test
+    fun alwaysEnabledToolsSkipPluginDiscoveryAndRemainCallable(): Unit = runBlocking {
+        val response = CountDownLatch(1)
+        val pluginReads = AtomicInteger()
+        var advertised = emptyList<String>()
+        val process = FakeCodexRuntime { message, server ->
+            when (message.method) {
+                "initialize" -> server.respond(message.id, buildJsonObject {})
+                "plugin/installed" -> pluginReads.incrementAndGet()
+                "thread/start" -> {
+                    advertised = message.objectValue["params"]!!.jsonObject["dynamicTools"]!!.jsonArray
+                        .map { it.jsonObject["name"]!!.jsonPrimitive.content }
+                    server.respond(message.id, thread("thread-1"))
+                }
+                "turn/start" -> {
+                    server.respond(message.id, turn("turn-1"))
+                    server.request(940, "item/tool/call", toolCall("ios_read_file", "read-1"))
+                }
+                null -> if (message.id == 940L) response.countDown()
+            }
+        }
+        val definition = testDefinition("ios-local-filesystem", "ios_read_file", mutation = false)
+            .copy(requiresEnabledPlugin = false)
+        val dispatcher = object : BuiltInToolDispatcher {
+            override fun definitions() = listOf(definition)
+            override suspend fun execute(call: BuiltInToolCall) = BuiltInToolResult.text("local")
+        }
+        CodexAgentClient(
+            runtimeFactory = { process },
+            requestTimeoutMillis = 1_000,
+            builtInToolDispatcher = dispatcher,
+        ).use { client ->
+            val session = client.openSession(settings = AgentRuntimeSettings(workingDirectory = "/workspace"))
+            client.sendTurn(session, AgentTurnRequest("read", workingDirectory = "/workspace"))
+
+            assertTrue(response.await(1, TimeUnit.SECONDS))
+            assertEquals(0, pluginReads.get())
+            assertEquals(listOf("ios_read_file"), advertised)
+        }
+    }
+
+    @Test
     fun schemasAreClosedAndContainOnlyTheStableToolSet() {
         val tools = builtInDynamicTools(setOf(ALPHA_PLUGIN_ID, BETA_PLUGIN_ID), TEST_DEFINITIONS)
         val functions = tools.map { assertIs<DynamicToolSpecFunctionDynamicToolSpec>(it) }

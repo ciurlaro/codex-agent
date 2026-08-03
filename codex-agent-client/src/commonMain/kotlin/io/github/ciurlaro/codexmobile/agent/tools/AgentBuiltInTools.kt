@@ -198,7 +198,10 @@ internal suspend fun CodexAgentClient.executeBuiltInToolAction(pending: PendingB
 
 internal suspend fun CodexAgentClient.validateBuiltInCallAction(pending: PendingBuiltInApproval) {
     val call = pending.call
-    check(builtInPluginEnabled[call.pluginId] == true) { "${call.pluginId} is disabled" }
+    val definition = builtInToolsByName[call.tool] ?: error("Unknown built-in tool")
+    check(!definition.requiresEnabledPlugin || builtInPluginEnabled[call.pluginId] == true) {
+        "${call.pluginId} is disabled"
+    }
     check(currentEpochMillis() <= call.deadlineEpochMillis) {
         "Built-in tool call deadline expired"
     }

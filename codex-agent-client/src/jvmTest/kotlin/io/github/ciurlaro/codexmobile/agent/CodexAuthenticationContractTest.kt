@@ -15,6 +15,86 @@ import kotlinx.serialization.json.*
 
 class CodexAuthenticationContractTest {
     @Test
+    fun deviceCodeAuthenticationUsesTheExistingAppServerRoute(): Unit = runBlocking {
+        var loginType: String? = null
+        val process = FakeCodexRuntime { message, server ->
+            when (message.method) {
+                "initialize" -> server.respond(message.id, buildJsonObject {})
+                "account/read" -> server.respond(
+                    message.id,
+                    buildJsonObject {
+                        put("account", JsonNull)
+                        put("requiresOpenaiAuth", true)
+                    },
+                )
+                "account/login/start" -> {
+                    loginType = message.objectValue["params"]!!.jsonObject["type"]!!.jsonPrimitive.content
+                    server.respond(
+                        message.id,
+                        buildJsonObject {
+                            put("type", "chatgptDeviceCode")
+                            put("loginId", "device-login")
+                            put("userCode", "ABCD-EFGH")
+                            put("verificationUrl", "https://auth.openai.com/device")
+                        },
+                    )
+                }
+            }
+        }
+        val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
+        try {
+            val required = async {
+                withTimeout(1_000) {
+                    client.events.filterIsInstance<AgentEvent.DeviceCodeAuthenticationRequired>().first()
+                }
+            }
+            client.authenticate(CodexAuthenticationMethod.ChatGptDeviceCode)
+
+            assertEquals("chatgptDeviceCode", loginType)
+            assertEquals("ABCD-EFGH", required.await().userCode)
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun apiKeyAuthenticationIsImmediateAndRedacted(): Unit = runBlocking {
+        var observedKey: String? = null
+        val process = FakeCodexRuntime { message, server ->
+            when (message.method) {
+                "initialize" -> server.respond(message.id, buildJsonObject {})
+                "account/read" -> server.respond(
+                    message.id,
+                    buildJsonObject {
+                        put("account", JsonNull)
+                        put("requiresOpenaiAuth", true)
+                    },
+                )
+                "account/login/start" -> {
+                    val params = message.objectValue["params"]!!.jsonObject
+                    assertEquals("apiKey", params["type"]!!.jsonPrimitive.content)
+                    observedKey = params["apiKey"]!!.jsonPrimitive.content
+                    server.respond(message.id, buildJsonObject { put("type", "apiKey") })
+                }
+            }
+        }
+        val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
+        val method = CodexAuthenticationMethod.ApiKey("sk-test-secret")
+        try {
+            val authenticated = async {
+                withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.Authenticated>().first() }
+            }
+            client.authenticate(method)
+
+            authenticated.await()
+            assertEquals("sk-test-secret", observedKey)
+            assertFalse(method.toString().contains("sk-test-secret"))
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun failedAuthenticationCanBeRetriedWithoutConflictingLoginState(): Unit = runBlocking {
         val loginAttempts = AtomicInteger()
         val process = FakeCodexRuntime { message, server ->
