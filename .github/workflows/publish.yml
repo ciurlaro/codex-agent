@@ -23,6 +23,15 @@ jobs:
           rustup toolchain install 1.95.0 --profile minimal
           --target aarch64-apple-ios,aarch64-apple-ios-sim
       - run: ./gradlew verifyIosRuntime --stacktrace
+      - name: Build a clean remote SwiftPM consumer
+        working-directory: codex-agent-runtime-ios/apple/RemoteConsumer
+        run: >-
+          xcodebuild -scheme CodexAgentRemoteConsumer
+          -configuration Release
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath "$RUNNER_TEMP/codex-agent-remote-derived-data"
+          -clonedSourcePackagesDirPath "$RUNNER_TEMP/codex-agent-remote-packages"
+          CODE_SIGNING_ALLOWED=NO clean build
       - run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache --stacktrace
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}

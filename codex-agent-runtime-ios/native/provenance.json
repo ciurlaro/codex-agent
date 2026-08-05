@@ -5,8 +5,11 @@
   "sourceArchiveSha256": "42f627a7b32db41582c73a8eafd9ec4b35d6c3ff81bd3d4455cfd6224d79d329",
   "sourceArchiveBytes": 9976355,
   "rustToolchain": "1.95.0",
-  "adapterPatchSha256": "96f6fc43d6f8c518f3c65446a76f7ee1167b8db1cc203a6c6ab33f5e184f1f18",
+  "cargoLockSha256": "e0843448b5767ff36a2a3b15212feb480cd4eaafe8a0c0ca08547e3c7da03a05",
+  "preparedCargoLockSha256": "eaf0e5889447eaaaa0fd512219f8b1377ad5d848e3ef7644b7300e5f767c6351",
+  "adapterPatchSha256": "47676e4fba06a5fb72003ddde0116ee130bb5088462f35be2667909fb9e8843f",
+  "lockPatchSha256": "087513438ddc6ee968583554f01ac09b2f5a37f590f346f98cfff3a994037e11",
   "bridgeManifestSha256": "7d171d7a9dd5c78ca2fb9ee709e7ff4baca86c20a0e493ebd1f1022d3479a842",
-  "bridgeSourceSha256": "9234559eeb35572f44b0f9296b3efff42b7a7fbbef9821708c212c237394365e",
+  "bridgeSourceSha256": "f11e976609aff877795aa7dfb31e534f3c4781ee9c45423db87ab9642d02622b",
   "cHeaderSha256": "8154ab128c71abe44e574d5ef7d277392b99f6e7271c6933db02e103d38f5440"
 }

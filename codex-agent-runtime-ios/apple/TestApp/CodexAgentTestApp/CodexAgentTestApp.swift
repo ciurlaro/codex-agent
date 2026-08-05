@@ -1,10 +1,9 @@
-import CodexAgent
+import CodexAgentAuthentication
 import SwiftUI
 
 @main
 struct CodexAgentTestApp: App {
     @StateObject private var host = AgentHost()
-    @State private var apiKey = ""
 
     var body: some Scene {
         WindowGroup {
@@ -14,28 +13,26 @@ struct CodexAgentTestApp: App {
                 Text(host.status)
                     .font(.caption)
                     .multilineTextAlignment(.center)
-                SecureField("OpenAI API key", text: $apiKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Button("Start with API key") {
-                    host.authenticate(apiKey: apiKey)
+                Button("Sign in with ChatGPT") {
+                    host.authenticateWithBrowser()
                 }
-                .disabled(apiKey.isEmpty)
-                Button("Start device-code login") {
-                    host.authenticateWithDeviceCode()
+                Button("Run local workspace acceptance") {
+                    host.runWorkspaceAcceptance()
                 }
+                .disabled(!host.authenticated)
             }
             .padding()
-            .onAppear(perform: host.startObserving)
         }
     }
 }
 
+@MainActor
 final class AgentHost: ObservableObject {
     @Published var status = "Ready"
+    @Published var authenticated = false
 
     private let facade: IosCodexAgentFacade
-    private var observation: IosCodexObservation?
+    private let browserAuthentication: CodexChatGPTAuthenticationSession
     private var operation: IosCodexOperation?
 
     init() {
@@ -51,45 +48,49 @@ final class AgentHost: ObservableObject {
             codexHomePath: sandbox + "/Library/Application Support/CodexAgent",
             temporaryPath: sandbox + "/tmp/CodexAgent"
         )
-        facade = IosCodexAgentFacade(
+        let facade = IosCodexAgentFacade(
             configuration: configuration,
             clientVersion: "0.2.0"
         )
-    }
-
-    func startObserving() {
-        guard observation == nil else { return }
-        observation = facade.observeEvents { [weak self] event in
-            DispatchQueue.main.async {
-                self?.status = String(describing: event)
-            }
+        self.facade = facade
+        browserAuthentication = CodexChatGPTAuthenticationSession(facade: facade)
+        browserAuthentication.eventHandler = { [weak self] event in
+            self?.handle(event)
         }
     }
 
-    func authenticate(apiKey: String) {
-        status = "Starting embedded runtime…"
-        operation?.close()
-        operation = facade.authenticateWithApiKey(apiKey: apiKey) { [weak self] error in
-            DispatchQueue.main.async {
-                self?.status = error ?? "Authenticated"
-            }
-        }
-    }
-
-    func authenticateWithDeviceCode() {
-        status = "Starting device-code login…"
-        operation?.close()
-        operation = facade.authenticateWithDeviceCode { [weak self] error in
-            guard let error else { return }
-            DispatchQueue.main.async {
+    func authenticateWithBrowser() {
+        status = "Opening secure ChatGPT sign-in…"
+        browserAuthentication.authenticate { [weak self] error in
+            if let error {
                 self?.status = error
             }
         }
     }
 
+    func runWorkspaceAcceptance() {
+        status = "Waiting for the real model to read and patch the local workspace…"
+        operation?.close()
+        operation = facade.runWorkspaceAcceptance { [weak self] error in
+            DispatchQueue.main.async {
+                self?.status = error ?? "PASS: the real model read the local input file and patched the local output file with identical bytes."
+            }
+        }
+    }
+
+    private func handle(_ event: AgentEvent) {
+        if event is AgentEventAuthenticationRequired {
+            status = "Complete ChatGPT sign-in in the secure browser sheet."
+        } else if event is AgentEventAuthenticated {
+            authenticated = true
+            status = "Authenticated. Run the local workspace acceptance test."
+        } else if let failure = event as? AgentEventFailure {
+            status = "\(failure.code): \(failure.message)"
+        }
+    }
+
     deinit {
         operation?.close()
-        observation?.close()
         facade.close()
     }
 }

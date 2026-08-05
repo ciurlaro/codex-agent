@@ -48,13 +48,19 @@ val client = CodexAgentClient(
     clientVersion = "0.2.0",
     builtInToolDispatcher = factory.workspaceTools,
 )
-client.authenticate(CodexAuthenticationMethod.ApiKey(apiKey))
+client.authenticate(CodexAuthenticationMethod.ChatGptBrowser)
 ```
 
 Apple applications can instead consume the staged `CodexAgent` Swift Package,
 which contains one static `CodexAgent.xcframework` exporting the client and iOS
-runtime. `IosCodexAgentFacade` provides construction, API-key/device-code
-authentication, event observation, cancellation, and deterministic close.
+runtime. Its additive `CodexAgentAuthentication` product provides
+`CodexChatGPTAuthenticationSession`, a reusable `ASWebAuthenticationSession`
+presenter around `IosCodexAgentFacade`. Sign-in stays in a secure browser sheet,
+shares the user's existing Safari login, and returns automatically to the app.
+The embedded App Server retains ownership of PKCE, its localhost callback,
+token persistence/refresh, and completion events; the Apple wrapper never
+receives or stores OAuth tokens. API-key authentication remains optional and is
+not needed for CI, release verification, or the supported end-user flow.
 
 The iOS capability profile advertises only sandboxed file read, directory list,
 text search, atomic file write, and workspace-confined `apply_patch` tools. The
@@ -72,14 +78,17 @@ The current `0.2.0` implementation includes:
   and iOS, with `AppServerConnection` remaining the sole handshake owner;
 - sandbox-local workspace and conversation state, plus bounded in-process file
   read, directory list, text search, atomic write, and `apply_patch` tools;
-- API-key and device-code authentication in addition to the existing browser
-  authentication default;
+- seamless ChatGPT browser authentication through `ASWebAuthenticationSession`
+  and the existing Codex-managed callback, with API-key authentication
+  remaining optional at the shared client level;
 - deterministic start, close, and restart behavior;
-- a static `CodexAgent.xcframework`, local Swift Package, minimal Swift facade,
-  and standalone Swift test application;
+- a static `CodexAgent.xcframework`, local Swift Package, release-ready remote
+  SwiftPM manifest/checksum gate, minimal Swift facade, and standalone Swift
+  test application;
 - verified device and simulator compilation/linking, Rust bridge tests,
-  Kotlin/Native lifecycle tests, XCFramework creation, and clean Swift Package
-  consumption. Existing Android and JVM verification still passes.
+  Kotlin/Native lifecycle tests, bounded workspace tools, XCFramework creation,
+  and clean local Swift Package consumption. Existing Android and JVM
+  verification still passes.
 
 ## What did not ship
 
@@ -90,12 +99,18 @@ executables, or process-based MCP servers. Files-provider and security-scoped
 folder support are also out of scope; the first version requires an explicit
 workspace inside the application sandbox.
 
-Two external execution gates remain unproven: the protected real-model
-Simulator test was not run because `OPENAI_API_KEY` was unavailable, and a
-physical-device launch was not run because no signed device was available.
-Physical-device compilation and linking did pass. Version `0.2.0` has not been
-tagged or published; the XCFramework, package archive, and Maven publications
-produced so far are local build artifacts.
+Credential-free automation does not claim real-model execution. Real-model
+acceptance is an explicit manual test in the Swift app using interactive ChatGPT
+browser login; no API key, stored ChatGPT credential, or generated token is used
+by CI. The Apple browser sheet itself cannot be exercised by a headless build.
+A physical-device launch also remains external when no signing team and device
+are available. Physical-device compilation and linking are still required.
+
+Version `0.2.0` has not been tagged or published. Until its immutable
+`CodexAgent-0.2.0.xcframework.zip` release asset exists, public URL-based SwiftPM
+resolution cannot run; the checked-in manifest, checksum verification, and clean
+remote-consumer fixture are release-ready but do not pretend that asset already
+exists. No consumer repository is updated by this project.
 
 ## Verification
 
@@ -109,11 +124,15 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   ./gradlew verifyIosRuntime
 ```
 
-The iOS gate builds and links device/simulator binaries, runs the embedded
-runtime on Simulator, creates the XCFramework/Swift Package zip, and builds a
-clean standalone Swift app. If `OPENAI_API_KEY` is present, it additionally
-runs the protected real-model local workspace test. Physical-device execution
-requires signing and a connected device; compilation and linking do not.
+The iOS gate is credential-free. It builds and links device/simulator binaries,
+runs the real embedded runtime on Simulator, proves the JSON-RPC handshake and
+restart lifecycle, exercises workspace confinement and the exact advertised
+tool dispatch set, creates the XCFramework/Swift Package archives, and builds a
+clean standalone Swift app. It does not call a model. Follow the manual ChatGPT
+browser-login acceptance in [the release procedure](docs/RELEASING.md) to prove
+a real model reads and modifies the sandbox workspace. Physical-device
+execution requires signing and a connected device; compilation and linking do
+not.
 See [protocol provenance](docs/PROTOCOL.md) and the
 [iOS runtime design](docs/RUNTIME_IOS.md) and
 [release procedure](docs/RELEASING.md).

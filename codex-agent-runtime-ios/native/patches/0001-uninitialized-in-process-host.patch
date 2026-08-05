@@ -248,3 +248,51 @@ index 0000000..b0f6654
 +pub fn initialize_v8(_jit_mode: V8JitMode) -> Result<(), String> {
 +    Err(UNSUPPORTED.to_string())
 +}
+diff --git a/codex-rs/core/src/tools/mod.rs b/codex-rs/core/src/tools/mod.rs
+--- a/codex-rs/core/src/tools/mod.rs
++++ b/codex-rs/core/src/tools/mod.rs
+@@ -65,2 +65,19 @@
+-    turn_context.model_info.tool_mode.unwrap_or_else(|| {
+-        if turn_context.config.features.enabled(Feature::CodeModeOnly) {
++    resolve_tool_mode(
++        turn_context.model_info.tool_mode,
++        turn_context.config.features.enabled(Feature::CodeModeOnly),
++        turn_context.config.features.enabled(Feature::CodeMode),
++        cfg!(target_os = "ios"),
++    )
++}
++
++fn resolve_tool_mode(
++    model_tool_mode: Option<ToolMode>,
++    code_mode_only_enabled: bool,
++    code_mode_enabled: bool,
++    force_direct: bool,
++) -> ToolMode {
++    if force_direct {
++        return ToolMode::Direct;
++    }
++    model_tool_mode.unwrap_or_else(|| {
++        if code_mode_only_enabled {
+@@ -68 +85 @@
+-        } else if turn_context.config.features.enabled(Feature::CodeMode) {
++        } else if code_mode_enabled {
+@@ -75,0 +93,19 @@
++#[cfg(test)]
++mod effective_tool_mode_tests {
++    use super::ToolMode;
++    use super::resolve_tool_mode;
++
++    #[test]
++    fn ios_runtime_forces_direct_tools_for_code_mode_only_models() {
++        assert_eq!(
++            resolve_tool_mode(
++                Some(ToolMode::CodeModeOnly),
++                /*code_mode_only_enabled*/ true,
++                /*code_mode_enabled*/ true,
++                /*force_direct*/ true,
++            ),
++            ToolMode::Direct,
++        );
++    }
++}
++

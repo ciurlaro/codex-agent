@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package io.github.ciurlaro.codexmobile.app.runtime.ios
 
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolCall
@@ -11,6 +13,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import kotlinx.cinterop.toKString
+import platform.posix.free
+import platform.posix.realpath
 
 class IosCodexWorkspaceTools internal constructor(
     private val configuration: IosCodexRuntimeConfiguration,
@@ -18,7 +23,7 @@ class IosCodexWorkspaceTools internal constructor(
     override fun definitions(): List<BuiltInToolDefinition> = DEFINITIONS
 
     override suspend fun execute(call: BuiltInToolCall): BuiltInToolResult {
-        if (call.workspace != configuration.workspacePath) {
+        if (!sameIosWorkspace(call.workspace, configuration.workspacePath)) {
             return BuiltInToolResult.text("The tool workspace does not match the local iOS workspace", false)
         }
         return executeIosWorkspaceTool(configuration, call.tool, call.arguments)
@@ -111,5 +116,17 @@ class IosCodexWorkspaceTools internal constructor(
                 put("description", description)
                 put("minimum", minimum)
             }
+    }
+}
+
+internal fun sameIosWorkspace(first: String, second: String): Boolean =
+    first == second || canonicalIosPath(first)?.let { it == canonicalIosPath(second) } == true
+
+private fun canonicalIosPath(path: String): String? {
+    val resolved = realpath(path, null) ?: return null
+    return try {
+        resolved.toKString()
+    } finally {
+        free(resolved)
     }
 }

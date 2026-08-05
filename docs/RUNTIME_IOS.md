@@ -13,7 +13,9 @@ archive is verified against SHA-256
 `42f627a7b32db41582c73a8eafd9ec4b35d6c3ff81bd3d4455cfd6224d79d329`
 before extraction. Full provenance is in `native/provenance.json`.
 That record also fixes the archive byte count and SHA-256 values for the
-adapter patch, bridge manifest/source, and public C header.
+upstream `Cargo.lock`, adapter patch, bridge manifest/source, and public C
+header. Every Cargo build/test uses `--locked`; source preparation rejects a
+lockfile that does not match the recorded SHA-256.
 
 The narrow C ABI owns one opaque runtime and bounded 64-message command/event
 queues. Kotlin sends and receives the same UTF-8 JSON-RPC lines used by
@@ -26,12 +28,18 @@ The checked-in upstream adapter exposes `start_uninitialized`. The common
 `AppServerConnection` remains the sole owner of `initialize` / `initialized`.
 Native and simulator tests start through that connection twice, while Rust
 tests also verify that a second initialization is rejected.
+The native host does not invent a client version: the actual version travels in
+the shared client's `initialize` request.
 
 ## Local capability profile
 
 The selected workspace must already be an absolute directory below the
 application sandbox root. Conversation state, credentials, and App Server state
-are stored below the configured sandbox-local Codex home.
+are stored below the configured sandbox-local Codex home. Those are the only
+runtime path settings. The former unused `temporaryPath` property remains as a
+deprecated, inert source-compatibility property and no longer creates an unused
+directory. Equivalent workspace spellings are compared through normalized real
+paths.
 
 The model receives these dynamic tools:
 
@@ -47,6 +55,11 @@ and symlink components are rejected; atomic replacement prevents writes through
 hard links. App Server thread/turn requests are confined to the selected
 workspace with workspace-write policy.
 
+`search_text` stops at 10,000 visited files, 1,000 visited directories, depth
+32, 64 MiB scanned, 200 matches, or 256 KiB of output. Reaching any budget adds
+an explicit truncation line naming the exhausted budget and the observed file,
+directory, and byte counts.
+
 Shell/process execution, native Git, build tools, process hooks, apps/plugins,
 MCP servers, external-agent import, and unscoped filesystem routes are disabled.
 They are omitted from the advertised tool set; direct calls to represented
@@ -55,18 +68,54 @@ environment list is empty, so process-backed tools cannot be planned.
 
 ## Authentication and Apple consumption
 
-The shared client uses the existing App Server authentication routes. Browser
-login remains the default; device-code and explicit API-key login are additive.
-The iOS configuration forces the upstream file credential store into the local
-Codex home. Secrets are not included in runtime configuration or diagnostic
-strings.
+The shared client uses the existing App Server authentication routes. The
+supported iOS end-user path is Codex-managed ChatGPT browser login presented by
+the `CodexAgentAuthentication` SwiftPM product through
+`CodexChatGPTAuthenticationSession`. It uses `ASWebAuthenticationSession` with
+the user's normal Safari session. The embedded App Server still generates PKCE,
+hosts the temporary `127.0.0.1:1455` (or registered fallback-port) callback,
+exchanges the code, persists and refreshes the ChatGPT credential, and emits
+`account/login/completed`. The Swift wrapper sees only the authorization URL and
+the existing `AgentEvent` stream; it dismisses the browser sheet when
+`AgentEvent.Authenticated` arrives. No separate app deep link, duplicate token
+exchange, or second handshake is introduced.
+
+The wrapper owns the facade's single event observation and forwards every event
+through `eventHandler`, so an Apple host must observe through the wrapper rather
+than start a competing facade observation. Minimal usage is:
+
+```swift
+let authentication = CodexChatGPTAuthenticationSession(facade: facade)
+authentication.eventHandler = { event in
+    // Handle the same AgentEvent values used by the Kotlin client.
+}
+authentication.authenticate { error in
+    // nil only after AgentEventAuthenticated; otherwise show the error.
+}
+```
+
+ChatGPT browser OAuth is the only authentication flow exposed by the iOS
+facade and Swift application. API-key login remains an optional shared-client
+capability, but no API key or persisted interactive credential is required by
+CI or release automation. The iOS configuration forces the upstream file
+credential store into the local Codex home. Secrets are not included in runtime
+configuration or diagnostic strings.
 
 `assembleCodexAgentReleaseXCFramework` creates the static umbrella framework.
 `packageCodexAgentAppleDistribution` stages its local Swift Package and creates
 `build/distributions/CodexAgentPackage-0.2.0.zip`. The package exports the
-shared client plus iOS runtime; the facade only adds lifecycle/authentication
-operations and event observation. `apple/TestApp` is a standalone SwiftUI
-consumer project.
+shared client plus iOS runtime as `CodexAgent` and the small native browser
+presenter as `CodexAgentAuthentication`. The facade only adds lifecycle and
+authentication operations. `apple/TestApp` is a standalone SwiftUI consumer
+project. All Rust binaries, package metadata, and the test app target iOS 14 or
+newer.
+
+`packageCodexAgentSwiftPackageBinary` creates the reproducible release asset
+`CodexAgent-0.2.0.xcframework.zip`; its generated checksum must match the root
+URL-based `Package.swift`. `apple/RemoteConsumer` is a clean consumer of the
+public repository. It can resolve only after the matching immutable release
+asset exists, so it runs after release publication and is not claimed by local
+pre-release verification.
 
 ## Verification
 
@@ -80,10 +129,15 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   ./gradlew verifyIosRuntime
 ```
 
-This verifies the native bridge, iPhoneOS and Simulator compilation/linking,
-simulator lifecycle/workspace behavior, XCFramework creation, Swift Package
-staging, and a clean Swift app build. Set `OPENAI_API_KEY` to also execute the
-protected real-model test that authenticates, reads a unique local fixture, and
-writes it back through the embedded runtime. Without that credential, only this
-protected test is skipped. Signed physical-device execution remains an external
-release gate when no device/team is available.
+This credential-free gate verifies the native bridge, iPhoneOS and Simulator
+compilation/linking, real embedded App Server startup and shared JSON-RPC
+handshake, deterministic restart, workspace confinement, exact tool
+advertisement/dispatch, XCFramework creation, Swift Package staging, checksum
+metadata, and a clean Swift app build. It does not authenticate or claim a real
+model call.
+
+Follow the [manual release acceptance procedure](RELEASING.md) to use the
+ChatGPT browser sheet and prove a real model reads and patches a local sandbox
+file. Signed physical-device execution remains an external release gate when no
+device/team is available; physical compilation/linking and Simulator acceptance
+remain required.

@@ -5,12 +5,7 @@ package io.github.ciurlaro.codexmobile.app.runtime.ios
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolCall
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolContent
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolResult
-import io.github.ciurlaro.codexmobile.agent.AgentApprovalPreset
 import io.github.ciurlaro.codexmobile.agent.AgentEvent
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
-import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
-import io.github.ciurlaro.codexmobile.agent.CodexAgentClient
-import io.github.ciurlaro.codexmobile.agent.CodexAuthenticationMethod
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerConnection
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.ClientInfo
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeCapabilities
@@ -18,10 +13,11 @@ import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializePar
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -29,7 +25,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUUID
 
@@ -49,6 +44,22 @@ class IosCodexRuntimeTest {
             assertEquals("alpha\nbeta\n", tools.call(test, "read_file", json("path" to "note.txt")).text())
             assertTrue(tools.call(test, "search_text", json("query" to "BETA")).text().contains("note.txt:2:beta"))
             assertTrue(tools.call(test, "list_directory", buildJsonObject {}).text().contains("file\tnote.txt"))
+            assertTrue(
+                tools.call(
+                    test,
+                    "read_file",
+                    json("path" to "note.txt"),
+                    workspace = "${test.workspace}/.",
+                ).success,
+            )
+            assertFalse(
+                tools.call(
+                    test,
+                    "read_file",
+                    json("path" to "note.txt"),
+                    workspace = test.sandboxRoot,
+                ).success,
+            )
 
             assertTrue(tools.call(test, "write_file", json("path" to "note.txt", "content" to "modified locally\n")).success)
             assertEquals("modified locally\n", tools.call(test, "read_file", json("path" to "note.txt")).text())
@@ -91,61 +102,51 @@ class IosCodexRuntimeTest {
                     connection.shutdown()
                 }
             }
+            assertFalse(NSFileManager.defaultManager.fileExistsAtPath(test.unusedTemporaryPath))
         }
     }
 
     @Test
-    fun authenticatedAgentReadsAndModifiesTheLocalWorkspaceWhenCredentialIsAvailable() = runBlocking {
-        val apiKey = NSProcessInfo.processInfo.environment["OPENAI_API_KEY"] as? String
-        if (apiKey.isNullOrBlank()) {
-            println("OPENAI_API_KEY is absent; protected simulator model E2E was not executed")
-            return@runBlocking
-        }
+    fun browserAuthenticationUsesTheEmbeddedLoopbackCallbackAndCancelsCleanly() = runBlocking {
         TestWorkspace().use { test ->
-            val factory = IosCodexRuntimeFactory(test.configuration)
-            val fixture = "ios-local-e2e-${NSUUID().UUIDString}"
-            assertTrue(factory.workspaceTools.call(test, "write_file", json("path" to "input.txt", "content" to fixture)).success)
-            CodexAgentClient(
-                runtimeFactory = factory,
-                requestTimeoutMillis = 60_000,
-                clientVersion = "0.2.0-e2e",
-                builtInToolDispatcher = factory.workspaceTools,
-            ).use { client ->
-                client.authenticate(CodexAuthenticationMethod.ApiKey(apiKey))
-                val session = client.openSession(
-                    settings = AgentRuntimeSettings(
-                        approvalPreset = AgentApprovalPreset.NEVER,
-                        workingDirectory = test.workspace,
-                    ),
-                )
-                val terminal = async {
-                    withTimeout(180_000) {
-                        client.events.filter { event ->
-                            event is AgentEvent.TurnCompleted || event is AgentEvent.Failure
-                        }.first()
+            val facade = IosCodexAgentFacade(test.configuration, clientVersion = "0.2.0")
+            try {
+                val required = async {
+                    withTimeout(60_000) {
+                        facade.client.events.filterIsInstance<AgentEvent.AuthenticationRequired>().first()
                     }
                 }
-                client.sendTurn(
-                    session,
-                    AgentTurnRequest(
-                        prompt = "Use read_file to read input.txt, then use apply_patch to add output.txt with exactly the same text.",
-                        approvalPreset = AgentApprovalPreset.NEVER,
-                        workingDirectory = test.workspace,
-                    ),
-                )
-                assertIs<AgentEvent.TurnCompleted>(terminal.await())
-                assertEquals(fixture, factory.workspaceTools.call(test, "read_file", json("path" to "output.txt")).text())
+                val startResult = CompletableDeferred<String?>()
+                val startOperation = facade.authenticateWithChatGpt(startResult::complete)
+
+                assertNull(withTimeout(60_000) { startResult.await() })
+                val event = required.await()
+                assertTrue(event.signInUrl.startsWith("https://auth.openai.com/"))
+                assertTrue(event.signInUrl.contains("redirect_uri="))
+                assertTrue(event.signInUrl.contains("localhost"))
+
+                val cancelResult = CompletableDeferred<String?>()
+                val cancelOperation = facade.cancelAuthentication(cancelResult::complete)
+                assertNull(withTimeout(60_000) { cancelResult.await() })
+                cancelOperation.close()
+                startOperation.close()
+            } finally {
+                facade.close()
             }
         }
     }
+
 }
 
 private class TestWorkspace : AutoCloseable {
     val sandboxRoot = "${NSTemporaryDirectory().trimEnd('/')}/codex-agent-ios-${NSUUID().UUIDString}"
     val workspace = "$sandboxRoot/workspace"
+    val unusedTemporaryPath = "$sandboxRoot/deprecated-unused-temporary-path"
+    @Suppress("DEPRECATION")
     val configuration = IosCodexRuntimeConfiguration(
         sandboxRootPath = sandboxRoot,
         workspacePath = workspace,
+        temporaryPath = unusedTemporaryPath,
     )
 
     init {
@@ -168,6 +169,7 @@ private suspend fun IosCodexWorkspaceTools.call(
     test: TestWorkspace,
     tool: String,
     arguments: JsonObject,
+    workspace: String = test.workspace,
 ) = execute(
     BuiltInToolCall(
         threadId = "thread",
@@ -176,7 +178,7 @@ private suspend fun IosCodexWorkspaceTools.call(
         pluginId = "ios-local-workspace",
         tool = tool,
         arguments = arguments,
-        workspace = test.workspace,
+        workspace = workspace,
         argumentsHash = "test",
     ),
 )

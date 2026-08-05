@@ -18,7 +18,10 @@ class PrepareCodexIosSourceTaskTest {
             val archive = project.resolve("codex.tar.gz")
             writeTarGz(
                 archive,
-                mapOf("codex-$revision/marker.txt" to "before\n".encodeToByteArray()),
+                mapOf(
+                    "codex-$revision/marker.txt" to "before\n".encodeToByteArray(),
+                    "codex-$revision/codex-rs/Cargo.lock" to "locked\n".encodeToByteArray(),
+                ),
             )
             project.resolve("change.patch").writeText(
                 """
@@ -32,7 +35,7 @@ class PrepareCodexIosSourceTaskTest {
             )
             project.resolve("bridge").mkdir()
             project.resolve("bridge/Cargo.toml").writeText("[package]\nname = \"bridge\"\n")
-            task(project, revision, archive.sha256()).prepare()
+            task(project, revision, archive.sha256(), "locked\n".encodeToByteArray().sha256()).prepare()
 
             assertEquals("after\n", project.resolve("build/codex-source/marker.txt").readText())
             assertTrue(project.resolve("build/codex-source/codex-rs/ios-bridge/Cargo.toml").isFile)
@@ -49,13 +52,16 @@ class PrepareCodexIosSourceTaskTest {
             val archive = project.resolve("codex.tar.gz")
             writeTarGz(
                 archive,
-                mapOf("codex-$revision/marker.txt" to "source\n".encodeToByteArray()),
+                mapOf(
+                    "codex-$revision/marker.txt" to "source\n".encodeToByteArray(),
+                    "codex-$revision/codex-rs/Cargo.lock" to "locked\n".encodeToByteArray(),
+                ),
             )
             project.resolve("bridge").mkdir()
             project.resolve("bridge/Cargo.toml").writeText("[package]\nname = \"bridge\"\n")
             project.resolve("change.patch").writeText("")
             val failure = assertFailsWith<IllegalStateException> {
-                task(project, revision, "0".repeat(64)).prepare()
+                task(project, revision, "0".repeat(64), "1".repeat(64)).prepare()
             }
 
             assertTrue(failure.message.orEmpty().contains("Codex iOS source archive SHA-256 mismatch"))
@@ -65,13 +71,78 @@ class PrepareCodexIosSourceTaskTest {
         }
     }
 
+    @Test
+    fun `rejects a Cargo lock hash before applying patches`() {
+        val project = fixture()
+        try {
+            val revision = "3".repeat(40)
+            val archive = project.resolve("codex.tar.gz")
+            writeTarGz(
+                archive,
+                mapOf(
+                    "codex-$revision/marker.txt" to "source\n".encodeToByteArray(),
+                    "codex-$revision/codex-rs/Cargo.lock" to "changed\n".encodeToByteArray(),
+                ),
+            )
+            project.resolve("bridge").mkdir()
+            project.resolve("bridge/Cargo.toml").writeText("[package]\nname = \"bridge\"\n")
+            project.resolve("change.patch").writeText("")
+
+            val failure = assertFailsWith<IllegalStateException> {
+                task(project, revision, archive.sha256(), "0".repeat(64)).prepare()
+            }
+
+            assertTrue(failure.message.orEmpty().contains("Cargo.lock SHA-256 mismatch"))
+            assertFalse(project.resolve("build/codex-source").exists())
+        } finally {
+            project.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `rejects a prepared Cargo lock hash after applying patches`() {
+        val project = fixture()
+        try {
+            val revision = "4".repeat(40)
+            val archive = project.resolve("codex.tar.gz")
+            val lock = "locked\n".encodeToByteArray()
+            writeTarGz(
+                archive,
+                mapOf(
+                    "codex-$revision/marker.txt" to "source\n".encodeToByteArray(),
+                    "codex-$revision/codex-rs/Cargo.lock" to lock,
+                ),
+            )
+            project.resolve("bridge").mkdir()
+            project.resolve("bridge/Cargo.toml").writeText("[package]\nname = \"bridge\"\n")
+            project.resolve("change.patch").writeText("")
+
+            val failure = assertFailsWith<IllegalStateException> {
+                task(project, revision, archive.sha256(), lock.sha256(), "0".repeat(64)).prepare()
+            }
+
+            assertTrue(failure.message.orEmpty().contains("Prepared Codex iOS Cargo.lock SHA-256 mismatch"))
+            assertFalse(project.resolve("build/codex-source").exists())
+        } finally {
+            project.deleteRecursively()
+        }
+    }
+
     private fun fixture() = createTempDirectory("codex-ios-source-task").toFile()
 
-    private fun task(projectDirectory: File, revision: String, hash: String): PrepareCodexIosSourceTask {
+    private fun task(
+        projectDirectory: File,
+        revision: String,
+        archiveHash: String,
+        cargoLockHash: String,
+        preparedCargoLockHash: String = cargoLockHash,
+    ): PrepareCodexIosSourceTask {
         val project = ProjectBuilder.builder().withProjectDir(projectDirectory).build()
         return project.tasks.register("prepareCodexIosSource", PrepareCodexIosSourceTask::class.java).get().apply {
             this.revision.set(revision)
-            archiveSha256.set(hash)
+            archiveSha256.set(archiveHash)
+            cargoLockSha256.set(cargoLockHash)
+            preparedCargoLockSha256.set(preparedCargoLockHash)
             localArchive.set(project.layout.projectDirectory.file("codex.tar.gz"))
             patches.from(project.layout.projectDirectory.file("change.patch"))
             bridgeSource.set(project.layout.projectDirectory.dir("bridge"))
@@ -107,6 +178,8 @@ class PrepareCodexIosSourceTaskTest {
         ("%0${length - 1}o\u0000".format(value)).toByteArray().copyInto(target, offset)
     }
 
-    private fun File.sha256() = MessageDigest.getInstance("SHA-256").digest(readBytes())
+    private fun File.sha256() = readBytes().sha256()
+
+    private fun ByteArray.sha256() = MessageDigest.getInstance("SHA-256").digest(this)
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }

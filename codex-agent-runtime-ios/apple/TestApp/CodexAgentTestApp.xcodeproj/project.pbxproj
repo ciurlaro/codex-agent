@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		100000000000000000000001 /* CodexAgentTestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* CodexAgentTestApp.swift */; };
-		100000000000000000000003 /* CodexAgent in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000004 /* CodexAgent */; };
+		100000000000000000000003 /* CodexAgentAuthentication in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000004 /* CodexAgentAuthentication */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,7 +21,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				100000000000000000000003 /* CodexAgent in Frameworks */,
+				100000000000000000000003 /* CodexAgentAuthentication in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,7 +142,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 			};
@@ -156,7 +156,7 @@
 				COPY_PHASE_STRIP = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				GCC_C_LANGUAGE_STANDARD = gnu17;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_VERSION = 5.0;
@@ -170,7 +170,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = CodexAgentTestApp;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.ciurlaro.CodexAgentTestApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -187,7 +187,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = CodexAgentTestApp;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.ciurlaro.CodexAgentTestApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -228,10 +228,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		100000000000000000000004 /* CodexAgent */ = {
+		100000000000000000000004 /* CodexAgentAuthentication */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 100000000000000000000010 /* XCLocalSwiftPackageReference "../CodexAgentPackage" */;
-			productName = CodexAgent;
+			productName = CodexAgentAuthentication;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

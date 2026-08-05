@@ -1,6 +1,7 @@
 use std::fs;
 use std::fs::OpenOptions;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -56,6 +57,10 @@ const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_DIRECTORY_ENTRIES: usize = 1_000;
 const MAX_SEARCH_RESULTS: usize = 200;
 const MAX_SEARCH_OUTPUT_BYTES: usize = 256 * 1024;
+const MAX_SEARCH_FILES: usize = 10_000;
+const MAX_SEARCH_DIRECTORIES: usize = 1_000;
+const MAX_SEARCH_DEPTH: usize = 32;
+const MAX_SEARCH_SCANNED_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_PATCH_BYTES: usize = 1024 * 1024;
 const IOS_DEVELOPER_INSTRUCTIONS: &str = "Answer conversationally using Markdown. This iOS runtime has no shell, process, Git, plugin, hook, or MCP tools. Use only the advertised local filesystem tools and apply_patch inside the selected workspace.";
 const ALLOWED_DYNAMIC_TOOLS: [&str; 5] = [
@@ -74,7 +79,6 @@ struct RuntimeConfiguration {
     sandbox_root_path: PathBuf,
     workspace_path: PathBuf,
     codex_home_path: PathBuf,
-    temporary_path: PathBuf,
 }
 
 #[derive(Clone)]
@@ -89,7 +93,6 @@ impl RuntimeConfiguration {
             &self.sandbox_root_path,
             &self.workspace_path,
             &self.codex_home_path,
-            &self.temporary_path,
         ] {
             if !path.is_absolute() {
                 return Err(format!(
@@ -107,7 +110,6 @@ impl RuntimeConfiguration {
         }
         let workspace = existing_directory_in_sandbox(&sandbox, &self.workspace_path)?;
         let codex_home = prepare_directory_in_sandbox(&sandbox, &self.codex_home_path)?;
-        let _temporary = prepare_directory_in_sandbox(&sandbox, &self.temporary_path)?;
         if !workspace.is_dir() {
             return Err("iOS workspace must be an existing directory".to_string());
         }
@@ -456,7 +458,9 @@ async fn start_app_server(paths: &RuntimePaths) -> Result<InProcessAppServerClie
         session_source: SessionSource::Exec,
         enable_codex_api_key_env: false,
         client_name: "codex-agent-ios".to_string(),
-        client_version: "0.2.0".to_string(),
+        // Required by the upstream argument type but unused by start_uninitialized;
+        // the shared JSON-RPC initialize request supplies the real client version.
+        client_version: String::new(),
         experimental_api: true,
         mcp_server_openai_form_elicitation: false,
         opt_out_notification_methods: Vec::new(),
@@ -475,6 +479,12 @@ fn safe_config_overrides() -> Vec<(String, TomlValue)> {
         ("web_search", TomlValue::String("disabled".to_string())),
         ("features.shell_tool", TomlValue::Boolean(false)),
         ("features.code_mode", TomlValue::Boolean(false)),
+        (
+            "features.code_mode_buffered_exec",
+            TomlValue::Boolean(false),
+        ),
+        ("features.code_mode_host", TomlValue::Boolean(false)),
+        ("features.code_mode_only", TomlValue::Boolean(false)),
         ("features.multi_agent", TomlValue::Boolean(false)),
         ("features.apps", TomlValue::Boolean(false)),
         ("features.enable_mcp_apps", TomlValue::Boolean(false)),
@@ -710,6 +720,9 @@ fn safe_thread_config() -> Value {
         "features": {
             "shell_tool": false,
             "code_mode": false,
+            "code_mode_buffered_exec": false,
+            "code_mode_host": false,
+            "code_mode_only": false,
             "multi_agent": false,
             "apps": false,
             "enable_mcp_apps": false,
@@ -1149,7 +1162,53 @@ struct SearchTextArguments {
     case_sensitive: bool,
 }
 
+#[derive(Clone, Copy)]
+struct SearchLimits {
+    files: usize,
+    directories: usize,
+    depth: usize,
+    scanned_bytes: u64,
+    results: usize,
+    output_bytes: usize,
+}
+
+const SEARCH_LIMITS: SearchLimits = SearchLimits {
+    files: MAX_SEARCH_FILES,
+    directories: MAX_SEARCH_DIRECTORIES,
+    depth: MAX_SEARCH_DEPTH,
+    scanned_bytes: MAX_SEARCH_SCANNED_BYTES,
+    results: MAX_SEARCH_RESULTS,
+    output_bytes: MAX_SEARCH_OUTPUT_BYTES,
+};
+
+#[derive(Default)]
+struct SearchState {
+    files: usize,
+    directories: usize,
+    scanned_bytes: u64,
+    output_bytes: usize,
+    truncation: Option<&'static str>,
+    stopped: bool,
+}
+
+impl SearchState {
+    fn truncate(&mut self, budget: &'static str, stop: bool) {
+        if self.truncation.is_none() || stop {
+            self.truncation = Some(budget);
+        }
+        self.stopped |= stop;
+    }
+}
+
 fn search_text(workspace: &Path, arguments: Value) -> Result<String, String> {
+    search_text_with_limits(workspace, arguments, SEARCH_LIMITS)
+}
+
+fn search_text_with_limits(
+    workspace: &Path,
+    arguments: Value,
+    limits: SearchLimits,
+) -> Result<String, String> {
     let arguments: SearchTextArguments =
         serde_json::from_value(arguments).map_err(display_error)?;
     if arguments.query.is_empty() {
@@ -1165,18 +1224,29 @@ fn search_text(workspace: &Path, arguments: Value) -> Result<String, String> {
         arguments.query.to_lowercase()
     };
     let mut results = Vec::new();
+    let mut state = SearchState::default();
     search_directory(
         workspace,
         &root,
         &needle,
         arguments.case_sensitive,
+        /*depth*/ 0,
+        limits,
+        &mut state,
         &mut results,
     )?;
-    if results.is_empty() {
-        Ok("No matches.".to_string())
+    let mut output = if results.is_empty() {
+        "No matches.".to_string()
     } else {
-        Ok(results.join("\n"))
+        results.join("\n")
+    };
+    if let Some(budget) = state.truncation {
+        output.push_str(&format!(
+            "\n[search_text truncated: {budget} budget reached after {} files, {} directories, and {} bytes scanned]",
+            state.files, state.directories, state.scanned_bytes
+        ));
     }
+    Ok(output)
 }
 
 fn search_directory(
@@ -1184,34 +1254,76 @@ fn search_directory(
     directory: &Path,
     needle: &str,
     case_sensitive: bool,
+    depth: usize,
+    limits: SearchLimits,
+    state: &mut SearchState,
     results: &mut Vec<String>,
 ) -> Result<(), String> {
-    if results.len() >= MAX_SEARCH_RESULTS {
+    if state.stopped {
         return Ok(());
     }
-    let mut entries = directory
-        .read_dir()
-        .map_err(display_error)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(display_error)?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        if results.len() >= MAX_SEARCH_RESULTS {
+    if state.directories >= limits.directories {
+        state.truncate("visited directories", true);
+        return Ok(());
+    }
+    state.directories += 1;
+    for entry in directory.read_dir().map_err(display_error)? {
+        if state.stopped {
             break;
         }
+        let entry = entry.map_err(display_error)?;
         let metadata = fs::symlink_metadata(entry.path()).map_err(display_error)?;
-        if metadata.file_type().is_symlink() {
-            continue;
-        }
         let path = entry.path();
         if metadata.is_dir() {
-            search_directory(workspace, &path, needle, case_sensitive, results)?;
+            if depth >= limits.depth {
+                if state.directories >= limits.directories {
+                    state.truncate("visited directories", true);
+                    break;
+                }
+                state.directories += 1;
+                state.truncate("recursion depth", false);
+            } else {
+                search_directory(
+                    workspace,
+                    &path,
+                    needle,
+                    case_sensitive,
+                    depth + 1,
+                    limits,
+                    state,
+                    results,
+                )?;
+            }
             continue;
         }
-        if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
+        if state.files >= limits.files {
+            state.truncate("visited files", true);
+            break;
+        }
+        state.files += 1;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
             continue;
         }
-        let bytes = fs::read(&path).map_err(display_error)?;
+        if metadata.len() > MAX_FILE_BYTES {
+            continue;
+        }
+        let remaining_bytes = limits.scanned_bytes.saturating_sub(state.scanned_bytes);
+        if metadata.len() > remaining_bytes {
+            state.truncate("scanned bytes", true);
+            break;
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        fs::File::open(&path)
+            .map_err(display_error)?
+            .take(remaining_bytes + 1)
+            .read_to_end(&mut bytes)
+            .map_err(display_error)?;
+        if bytes.len() as u64 > remaining_bytes {
+            state.scanned_bytes = limits.scanned_bytes;
+            state.truncate("scanned bytes", true);
+            break;
+        }
+        state.scanned_bytes += bytes.len() as u64;
         if bytes.contains(&0) {
             continue;
         }
@@ -1228,13 +1340,16 @@ fn search_directory(
                 let relative = path.strip_prefix(workspace).map_err(display_error)?;
                 let excerpt: String = line.chars().take(512).collect();
                 let match_line = format!("{}:{}:{excerpt}", relative.display(), index + 1);
-                let current_bytes = results.iter().map(String::len).sum::<usize>();
-                if current_bytes + match_line.len() > MAX_SEARCH_OUTPUT_BYTES {
-                    return Ok(());
+                let separator_bytes = usize::from(!results.is_empty());
+                if state.output_bytes + separator_bytes + match_line.len() > limits.output_bytes {
+                    state.truncate("result output", true);
+                    break;
                 }
+                state.output_bytes += separator_bytes + match_line.len();
                 results.push(match_line);
-                if results.len() >= MAX_SEARCH_RESULTS {
-                    return Ok(());
+                if results.len() >= limits.results {
+                    state.truncate("result count", true);
+                    break;
                 }
             }
         }
@@ -1527,7 +1642,6 @@ mod tests {
             sandbox_root_path: sandbox.path().to_path_buf(),
             workspace_path: workspace,
             codex_home_path: outside.clone(),
-            temporary_path: sandbox.path().join("tmp"),
         };
 
         assert!(configuration.validate().is_err());
@@ -1535,7 +1649,73 @@ mod tests {
     }
 
     #[test]
+    fn search_reports_each_traversal_budget() {
+        let (_sandbox, workspace) = workspace();
+        fs::write(workspace.join("a.txt"), "needle\n").expect("first file");
+        fs::write(workspace.join("b.txt"), "needle\n").expect("second file");
+        fs::create_dir(workspace.join("nested")).expect("nested directory");
+        fs::create_dir(workspace.join("nested/deeper")).expect("deep directory");
+        fs::write(workspace.join("nested/deeper/c.txt"), "needle\n").expect("deep file");
+        let arguments = json!({ "query": "needle" });
+
+        let files = search_text_with_limits(
+            &workspace,
+            arguments.clone(),
+            SearchLimits {
+                files: 1,
+                ..SEARCH_LIMITS
+            },
+        )
+        .expect("file budget");
+        assert!(files.contains("search_text truncated: visited files budget reached"));
+
+        let directories = search_text_with_limits(
+            &workspace,
+            arguments.clone(),
+            SearchLimits {
+                directories: 1,
+                ..SEARCH_LIMITS
+            },
+        )
+        .expect("directory budget");
+        assert!(directories.contains("search_text truncated: visited directories budget reached"));
+
+        let depth = search_text_with_limits(
+            &workspace,
+            arguments.clone(),
+            SearchLimits {
+                depth: 1,
+                ..SEARCH_LIMITS
+            },
+        )
+        .expect("depth budget");
+        assert!(depth.contains("search_text truncated: recursion depth budget reached"));
+
+        let bytes = search_text_with_limits(
+            &workspace,
+            arguments,
+            SearchLimits {
+                scanned_bytes: 1,
+                ..SEARCH_LIMITS
+            },
+        )
+        .expect("byte budget");
+        assert!(bytes.contains("search_text truncated: scanned bytes budget reached"));
+    }
+
+    #[test]
     fn capability_profile_rejects_process_git_plugin_and_mcp_routes() {
+        let overrides = safe_config_overrides()
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>();
+        for feature in [
+            "features.code_mode",
+            "features.code_mode_buffered_exec",
+            "features.code_mode_host",
+            "features.code_mode_only",
+        ] {
+            assert_eq!(overrides.get(feature), Some(&TomlValue::Boolean(false)));
+        }
         assert_eq!(
             unsupported_client_capability("command/exec"),
             Some("process execution")
@@ -1592,6 +1772,13 @@ mod tests {
         );
         assert_eq!(params["sandbox"], "workspace-write");
         assert_eq!(params["config"]["features"]["shell_tool"], false);
+        assert_eq!(params["config"]["features"]["code_mode"], false);
+        assert_eq!(
+            params["config"]["features"]["code_mode_buffered_exec"],
+            false
+        );
+        assert_eq!(params["config"]["features"]["code_mode_host"], false);
+        assert_eq!(params["config"]["features"]["code_mode_only"], false);
         assert_eq!(params["dynamicTools"].as_array().unwrap().len(), 2);
         assert_eq!(params["dynamicTools"][0]["name"], "apply_patch");
         assert_eq!(params["dynamicTools"][1]["name"], "read_file");

@@ -2,7 +2,6 @@ import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.vanniktech.maven.publish.SourcesJar
 import org.gradle.api.tasks.Sync
-import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.bundling.Zip
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
@@ -14,13 +13,43 @@ plugins {
 
 private val codexRevision = "25af12f7e61572b0bc18ddb1008be543b91519b0"
 private val codexArchiveSha256 = "42f627a7b32db41582c73a8eafd9ec4b35d6c3ff81bd3d4455cfd6224d79d329"
-private val rustToolchain = "1.95.0"
+private val codexCargoLockSha256 = "e0843448b5767ff36a2a3b15212feb480cd4eaafe8a0c0ca08547e3c7da03a05"
+private val resolvedCargoLockSha256 = "eaf0e5889447eaaaa0fd512219f8b1377ad5d848e3ef7644b7300e5f767c6351"
+private val pinnedRustToolchain = "1.95.0"
 private val rustLibrary = "libcodex_agent_ios_bridge.a"
 private val minimumIosVersion = "14.0"
 
-val prepareCodexIosSource = tasks.register<PrepareCodexIosSourceTask>("prepareCodexIosSource") {
+val provenanceRecordFile = layout.projectDirectory.file("native/provenance.json")
+val provenanceInputs = mapOf(
+    "adapterPatchSha256" to layout.projectDirectory.file("native/patches/0001-uninitialized-in-process-host.patch"),
+    "lockPatchSha256" to layout.projectDirectory.file("native/patches/0002-locked-ios-bridge.patch"),
+    "bridgeManifestSha256" to layout.projectDirectory.file("native/bridge/Cargo.toml"),
+    "bridgeSourceSha256" to layout.projectDirectory.file("native/bridge/src/lib.rs"),
+    "cHeaderSha256" to layout.projectDirectory.file("native/include/codex_agent_ios.h"),
+)
+
+val verifyCodexIosProvenance = tasks.register<VerifyCodexIosProvenanceTask>("verifyCodexIosProvenance") {
+    group = "verification"
+    description = "Verifies the pinned iOS native source and bridge provenance."
+    provenanceFile.set(provenanceRecordFile)
+    adapterPatch.set(provenanceInputs.getValue("adapterPatchSha256"))
+    lockPatch.set(provenanceInputs.getValue("lockPatchSha256"))
+    bridgeManifest.set(provenanceInputs.getValue("bridgeManifestSha256"))
+    bridgeSource.set(provenanceInputs.getValue("bridgeSourceSha256"))
+    cHeader.set(provenanceInputs.getValue("cHeaderSha256"))
     revision.set(codexRevision)
     archiveSha256.set(codexArchiveSha256)
+    cargoLockSha256.set(codexCargoLockSha256)
+    preparedCargoLockSha256.set(resolvedCargoLockSha256)
+    rustToolchain.set(pinnedRustToolchain)
+}
+
+val prepareCodexIosSource = tasks.register<PrepareCodexIosSourceTask>("prepareCodexIosSource") {
+    dependsOn(verifyCodexIosProvenance)
+    revision.set(codexRevision)
+    archiveSha256.set(codexArchiveSha256)
+    cargoLockSha256.set(codexCargoLockSha256)
+    preparedCargoLockSha256.set(resolvedCargoLockSha256)
     providers.gradleProperty("codexAgent.codexIosArchiveFile").orNull?.let { path ->
         localArchive.set(rootProject.layout.projectDirectory.file(path))
     }
@@ -30,38 +59,50 @@ val prepareCodexIosSource = tasks.register<PrepareCodexIosSourceTask>("prepareCo
 }
 
 val codexRustRoot = layout.buildDirectory.dir("codex-source/codex-rs")
-val pinnedRustc = providers.exec {
-    commandLine("rustup", "which", "--toolchain", rustToolchain, "rustc")
-}.standardOutput.asText.get().trim()
 
-val testCodexIosBridge = tasks.register<Exec>("testCodexIosBridge") {
+val testCodexIosBridge = tasks.register<PinnedCargoTask>("testCodexIosBridge") {
     dependsOn(prepareCodexIosSource)
     inputs.property("codexRevision", codexRevision)
     inputs.files(layout.projectDirectory.dir("native/bridge"), layout.projectDirectory.dir("native/patches"))
-    workingDir(codexRustRoot)
-    commandLine(
-        "rustup", "run", rustToolchain, "cargo", "test",
-        "-p", "codex-agent-ios-bridge", "--lib",
-    )
-    environment("RUSTC", pinnedRustc)
-    environment("CARGO_TARGET_DIR", layout.buildDirectory.dir("rust/host").get().asFile.absolutePath)
+    toolchain.set(pinnedRustToolchain)
+    workingDirectory.set(codexRustRoot)
+    cargoTargetDirectory.set(layout.buildDirectory.dir("rust/host"))
+    cargoArguments.set(listOf("test", "--locked", "-p", "codex-agent-ios-bridge", "--lib"))
 }
 
-fun registerRustBuild(name: String, target: String) = tasks.register<Exec>(name) {
+val testCodexIosDirectToolMode = tasks.register<PinnedCargoTask>("testCodexIosDirectToolMode") {
+    dependsOn(prepareCodexIosSource)
+    inputs.property("codexRevision", codexRevision)
+    inputs.files(layout.projectDirectory.dir("native/patches"))
+    toolchain.set(pinnedRustToolchain)
+    workingDirectory.set(codexRustRoot)
+    cargoTargetDirectory.set(layout.buildDirectory.dir("rust/host"))
+    cargoArguments.set(
+        listOf(
+            "test",
+            "--locked",
+            "-p",
+            "codex-core",
+            "--lib",
+            "ios_runtime_forces_direct_tools_for_code_mode_only_models",
+        ),
+    )
+}
+
+fun registerRustBuild(name: String, target: String) = tasks.register<PinnedCargoTask>(name) {
     dependsOn(prepareCodexIosSource)
     inputs.property("codexRevision", codexRevision)
     inputs.property("minimumIosVersion", minimumIosVersion)
     inputs.files(layout.projectDirectory.dir("native/bridge"), layout.projectDirectory.dir("native/patches"))
-    workingDir(codexRustRoot)
-    commandLine(
-        "rustup", "run", rustToolchain, "cargo", "build",
-        "-p", "codex-agent-ios-bridge", "--release", "--target", target,
+    toolchain.set(pinnedRustToolchain)
+    workingDirectory.set(codexRustRoot)
+    cargoTargetDirectory.set(layout.buildDirectory.dir("rust"))
+    cargoArguments.set(
+        listOf("build", "--locked", "-p", "codex-agent-ios-bridge", "--release", "--target", target),
     )
-    environment("RUSTC", pinnedRustc)
-    environment("CARGO_TARGET_DIR", layout.buildDirectory.dir("rust").get().asFile.absolutePath)
-    environment("CARGO_PROFILE_RELEASE_DEBUG", "0")
-    environment("CARGO_PROFILE_RELEASE_STRIP", "debuginfo")
-    environment("IPHONEOS_DEPLOYMENT_TARGET", minimumIosVersion)
+    extraEnvironment.put("CARGO_PROFILE_RELEASE_DEBUG", "0")
+    extraEnvironment.put("CARGO_PROFILE_RELEASE_STRIP", "debuginfo")
+    extraEnvironment.put("IPHONEOS_DEPLOYMENT_TARGET", minimumIosVersion)
     outputs.file(layout.buildDirectory.file("rust/$target/release/$rustLibrary"))
 }
 
@@ -176,6 +217,9 @@ val stageCodexAgentAppleDistribution = tasks.register<Sync>("stageCodexAgentAppl
     from(layout.projectDirectory.file("apple/Package.swift")) {
         into("CodexAgentPackage")
     }
+    from(layout.projectDirectory.dir("apple/Sources")) {
+        into("CodexAgentPackage/Sources")
+    }
     from(layout.buildDirectory.dir("XCFrameworks/release/CodexAgent.xcframework")) {
         into("CodexAgentPackage/CodexAgent.xcframework")
     }
@@ -217,7 +261,39 @@ val packageCodexAgentAppleDistribution = tasks.register<Zip>("packageCodexAgentA
     dependsOn(stageCodexAgentAppleDistribution)
     archiveFileName.set("CodexAgentPackage-${project.version}.zip")
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
     from(appleDistributionDirectory.map { it.dir("CodexAgentPackage") })
+}
+
+val swiftPackageArchiveName = "CodexAgent-${project.version}.xcframework.zip"
+val packageCodexAgentSwiftPackageBinary = tasks.register<Zip>("packageCodexAgentSwiftPackageBinary") {
+    dependsOn("assembleCodexAgentReleaseXCFramework")
+    archiveFileName.set(swiftPackageArchiveName)
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    from(layout.buildDirectory.dir("XCFrameworks/release/CodexAgent.xcframework")) {
+        into("CodexAgent.xcframework")
+    }
+}
+
+val swiftPackageChecksumFile = layout.buildDirectory.file("distributions/$swiftPackageArchiveName.sha256")
+val generateCodexAgentSwiftPackageChecksum =
+    tasks.register<GenerateSha256Task>("generateCodexAgentSwiftPackageChecksum") {
+    dependsOn(packageCodexAgentSwiftPackageBinary)
+    inputFile.set(packageCodexAgentSwiftPackageBinary.flatMap { it.archiveFile })
+    outputFile.set(swiftPackageChecksumFile)
+}
+
+val verifyCodexAgentRemoteSwiftPackage =
+    tasks.register<VerifySwiftPackageBinaryTask>("verifyCodexAgentRemoteSwiftPackage") {
+    group = "verification"
+    description = "Verifies the public SwiftPM manifest URL and binary checksum."
+    dependsOn(generateCodexAgentSwiftPackageChecksum)
+    manifest.set(rootProject.layout.projectDirectory.file("Package.swift"))
+    checksumFile.set(swiftPackageChecksumFile)
+    expectedUrl.set("https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/$swiftPackageArchiveName")
 }
 
 tasks.register("verifyIosRuntime") {
@@ -225,9 +301,11 @@ tasks.register("verifyIosRuntime") {
     description = "Builds and tests the embedded iOS runtime and clean Swift Package consumer."
     dependsOn(
         testCodexIosBridge,
+        testCodexIosDirectToolMode,
         "compileKotlinIosArm64",
         "iosSimulatorArm64Test",
         packageCodexAgentAppleDistribution,
+        verifyCodexAgentRemoteSwiftPackage,
         verifyCodexAgentSwiftPackage,
     )
 }

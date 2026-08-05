@@ -38,6 +38,12 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
     @get:Input
     abstract val archiveSha256: Property<String>
 
+    @get:Input
+    abstract val cargoLockSha256: Property<String>
+
+    @get:Input
+    abstract val preparedCargoLockSha256: Property<String>
+
     @get:InputFile
     @get:Optional
     @get:PathSensitive(PathSensitivity.NONE)
@@ -59,6 +65,8 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
         val expectedRevision = revision.get()
         require(expectedRevision.matches(Regex("[0-9a-f]{40}"))) { "invalid Codex source revision" }
         requireHash(archiveSha256.get())
+        requireHash(cargoLockSha256.get())
+        requireHash(preparedCargoLockSha256.get())
         val temporary = Files.createTempDirectory(temporaryDir.toPath(), "source-")
         try {
             val archive = temporary.resolve("codex.tar.gz")
@@ -88,11 +96,18 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
                 from(roots.single())
                 into(staged)
             }
+            val cargoLock = staged.resolve("codex-rs/Cargo.lock")
+            check(cargoLock.isFile && cargoLock.sha256() == cargoLockSha256.get()) {
+                "Codex iOS Cargo.lock SHA-256 mismatch"
+            }
             patches.files.sortedBy(java.io.File::getName).forEach { patch ->
                 exec.exec {
                     workingDir(staged)
                     commandLine("patch", "-p1", "-N", "-i", patch.absolutePath)
                 }
+            }
+            check(cargoLock.sha256() == preparedCargoLockSha256.get()) {
+                "Prepared Codex iOS Cargo.lock SHA-256 mismatch"
             }
             files.copy {
                 from(bridgeSource)
