@@ -82,6 +82,77 @@ class NativeReleaseVerificationTasksTest {
             directory.deleteRecursively()
         }
     }
+
+    @Test
+    fun `release metadata accepts one consistent version`() {
+        verifyReleaseMetadata().verify()
+    }
+
+    @Test
+    fun `release metadata rejects a mismatched GitHub tag`() {
+        val failure = assertFailsWith<IllegalStateException> {
+            verifyReleaseMetadata(releaseTag = "v0.2.1").verify()
+        }
+        assertTrue(failure.message.orEmpty().contains("release tag"))
+    }
+
+    @Test
+    fun `release metadata rejects a mismatched SwiftPM URL version`() {
+        val failure = assertFailsWith<IllegalStateException> {
+            verifyReleaseMetadata(urlVersion = "0.2.1").verify()
+        }
+        assertTrue(failure.message.orEmpty().contains("URL version"))
+    }
+
+    @Test
+    fun `release metadata rejects a mismatched SwiftPM filename version`() {
+        val failure = assertFailsWith<IllegalStateException> {
+            verifyReleaseMetadata(filenameVersion = "0.2.1").verify()
+        }
+        assertTrue(failure.message.orEmpty().contains("filename version"))
+    }
+
+    @Test
+    fun `release metadata rejects a mismatched RemoteConsumer version`() {
+        val failure = assertFailsWith<IllegalStateException> {
+            verifyReleaseMetadata(consumerVersion = "0.2.1").verify()
+        }
+        assertTrue(failure.message.orEmpty().contains("dependency version"))
+    }
+
+    private fun verifyReleaseMetadata(
+        releaseTag: String = "v0.2.0",
+        urlVersion: String = "0.2.0",
+        filenameVersion: String = "0.2.0",
+        consumerVersion: String = "0.2.0",
+    ): VerifyReleaseMetadataTask {
+        val directory = createTempDirectory("codex-release-metadata").toFile()
+        directory.deleteOnExit()
+        directory.resolve("Package.swift").writeText(
+            """
+            .binaryTarget(
+                name: "CodexAgent",
+                url: "https://github.com/ciurlaro/codex-agent/releases/download/v$urlVersion/CodexAgent-$filenameVersion.xcframework.zip",
+                checksum: "${"0".repeat(64)}"
+            )
+            """.trimIndent(),
+        )
+        directory.resolve("RemoteConsumer.swift").writeText(
+            """
+            .package(
+                url: "https://github.com/ciurlaro/codex-agent.git",
+                exact: "$consumerVersion"
+            )
+            """.trimIndent(),
+        )
+        val project = ProjectBuilder.builder().withProjectDir(directory).build()
+        return project.tasks.register("verifyReleaseMetadata", VerifyReleaseMetadataTask::class.java).get().apply {
+            projectVersion.set("0.2.0")
+            this.releaseTag.set(releaseTag)
+            swiftPackageManifest.set(project.layout.projectDirectory.file("Package.swift"))
+            remoteConsumerManifest.set(project.layout.projectDirectory.file("RemoteConsumer.swift"))
+        }
+    }
 }
 
 private fun File.sha256(): String = MessageDigest.getInstance("SHA-256").digest(readBytes())

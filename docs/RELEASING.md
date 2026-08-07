@@ -11,6 +11,7 @@ interactive ChatGPT browser login in the Swift test app.
 
    ```shell
    ./gradlew -p buildSrc test
+   ./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag=v0.2.0
    ./gradlew verifyRepository
    DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
      ./gradlew verifyIosRuntime
@@ -81,7 +82,10 @@ with a reusable credential.
 
 ## Publishing after acceptance
 
-1. Set one immutable version in the root build; never reuse a released version.
+1. Set one immutable version in the root build; never reuse a released version. The
+   publication workflow passes the actual GitHub release tag to
+   `verifyReleaseMetadata`, which must match the Gradle version, SwiftPM URL and
+   filename, and RemoteConsumer exact dependency before publication.
 2. Commit the matching root `Package.swift` URL/checksum and all candidate
    sources. Rebuild the binary ZIP from that exact commit and confirm its
    checksum is unchanged.

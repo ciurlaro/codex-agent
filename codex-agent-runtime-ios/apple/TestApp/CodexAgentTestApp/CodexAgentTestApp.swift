@@ -45,6 +45,7 @@ final class AgentHost: ObservableObject {
         let configuration = IosCodexRuntimeConfiguration(
             sandboxRootPath: sandbox,
             workspacePath: workspace,
+            credentialProtection: .whenUnlocked,
             codexHomePath: sandbox + "/Library/Application Support/CodexAgent",
             temporaryPath: sandbox + "/tmp/CodexAgent"
         )

@@ -8,6 +8,7 @@ public func makeCodexAgentRuntime(
         configuration: IosCodexRuntimeConfiguration(
             sandboxRootPath: sandboxRootPath,
             workspacePath: workspacePath,
+            credentialProtection: .whenUnlocked,
             codexHomePath: sandboxRootPath + "/Library/Application Support/CodexAgent",
             temporaryPath: sandboxRootPath + "/tmp/CodexAgent"
         )

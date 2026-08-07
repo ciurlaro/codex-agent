@@ -32,3 +32,14 @@ tasks.register("verifyIosRuntime") {
     description = "Runs the embedded iOS runtime, XCFramework, and Swift consumer gates on macOS."
     dependsOn(":codex-agent-runtime-ios:verifyIosRuntime")
 }
+
+tasks.register<VerifyReleaseMetadataTask>("verifyReleaseMetadata") {
+    group = "verification"
+    description = "Verifies that the release tag and public consumer metadata match the project version."
+    projectVersion.set(project.version.toString())
+    releaseTag.set(providers.gradleProperty("codexAgent.releaseTag"))
+    swiftPackageManifest.set(layout.projectDirectory.file("Package.swift"))
+    remoteConsumerManifest.set(
+        layout.projectDirectory.file("codex-agent-runtime-ios/apple/RemoteConsumer/Package.swift"),
+    )
+}

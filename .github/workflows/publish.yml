@@ -18,11 +18,20 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Verify build logic
+        run: ./gradlew -p buildSrc test --stacktrace
+      - name: Verify release metadata
+        run: ./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag="$GITHUB_RELEASE_TAG" --stacktrace
+        env:
+          GITHUB_RELEASE_TAG: ${{ github.event.release.tag_name }}
+      - name: Verify client and Android repository
+        run: ./gradlew verifyRepository --stacktrace
       - name: Install pinned Rust toolchain
         run: >-
           rustup toolchain install 1.95.0 --profile minimal
           --target aarch64-apple-ios,aarch64-apple-ios-sim
-      - run: ./gradlew verifyIosRuntime --stacktrace
+      - name: Verify embedded iOS runtime and Apple package
+        run: ./gradlew verifyIosRuntime --stacktrace
       - name: Build a clean remote SwiftPM consumer
         working-directory: codex-agent-runtime-ios/apple/RemoteConsumer
         run: >-

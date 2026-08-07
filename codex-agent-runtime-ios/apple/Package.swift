@@ -18,5 +18,9 @@ let package = Package(
             name: "CodexAgentAuthentication",
             dependencies: ["CodexAgent"]
         ),
+        .testTarget(
+            name: "CodexAgentAuthenticationTests",
+            dependencies: ["CodexAgentAuthentication"]
+        ),
     ]
 )

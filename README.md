@@ -41,6 +41,7 @@ an `expect`/`actual` factory:
 val configuration = IosCodexRuntimeConfiguration(
     sandboxRootPath = sandbox,
     workspacePath = "$sandbox/Documents/CodexWorkspace",
+    credentialProtection = IosCodexCredentialProtection.WHEN_UNLOCKED,
 )
 val factory = IosCodexRuntimeFactory(configuration)
 val client = CodexAgentClient(

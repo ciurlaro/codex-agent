@@ -220,6 +220,9 @@ val stageCodexAgentAppleDistribution = tasks.register<Sync>("stageCodexAgentAppl
     from(layout.projectDirectory.dir("apple/Sources")) {
         into("CodexAgentPackage/Sources")
     }
+    from(layout.projectDirectory.dir("apple/Tests")) {
+        into("CodexAgentPackage/Tests")
+    }
     from(layout.buildDirectory.dir("XCFrameworks/release/CodexAgent.xcframework")) {
         into("CodexAgentPackage/CodexAgent.xcframework")
     }
@@ -256,6 +259,31 @@ val verifyCodexAgentSwiftPackage = tasks.register<Exec>("verifyCodexAgentSwiftPa
         "build",
     )
 }
+
+val verifyCodexAgentSwiftAuthenticationTests =
+    tasks.register<Exec>("verifyCodexAgentSwiftAuthenticationTests") {
+        dependsOn(stageCodexAgentAppleDistribution)
+        workingDir(appleDistributionDirectory.map { it.dir("CodexAgentPackage") })
+        commandLine(
+            "/bin/sh",
+            "-c",
+            """
+                set -eu
+                destination_id=${'$'}(
+                    xcrun simctl list devices available |
+                        sed -nE 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/p' |
+                        head -n 1
+                )
+                test -n "${'$'}destination_id"
+                exec xcodebuild \
+                    -scheme CodexAgent-Package \
+                    -destination "platform=iOS Simulator,id=${'$'}destination_id" \
+                    -derivedDataPath "${layout.buildDirectory.dir("swift-tests-derived-data").get().asFile.absolutePath}" \
+                    CODE_SIGNING_ALLOWED=NO \
+                    test
+            """.trimIndent(),
+        )
+    }
 
 val packageCodexAgentAppleDistribution = tasks.register<Zip>("packageCodexAgentAppleDistribution") {
     dependsOn(stageCodexAgentAppleDistribution)
@@ -307,5 +335,6 @@ tasks.register("verifyIosRuntime") {
         packageCodexAgentAppleDistribution,
         verifyCodexAgentRemoteSwiftPackage,
         verifyCodexAgentSwiftPackage,
+        verifyCodexAgentSwiftAuthenticationTests,
     )
 }

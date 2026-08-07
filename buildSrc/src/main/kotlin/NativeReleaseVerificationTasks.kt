@@ -175,6 +175,56 @@ abstract class VerifySwiftPackageBinaryTask : DefaultTask() {
     }
 }
 
+abstract class VerifyReleaseMetadataTask : DefaultTask() {
+    @get:Input
+    abstract val projectVersion: Property<String>
+
+    @get:Input
+    abstract val releaseTag: Property<String>
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val swiftPackageManifest: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val remoteConsumerManifest: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val version = projectVersion.get()
+        check(releaseTag.get() == "v$version") {
+            "GitHub release tag must equal v$version"
+        }
+
+        val swiftPackage = swiftPackageManifest.get().asFile.readText()
+        val url = Regex("""url\s*:\s*\"([^\"]+)\"""")
+            .find(swiftPackage)
+            ?.groupValues
+            ?.get(1)
+            ?: error("SwiftPM binary URL is missing")
+        val release = Regex("""/releases/download/v([^/]+)/([^/\"]+)$""")
+            .find(url)
+            ?: error("SwiftPM binary URL is not a versioned GitHub release asset")
+        check(release.groupValues[1] == version) {
+            "SwiftPM binary URL version must equal $version"
+        }
+        check(release.groupValues[2] == "CodexAgent-$version.xcframework.zip") {
+            "SwiftPM binary filename version must equal $version"
+        }
+
+        val remoteConsumer = remoteConsumerManifest.get().asFile.readText()
+        val exactVersion = Regex(
+            """\.package\s*\(\s*url\s*:\s*\"https://github\.com/ciurlaro/codex-agent\.git\"\s*,\s*exact\s*:\s*\"([^\"]+)\"\s*\)""",
+            RegexOption.DOT_MATCHES_ALL,
+        ).find(remoteConsumer)?.groupValues?.get(1)
+            ?: error("RemoteConsumer exact codex-agent dependency is missing")
+        check(exactVersion == version) {
+            "RemoteConsumer exact dependency version must equal $version"
+        }
+    }
+}
+
 private fun File.sha256(): String = inputStream().use { input ->
     val digest = MessageDigest.getInstance("SHA-256")
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)

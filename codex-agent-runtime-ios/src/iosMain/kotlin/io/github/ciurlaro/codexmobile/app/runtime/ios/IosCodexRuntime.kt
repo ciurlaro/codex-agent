@@ -45,6 +45,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileProtectionComplete
+import platform.Foundation.NSFileProtectionCompleteUnlessOpen
+import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
+import platform.Foundation.NSFileProtectionKey
+import platform.Foundation.NSURL
+import platform.Foundation.NSURLIsExcludedFromBackupKey
 
 internal class IosCodexRuntime(
     private val configuration: IosCodexRuntimeConfiguration,
@@ -68,6 +75,17 @@ internal class IosCodexRuntime(
         started = true
         try {
             val handle = withContext(Dispatchers.Default) { startNative(configuration) }
+            try {
+                withContext(Dispatchers.Default) { applyIosCredentialProtection(configuration) }
+            } catch (error: Throwable) {
+                try {
+                    withContext(Dispatchers.Default) { shutdownNative(handle) }
+                } catch (_: Throwable) {
+                    // The protection error remains authoritative; destruction still joins native work.
+                }
+                codex_agent_ios_runtime_destroy(handle)
+                throw error
+            }
             native = handle
             receiver = scope.launch { receiveEvents(handle) }
         } catch (error: Throwable) {
@@ -259,6 +277,41 @@ private data class NativeWorkspaceToolResult(
 )
 
 class IosCodexRuntimeException(message: String) : IllegalStateException(message)
+
+internal fun applyIosCredentialProtection(configuration: IosCodexRuntimeConfiguration) {
+    val fileManager = NSFileManager.defaultManager
+    val codexHome = configuration.codexHomePath
+    check(fileManager.fileExistsAtPath(codexHome)) { "iOS Codex home does not exist" }
+
+    val paths = mutableListOf(codexHome)
+    val enumerator = fileManager.enumeratorAtPath(codexHome)
+    while (true) {
+        val relative = enumerator?.nextObject() as? String ?: break
+        paths += "$codexHome/$relative"
+    }
+
+    val protection = when (configuration.credentialProtection) {
+        IosCodexCredentialProtection.WHEN_UNLOCKED -> NSFileProtectionComplete
+        IosCodexCredentialProtection.AFTER_FIRST_UNLOCK -> NSFileProtectionCompleteUntilFirstUserAuthentication
+        IosCodexCredentialProtection.WHILE_OPEN -> NSFileProtectionCompleteUnlessOpen
+    }
+    paths.forEach { path ->
+        check(
+            fileManager.setAttributes(
+                mapOf(NSFileProtectionKey to protection),
+                ofItemAtPath = path,
+                error = null,
+            ),
+        ) { "Could not apply iOS file protection to Codex authentication state" }
+        check(
+            NSURL.fileURLWithPath(path).setResourceValue(
+                true,
+                forKey = NSURLIsExcludedFromBackupKey,
+                error = null,
+            ),
+        ) { "Could not exclude Codex authentication state from backups" }
+    }
+}
 
 private val RUNTIME_JSON = Json {
     encodeDefaults = true
