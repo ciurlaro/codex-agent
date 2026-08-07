@@ -290,11 +290,7 @@ internal fun applyIosCredentialProtection(configuration: IosCodexRuntimeConfigur
         paths += "$codexHome/$relative"
     }
 
-    val protection = when (configuration.credentialProtection) {
-        IosCodexCredentialProtection.WHEN_UNLOCKED -> NSFileProtectionComplete
-        IosCodexCredentialProtection.AFTER_FIRST_UNLOCK -> NSFileProtectionCompleteUntilFirstUserAuthentication
-        IosCodexCredentialProtection.WHILE_OPEN -> NSFileProtectionCompleteUnlessOpen
-    }
+    val protection = iosFileProtectionValue(configuration.credentialProtection)
     paths.forEach { path ->
         check(
             fileManager.setAttributes(
@@ -312,6 +308,16 @@ internal fun applyIosCredentialProtection(configuration: IosCodexRuntimeConfigur
         ) { "Could not exclude Codex authentication state from backups" }
     }
 }
+
+internal fun iosFileProtectionValue(protection: IosCodexCredentialProtection): String =
+    checkNotNull(
+        when (protection) {
+            IosCodexCredentialProtection.WHEN_UNLOCKED -> NSFileProtectionComplete
+            IosCodexCredentialProtection.AFTER_FIRST_UNLOCK ->
+                NSFileProtectionCompleteUntilFirstUserAuthentication
+            IosCodexCredentialProtection.WHILE_OPEN -> NSFileProtectionCompleteUnlessOpen
+        },
+    )
 
 private val RUNTIME_JSON = Json {
     encodeDefaults = true

@@ -43,6 +43,21 @@ import platform.Foundation.NSUUID
 
 class IosCodexRuntimeTest {
     @Test
+    fun credentialProtectionPoliciesMapToExactAppleValues() {
+        assertEquals(
+            platform.Foundation.NSFileProtectionComplete,
+            iosFileProtectionValue(IosCodexCredentialProtection.WHEN_UNLOCKED),
+        )
+        assertEquals(
+            platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication,
+            iosFileProtectionValue(IosCodexCredentialProtection.AFTER_FIRST_UNLOCK),
+        )
+        assertEquals(
+            platform.Foundation.NSFileProtectionCompleteUnlessOpen,
+            iosFileProtectionValue(IosCodexCredentialProtection.WHILE_OPEN),
+        )
+    }
+    @Test
     fun localWorkspaceToolsReadSearchListAndModifyFiles() = runBlocking {
         TestWorkspace().use { test ->
             val tools = IosCodexRuntimeFactory(test.configuration).workspaceTools

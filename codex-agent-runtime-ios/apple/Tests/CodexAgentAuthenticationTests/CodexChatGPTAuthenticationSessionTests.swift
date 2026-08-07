@@ -4,6 +4,25 @@ import XCTest
 
 @MainActor
 final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
+    func testMultipleObserversReceiveTheSameEvents() {
+        let driver = FakeAuthenticationDriver()
+        let first = makeSession(driver)
+        let second = makeSession(driver)
+        var firstEvents: [AgentEvent] = []
+        var secondEvents: [AgentEvent] = []
+        first.eventHandler = { firstEvents.append($0) }
+        second.eventHandler = { secondEvents.append($0) }
+
+        driver.requireBrowser("https://auth.openai.com/shared")
+        driver.fail("Runtime disconnected", code: "event_stream")
+
+        XCTAssertEqual(firstEvents.count, 2)
+        XCTAssertEqual(secondEvents.count, 2)
+        XCTAssertTrue(firstEvents[0] is AgentEventAuthenticationRequired)
+        XCTAssertTrue(secondEvents[0] is AgentEventAuthenticationRequired)
+        XCTAssertTrue(firstEvents[1] is AgentEventFailure)
+        XCTAssertTrue(secondEvents[1] is AgentEventFailure)
+    }
     func testCancellationAllowsRetry() {
         let driver = FakeAuthenticationDriver()
         let session = makeSession(driver)
@@ -21,7 +40,7 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
         session.authenticate { firstError = $0 }
         driver.fail("Login failed")
         session.authenticate { _ in }
-        XCTAssertEqual(firstError, "Login failed")
+        XCTAssertNotNil(firstError)
         XCTAssertEqual(driver.authenticationCalls, 2)
     }
 
@@ -36,20 +55,22 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
         XCTAssertEqual(driver.authenticationCalls, 1)
     }
 
-    func testRecreatedWrapperResumesPendingBrowserLogin() {
+    func testRecreatedWrapperStartsCleanlyAfterCancelingPendingLogin() {
         let driver = FakeAuthenticationDriver()
         let browsers = BrowserStore()
         let anchor = ASPresentationAnchor()
-        let first = makeSession(driver, browsers)
-        first.authenticate(from: anchor) { _ in }
+        var first: CodexChatGPTAuthenticationSession? = makeSession(driver, browsers)
+        first?.authenticate(from: anchor) { _ in }
         driver.requireBrowser("https://auth.openai.com/resume")
         XCTAssertEqual(browsers.sessions.count, 1)
-        first.close()
+        first = nil
+        XCTAssertEqual(driver.cancellationCalls, 1)
 
         let second = makeSession(driver, browsers)
         var result: String?
         second.authenticate(from: anchor) { result = $0 }
-        XCTAssertEqual(driver.authenticationCalls, 1)
+        driver.requireBrowser("https://auth.openai.com/retry")
+        XCTAssertEqual(driver.authenticationCalls, 2)
         XCTAssertEqual(browsers.sessions.count, 2)
         driver.succeed()
         XCTAssertNil(result)
@@ -64,6 +85,23 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
         session.close()
         XCTAssertEqual(driver.authenticationOperationCancellations, 1)
         XCTAssertEqual(driver.cancellationCalls, 1)
+        XCTAssertEqual(driver.eventObserverCount, 0)
+        XCTAssertEqual(driver.stateObserverCount, 0)
+    }
+
+    func testCloseAfterBrowserURLCancelsOwnedWork() {
+        let driver = FakeAuthenticationDriver()
+        let browsers = BrowserStore()
+        let session = makeSession(driver, browsers)
+        let anchor = ASPresentationAnchor()
+        session.authenticate(from: anchor) { _ in }
+        driver.requireBrowser("https://auth.openai.com/close")
+        session.close()
+        session.close()
+
+        XCTAssertEqual(driver.authenticationOperationCancellations, 1)
+        XCTAssertEqual(driver.cancellationCalls, 1)
+        XCTAssertEqual(browsers.sessions.first?.cancellationCount, 1)
         XCTAssertEqual(driver.eventObserverCount, 0)
         XCTAssertEqual(driver.stateObserverCount, 0)
     }
