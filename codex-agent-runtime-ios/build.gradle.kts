@@ -265,22 +265,31 @@ val verifyCodexAgentSwiftAuthenticationTests =
         dependsOn(stageCodexAgentAppleDistribution)
         workingDir(appleDistributionDirectory.map { it.dir("CodexAgentPackage") })
         commandLine(
-            "/bin/sh",
+            "/bin/bash",
             "-c",
             """
-                set -eu
+                set -euo pipefail
                 destination_id=${'$'}(
                     xcrun simctl list devices available |
                         sed -nE 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/p' |
                         head -n 1
                 )
                 test -n "${'$'}destination_id"
-                exec xcodebuild \
+                test_log="${layout.buildDirectory.file("swift-authentication-tests.log").get().asFile.absolutePath}"
+                : > "${'$'}test_log"
+                xcodebuild \
                     -scheme CodexAgent-Package \
                     -destination "platform=iOS Simulator,id=${'$'}destination_id" \
                     -derivedDataPath "${layout.buildDirectory.dir("swift-tests-derived-data").get().asFile.absolutePath}" \
                     CODE_SIGNING_ALLOWED=NO \
-                    test
+                    test 2>&1 | tee "${'$'}test_log"
+                executed=${'$'}(
+                    sed -nE 's/.*Executed ([0-9]+) tests?.*/\1/p' "${'$'}test_log" |
+                        sort -nr |
+                        head -n 1
+                )
+                test "${'$'}{executed:-0}" -gt 0
+                echo "Swift authentication tests executed: ${'$'}executed"
             """.trimIndent(),
         )
     }

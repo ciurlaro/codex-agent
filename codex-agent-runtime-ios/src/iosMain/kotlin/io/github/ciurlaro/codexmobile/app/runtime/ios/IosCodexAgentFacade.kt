@@ -18,11 +18,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -52,6 +51,15 @@ class IosCodexAgentFacade(
         builtInToolDispatcher = runtimeFactory.workspaceTools,
     )
     private val events = IosCodexEventBroadcast(client.events, scope)
+    private val closeController = IosFacadeCloseController(
+        cancelHierarchy = {
+            closed = true
+            events.markClosed()
+            rootJob.cancel()
+        },
+        joinHierarchy = { rootJob.join() },
+        closeClient = client::close,
+    )
 
     @Volatile
     private var closed = false
@@ -184,12 +192,11 @@ class IosCodexAgentFacade(
     )
 
     override fun close() {
-        if (closed) return
-        closed = true
-        events.markClosed()
-        rootJob.cancel()
-        runBlocking { rootJob.join() }
-        client.close()
+        closeController.close()
+    }
+
+    internal suspend fun closeAndJoin() {
+        closeController.closeAndJoin()
     }
 
     private companion object {
@@ -202,11 +209,42 @@ class IosCodexAgentFacade(
     }
 }
 
+internal class IosFacadeCloseController(
+    private val cancelHierarchy: () -> Unit,
+    private val joinHierarchy: suspend () -> Unit,
+    private val closeClient: () -> Unit,
+) {
+    private val closeStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val closeCompleted = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    fun close() {
+        if (!closeStarted.complete(Unit)) return
+        cancelHierarchy()
+        CoroutineScope(Dispatchers.Default).launch {
+            try {
+                joinHierarchy()
+                closeClient()
+            } finally {
+                closeCompleted.complete(Unit)
+            }
+        }
+    }
+
+    suspend fun closeAndJoin() {
+        close()
+        closeCompleted.await()
+    }
+}
+
 internal class IosCodexEventBroadcast(
     upstream: Flow<AgentEvent>,
     private val scope: CoroutineScope,
 ) {
-    private val broadcast = MutableSharedFlow<AgentEvent>(extraBufferCapacity = EVENT_CAPACITY)
+    private val mailboxLock = kotlinx.coroutines.sync.Mutex()
+    private val mailboxes = mutableMapOf<Long, kotlinx.coroutines.channels.Channel<AgentEvent>>()
+    private val backlog = ArrayDeque<AgentEvent>(EVENT_CAPACITY)
+    private var firstObserverAttached = false
+    private var nextObserverId = 0L
     private val state = MutableStateFlow(
         IosCodexAuthenticationState(IosCodexAuthenticationStatus.SIGNED_OUT),
     )
@@ -229,13 +267,57 @@ internal class IosCodexEventBroadcast(
                 is AgentEvent.Failure -> if (event.sessionId == null) markSignedOut()
                 else -> Unit
             }
-            broadcast.emit(event)
+            mailboxLock.lock()
+            try {
+                if (!firstObserverAttached) {
+                    if (backlog.size == EVENT_CAPACITY) backlog.removeFirst()
+                    backlog.addLast(event)
+                } else {
+                    mailboxes.values.forEach { it.trySend(event) }
+                }
+            } finally {
+                mailboxLock.unlock()
+            }
         }
     }
 
-    fun observeEvents(observer: (AgentEvent) -> Unit) = IosCodexObservation(
-        scope.launch(start = CoroutineStart.UNDISPATCHED) { broadcast.collect(observer) },
-    )
+    fun observeEvents(observer: (AgentEvent) -> Unit): IosCodexObservation {
+        val mailbox = kotlinx.coroutines.channels.Channel<AgentEvent>(
+            capacity = EVENT_CAPACITY,
+            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+        )
+        val job = scope.launch {
+            val observerId: Long
+            val initialEvents: List<AgentEvent>
+            mailboxLock.lock()
+            try {
+                observerId = nextObserverId++
+                initialEvents = if (firstObserverAttached) emptyList() else backlog.toList()
+                if (!firstObserverAttached) {
+                    firstObserverAttached = true
+                    backlog.clear()
+                }
+                mailboxes[observerId] = mailbox
+            } finally {
+                mailboxLock.unlock()
+            }
+
+            try {
+                initialEvents.forEach(observer)
+                for (event in mailbox) observer(event)
+            } finally {
+                withContext(kotlinx.coroutines.NonCancellable) {
+                    mailboxLock.lock()
+                    try {
+                        mailboxes.remove(observerId)?.close()
+                    } finally {
+                        mailboxLock.unlock()
+                    }
+                }
+            }
+        }
+        return IosCodexObservation(job)
+    }
 
     fun observeAuthenticationState(observer: (IosCodexAuthenticationState) -> Unit) =
         IosCodexObservation(
@@ -252,6 +334,7 @@ internal class IosCodexEventBroadcast(
 
     fun markClosed() {
         state.value = IosCodexAuthenticationState(IosCodexAuthenticationStatus.CLOSED)
+        upstreamCollection.cancel()
     }
 
     private companion object {

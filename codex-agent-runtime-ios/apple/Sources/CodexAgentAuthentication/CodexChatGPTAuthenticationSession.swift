@@ -234,13 +234,17 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
     }
 
     public func close() {
+        cleanup()
+    }
+
+    isolated deinit {
+        cleanup()
+    }
+
+    private func cleanup() {
         guard !closed else { return }
+        let wasAuthenticating = driver.authenticationState.status == .authenticating
         closed = true
-        let state = driver.authenticationState
-        if state.status == .authenticating && state.pendingSignInUrl == nil {
-            authenticationOperation?.close()
-            _ = driver.cancelAuthentication { _ in }
-        }
         if let attempt = activeAttempt {
             finish(attempt: attempt, error: "ChatGPT authentication session was closed.")
         }
@@ -256,6 +260,20 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
         eventObservation = nil
         stateObservation?.close()
         stateObservation = nil
+        if wasAuthenticating {
+            var cleanupOperation: CodexCancellation?
+            var completed = false
+            let operation = driver.cancelAuthentication { _ in
+                completed = true
+                cleanupOperation?.close()
+                cleanupOperation = nil
+            }
+            if completed {
+                operation.close()
+            } else {
+                cleanupOperation = operation
+            }
+        }
     }
 
     public func presentationAnchor(
@@ -269,6 +287,21 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
 
     private func update(_ state: IosCodexAuthenticationState) {
         isAuthenticated = state.status == .authenticated
+        guard let attempt = activeAttempt else { return }
+        switch state.status {
+        case .authenticated:
+            finish(attempt: attempt, error: nil)
+        case .signedOut:
+            finish(attempt: attempt, error: "ChatGPT authentication was canceled or failed.")
+        case .closed:
+            finish(attempt: attempt, error: "Codex Agent facade is closed.")
+        case .authenticating:
+            if let signInUrl = state.pendingSignInUrl {
+                presentBrowser(signInUrl, attempt: attempt)
+            }
+        default:
+            break
+        }
     }
 
     private func receive(_ event: AgentEvent) {
