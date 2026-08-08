@@ -12,7 +12,15 @@ class NativeReleaseVerificationTasksTest {
         val directory = createTempDirectory("codex-ios-provenance").toFile()
         try {
             val project = ProjectBuilder.builder().withProjectDir(directory).build()
-            val inputs = listOf("adapter.patch", "lock.patch", "Cargo.toml", "lib.rs", "bridge.h")
+            val inputs = listOf(
+                "adapter.patch",
+                "lock.patch",
+                "sqlite-workspace.patch",
+                "sqlite-source.patch",
+                "Cargo.toml",
+                "lib.rs",
+                "bridge.h",
+            )
                 .associateWith { name -> directory.resolve(name).apply { writeText(name) } }
             directory.resolve("provenance.json").writeText(
                 """
@@ -22,8 +30,14 @@ class NativeReleaseVerificationTasksTest {
                   "cargoLockSha256": "${"3".repeat(64)}",
                   "preparedCargoLockSha256": "${"4".repeat(64)}",
                   "rustToolchain": "1.95.0",
+                  "libsqlite3SysVersion": "0.37.0",
+                  "libsqlite3SysArchiveSha256": "${"5".repeat(64)}",
+                  "sqliteSourceSha256": "${"6".repeat(64)}",
+                  "patchedSqliteSourceSha256": "${"7".repeat(64)}",
                   "adapterPatchSha256": "${inputs.getValue("adapter.patch").sha256()}",
                   "lockPatchSha256": "${inputs.getValue("lock.patch").sha256()}",
+                  "sqliteWorkspacePatchSha256": "${inputs.getValue("sqlite-workspace.patch").sha256()}",
+                  "sqliteSourcePatchSha256": "${inputs.getValue("sqlite-source.patch").sha256()}",
                   "bridgeManifestSha256": "${inputs.getValue("Cargo.toml").sha256()}",
                   "bridgeSourceSha256": "${inputs.getValue("lib.rs").sha256()}",
                   "cHeaderSha256": "${inputs.getValue("bridge.h").sha256()}"
@@ -34,6 +48,8 @@ class NativeReleaseVerificationTasksTest {
                 provenanceFile.set(project.layout.projectDirectory.file("provenance.json"))
                 adapterPatch.set(project.layout.projectDirectory.file("adapter.patch"))
                 lockPatch.set(project.layout.projectDirectory.file("lock.patch"))
+                sqliteWorkspacePatch.set(project.layout.projectDirectory.file("sqlite-workspace.patch"))
+                sqliteSourcePatch.set(project.layout.projectDirectory.file("sqlite-source.patch"))
                 bridgeManifest.set(project.layout.projectDirectory.file("Cargo.toml"))
                 bridgeSource.set(project.layout.projectDirectory.file("lib.rs"))
                 cHeader.set(project.layout.projectDirectory.file("bridge.h"))
@@ -42,6 +58,10 @@ class NativeReleaseVerificationTasksTest {
                 cargoLockSha256.set("3".repeat(64))
                 preparedCargoLockSha256.set("4".repeat(64))
                 rustToolchain.set("1.95.0")
+                sqliteVersion.set("0.37.0")
+                sqliteArchiveSha256.set("5".repeat(64))
+                sqliteSourceSha256.set("6".repeat(64))
+                patchedSqliteSourceSha256.set("7".repeat(64))
             }
 
             task.verify()

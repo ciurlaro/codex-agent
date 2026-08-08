@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "release": "0.2.0",
+  "reviewStatus": "external-product-approval-required",
+  "tracking": false,
+  "advertising": false,
+  "flows": [
+    {
+      "data": "user prompt",
+      "source": "host application",
+      "destination": "OpenAI over HTTPS",
+      "purpose": "serve the requested model turn"
+    },
+    {
+      "data": "user-selected local file content",
+      "source": "sandbox-local workspace tool result",
+      "destination": "OpenAI over HTTPS",
+      "purpose": "provide context explicitly requested by the turn"
+    },
+    {
+      "data": "model output",
+      "source": "OpenAI",
+      "destination": "host application and sandbox-local runtime state",
+      "purpose": "return and resume the requested model turn"
+    },
+    {
+      "data": "Codex account identifier",
+      "source": "ChatGPT authentication state",
+      "destination": "OpenAI over HTTPS",
+      "purpose": "authenticate and serve the request"
+    }
+  ],
+  "credentialHandling": {
+    "swiftExposure": false,
+    "storage": "protected backup-excluded Codex home inside the application sandbox",
+    "ciCredentials": false
+  },
+  "appleCollectedDataDeclarations": {
+    "decision": "not guessed",
+    "requiredReview": [
+      "User ID",
+      "Other User Content"
+    ]
+  }
+}

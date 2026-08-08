@@ -1,10 +1,22 @@
 import AuthenticationServices
 import CodexAgent
+import CodexAgentSQLiteTestSupport
 import XCTest
 @testable import CodexAgentAuthentication
 
 @MainActor
 final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
+    func testBundledSQLiteWalConcurrencyDurabilityAndRestart() {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-agent-sqlite-\(UUID().uuidString).db")
+            .path
+        var error = [CChar](repeating: 0, count: 1024)
+        let result = path.withCString { databasePath in
+            codex_agent_run_sqlite_tests(databasePath, &error, error.count)
+        }
+        XCTAssertEqual(result, 0, String(cString: error))
+    }
+
     func testMultipleObserversReceiveTheSameEvents() {
         let driver = FakeAuthenticationDriver()
         let first = makeSession(driver)
@@ -105,11 +117,51 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
         driver.requireBrowser("https://auth.openai.com/close")
         session.close()
 
-        XCTAssertEqual(driver.authenticationOperationCancellations, 1)
+        XCTAssertEqual(driver.authenticationOperationCancellations, 0)
+        XCTAssertEqual(driver.authenticationOperationDetachments, 1)
         XCTAssertEqual(driver.cancellationCalls, 1)
         XCTAssertEqual(browsers.sessions.first?.cancellationCount, 1)
         XCTAssertEqual(driver.eventObserverCount, 0)
         XCTAssertEqual(driver.stateObserverCount, 0)
+    }
+
+    func testObserverWrapperCleanupDoesNotCancelOwnersLogin() {
+        let driver = FakeAuthenticationDriver()
+        let owner = makeSession(driver)
+        let observer = makeSession(driver)
+        owner.authenticate { _ in }
+        observer.authenticate { _ in }
+
+        observer.close()
+        XCTAssertEqual(driver.cancellationCalls, 0)
+
+        owner.close()
+        XCTAssertEqual(driver.cancellationCalls, 1)
+    }
+
+    func testOwnedAttemptDoesNotTakeOwnershipOfANewerGeneration() {
+        let driver = FakeAuthenticationDriver()
+        let session = makeSession(driver)
+        session.authenticate { _ in }
+
+        driver.emitState(generation: 2, status: .authenticating)
+        session.close()
+
+        XCTAssertEqual(driver.cancellationCalls, 0)
+    }
+
+    func testSuccessfulAuthenticationDetachesWithoutLateCancellation() {
+        let driver = FakeAuthenticationDriver()
+        let session = makeSession(driver)
+        var result: String?
+        session.authenticate { result = $0 }
+        driver.succeed()
+        session.close()
+
+        XCTAssertNil(result)
+        XCTAssertEqual(driver.authenticationOperationDetachments, 1)
+        XCTAssertEqual(driver.authenticationOperationCancellations, 0)
+        XCTAssertEqual(driver.cancellationCalls, 0)
     }
 
     func testRepeatedCloseAndCancellationCallsAreIdempotent() {
@@ -209,6 +261,44 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
         XCTAssertTrue(session.isAuthenticated)
     }
 
+    func testStaleTerminalCompletionCannotOverwriteNewerGeneration() {
+        let driver = FakeAuthenticationDriver(autoCompleteAuxiliaryOperations: false)
+        let session = makeSession(driver)
+        var newestResult: String?
+        session.authenticate { _ in }
+        session.cancel()
+        session.authenticate { newestResult = $0 }
+
+        driver.emitState(
+            generation: 1,
+            status: .signedOut,
+            terminalReason: "stale failure"
+        )
+        XCTAssertTrue(session.isAuthenticating)
+        XCTAssertFalse(session.isAuthenticated)
+
+        driver.succeed()
+        XCTAssertNil(newestResult)
+        XCTAssertTrue(session.isAuthenticated)
+    }
+
+    func testDirectOperationHandleCancellationIsActiveAndIdempotent() {
+        var cancellations = 0
+        var detachments = 0
+        let handle = CodexOperationHandle(
+            generation: 17,
+            cancel: { cancellations += 1 },
+            detach: { detachments += 1 }
+        )
+        handle.cancel()
+        handle.cancel()
+        handle.detach()
+
+        XCTAssertEqual(handle.generation, 17)
+        XCTAssertEqual(cancellations, 1)
+        XCTAssertEqual(detachments, 0)
+    }
+
     private func makeSession(
         _ driver: FakeAuthenticationDriver,
         _ suppliedBrowsers: BrowserStore? = nil
@@ -230,14 +320,15 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
     private(set) var authenticationState: IosCodexAuthenticationState
     private var eventObservers: [UUID: (AgentEvent) -> Void] = [:]
     private var stateObservers: [UUID: (IosCodexAuthenticationState) -> Void] = [:]
-    private var generation = 0
-    private var pendingCancellations: [(Int, (String?) -> Void)] = []
-    private var pendingSignOuts: [(Int, (String?) -> Void)] = []
+    private var generation: Int64 = 0
+    private var pendingCancellations: [(Int64, (String?) -> Void)] = []
+    private var pendingSignOuts: [(Int64, (String?) -> Void)] = []
     private let autoCompleteAuxiliaryOperations: Bool
     private(set) var authenticationCalls = 0
     private(set) var cancellationCalls = 0
     private(set) var signOutCalls = 0
     private(set) var authenticationOperationCancellations = 0
+    private(set) var authenticationOperationDetachments = 0
 
     var eventObserverCount: Int { eventObservers.count }
     var stateObserverCount: Int { stateObservers.count }
@@ -246,7 +337,12 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
         status: IosCodexAuthenticationStatus = .signedOut,
         autoCompleteAuxiliaryOperations: Bool = true
     ) {
-        authenticationState = IosCodexAuthenticationState(status: status, pendingSignInUrl: nil)
+        authenticationState = IosCodexAuthenticationState(
+            status: status,
+            generation: 0,
+            pendingSignInUrl: nil,
+            terminalReason: nil
+        )
         self.autoCompleteAuxiliaryOperations = autoCompleteAuxiliaryOperations
     }
 
@@ -265,48 +361,66 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
         return CodexCancellation { [weak self] in self?.stateObservers[id] = nil }
     }
 
-    func authenticate(_ completion: @escaping (String?) -> Void) -> CodexCancellation {
+    func authenticate(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle {
         generation += 1
         authenticationCalls += 1
-        setState(.authenticating)
+        setState(.authenticating, generation: generation)
         completion(nil)
-        return CodexCancellation { [weak self] in
-            self?.authenticationOperationCancellations += 1
-        }
+        return CodexOperationHandle(
+            generation: generation,
+            cancel: { [weak self] in self?.authenticationOperationCancellations += 1 },
+            detach: { [weak self] in self?.authenticationOperationDetachments += 1 }
+        )
     }
 
-    func cancelAuthentication(_ completion: @escaping (String?) -> Void) -> CodexCancellation {
+    func cancelAuthentication(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle {
         generation += 1
         cancellationCalls += 1
         let pending = (generation, completion)
         if autoCompleteAuxiliaryOperations {
-            complete(pending, status: .signedOut)
+            complete(
+                pending,
+                status: .signedOut,
+                terminalReason: "ChatGPT authentication was canceled."
+            )
         } else {
             pendingCancellations.append(pending)
         }
-        return CodexCancellation {}
+        return auxiliaryOperation(generation: generation)
     }
 
-    func signOut(_ completion: @escaping (String?) -> Void) -> CodexCancellation {
+    func signOut(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle {
         generation += 1
         signOutCalls += 1
         let pending = (generation, completion)
         if autoCompleteAuxiliaryOperations {
-            complete(pending, status: .signedOut)
+            complete(
+                pending,
+                status: .signedOut,
+                terminalReason: "ChatGPT authentication was canceled by sign-out."
+            )
         } else {
             pendingSignOuts.append(pending)
         }
-        return CodexCancellation {}
+        return auxiliaryOperation(generation: generation)
     }
 
     func completeCancellation() {
         guard !pendingCancellations.isEmpty else { return }
-        complete(pendingCancellations.removeFirst(), status: .signedOut)
+        complete(
+            pendingCancellations.removeFirst(),
+            status: .signedOut,
+            terminalReason: "ChatGPT authentication was canceled."
+        )
     }
 
     func completeSignOut() {
         guard !pendingSignOuts.isEmpty else { return }
-        complete(pendingSignOuts.removeFirst(), status: .signedOut)
+        complete(
+            pendingSignOuts.removeFirst(),
+            status: .signedOut,
+            terminalReason: "ChatGPT authentication was canceled by sign-out."
+        )
     }
 
     func requireBrowser(_ url: String) {
@@ -314,14 +428,16 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
         eventObservers.values.forEach { $0(event) }
         authenticationState = IosCodexAuthenticationState(
             status: .authenticating,
-            pendingSignInUrl: url
+            generation: generation,
+            pendingSignInUrl: url,
+            terminalReason: nil
         )
         notifyState()
     }
 
     func succeed() {
         eventObservers.values.forEach { $0(AgentEventAuthenticated.shared) }
-        setState(.authenticated)
+        setState(.authenticated, generation: generation)
     }
 
     func fail(_ message: String, code: String = "authentication_failed") {
@@ -332,24 +448,53 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
             recoverable: true
         )
         eventObservers.values.forEach { $0(event) }
-        setState(.signedOut)
+        setState(.signedOut, generation: generation, terminalReason: message)
     }
 
     func closeFacade() {
-        setState(.closed)
+        generation += 1
+        setState(
+            .closed,
+            generation: generation,
+            terminalReason: "Codex Agent facade is closed."
+        )
+    }
+
+    func emitState(
+        generation: Int64,
+        status: IosCodexAuthenticationStatus,
+        terminalReason: String? = nil
+    ) {
+        setState(status, generation: generation, terminalReason: terminalReason)
     }
 
     private func complete(
-        _ pending: (Int, (String?) -> Void),
-        status: IosCodexAuthenticationStatus
+        _ pending: (Int64, (String?) -> Void),
+        status: IosCodexAuthenticationStatus,
+        terminalReason: String?
     ) {
-        if pending.0 == generation { setState(status) }
+        if pending.0 == generation {
+            setState(status, generation: pending.0, terminalReason: terminalReason)
+        }
         pending.1(nil)
     }
 
-    private func setState(_ status: IosCodexAuthenticationStatus) {
-        authenticationState = IosCodexAuthenticationState(status: status, pendingSignInUrl: nil)
+    private func setState(
+        _ status: IosCodexAuthenticationStatus,
+        generation: Int64,
+        terminalReason: String? = nil
+    ) {
+        authenticationState = IosCodexAuthenticationState(
+            status: status,
+            generation: generation,
+            pendingSignInUrl: nil,
+            terminalReason: terminalReason
+        )
         notifyState()
+    }
+
+    private func auxiliaryOperation(generation: Int64) -> CodexOperationHandle {
+        CodexOperationHandle(generation: generation, cancel: {}, detach: {})
     }
 
     private func notifyState() {

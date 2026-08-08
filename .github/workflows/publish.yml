@@ -1,71 +1,142 @@
-name: Publish Maven Central
+name: Publish verified release
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows: [Release candidate]
+    types: [completed]
 
 permissions:
-  contents: read
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-publication
+  cancel-in-progress: false
 
 jobs:
   publish:
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: macos-26
     timeout-minutes: 180
+    environment: release-publication
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PAYLOAD: ${{ runner.temp }}/verified-candidate
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Verify pinned Apple toolchain
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          pattern: codex-agent-*-candidate
+          path: ${{ runner.temp }}/verified-candidate
+          merge-multiple: true
+      - name: Verify successful candidate bytes and approval scope
+        id: candidate
         run: |
-          xcodebuild -version | tee "$RUNNER_TEMP/xcode-version.txt"
-          swift --version | tee "$RUNNER_TEMP/swift-version.txt"
-          grep -Fx 'Xcode 26.6' "$RUNNER_TEMP/xcode-version.txt"
-          grep -Fx 'Build version 17F113' "$RUNNER_TEMP/xcode-version.txt"
-          grep -F 'Apple Swift version 6.3.3' "$RUNNER_TEMP/swift-version.txt"
-      - name: Verify build logic
-        run: ./gradlew -p buildSrc test --stacktrace
-      - name: Verify release metadata
-        run: ./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag="$GITHUB_RELEASE_TAG" --stacktrace
+          tag=$(python3 release/scripts/verify_candidate_payload.py \
+            --payload "$PAYLOAD" \
+            --repository "$GITHUB_WORKSPACE" \
+            --expected-commit '${{ github.event.workflow_run.head_sha }}')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "asset=$(jq -r '.swiftAsset.path | split("/")[-1]' "$PAYLOAD/candidate-manifest.json")" >> "$GITHUB_OUTPUT"
+          echo "bundle=$(jq -r '.centralBundle.path | split("/")[-1]' "$PAYLOAD/candidate-manifest.json")" >> "$GITHUB_OUTPUT"
+      - name: Recheck publication approvals after protected-environment approval
+        run: ./gradlew verifyPublicationReadiness --no-daemon --stacktrace
+      - name: Create draft release with exact verified SwiftPM asset
         env:
-          GITHUB_RELEASE_TAG: ${{ github.event.release.tag_name }}
-      - name: Verify client and Android repository
-        run: ./gradlew verifyRepository --stacktrace
-      - name: Install pinned Rust toolchain
-        run: >-
-          rustup toolchain install 1.95.0 --profile minimal
-          --target aarch64-apple-ios,aarch64-apple-ios-sim
-      - name: Verify embedded iOS runtime and Apple package
-        run: ./gradlew verifyIosRuntime --stacktrace
-      - name: Require privacy and static-framework licence approvals
-        run: ./gradlew verifyPublicationReadiness --stacktrace
-      - name: Build a clean remote SwiftPM consumer
-        working-directory: codex-agent-runtime-ios/apple/RemoteConsumer
-        run: >-
-          xcodebuild -scheme CodexAgentRemoteConsumer
-          -configuration Release
-          -destination 'generic/platform=iOS Simulator'
-          -derivedDataPath "$RUNNER_TEMP/codex-agent-remote-derived-data"
-          -clonedSourcePackagesDirPath "$RUNNER_TEMP/codex-agent-remote-packages"
-          CODE_SIGNING_ALLOWED=NO clean build
-      - run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache --stacktrace
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
+          SWIFT_ASSET: ${{ steps.candidate.outputs.asset }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
+            if jq -e '.draft == true' "$RUNNER_TEMP/release.json" >/dev/null; then
+              test "$(jq -r '.target_commitish' "$RUNNER_TEMP/release.json")" = \
+                '${{ github.event.workflow_run.head_sha }}'
+            else
+              git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+              test "$(git rev-list -n 1 "$RELEASE_TAG")" = '${{ github.event.workflow_run.head_sha }}'
+            fi
+          else
+            ! git ls-remote --exit-code origin "refs/tags/$RELEASE_TAG"
+            gh release create "$RELEASE_TAG" "$PAYLOAD/$SWIFT_ASSET" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target '${{ github.event.workflow_run.head_sha }}' \
+              --title "codex-agent $RELEASE_TAG" \
+              --generate-notes \
+              --draft
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
+          fi
+          jq -e --arg asset "$SWIFT_ASSET" \
+            '.assets | length == 1 and .[0].name == $asset' "$RUNNER_TEMP/release.json"
+          rm -rf "$RUNNER_TEMP/release-download"
+          mkdir "$RUNNER_TEMP/release-download"
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$SWIFT_ASSET" \
+            --dir "$RUNNER_TEMP/release-download"
+          test "$(shasum -a 256 "$RUNNER_TEMP/release-download/$SWIFT_ASSET" | awk '{print $1}')" = \
+            "$(jq -r '.swiftAsset.sha256' "$PAYLOAD/candidate-manifest.json")"
+          if jq -e '.draft == true' "$RUNNER_TEMP/release.json" >/dev/null; then
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          else
+            jq -e '.draft == false' "$RUNNER_TEMP/release.json" >/dev/null
+          fi
+      - name: Verify public SwiftPM resolution from a clean consumer
+        run: |
+          mkdir -p "$RUNNER_TEMP/publication-resources"
+          python3 release/scripts/measure_release_phase.py \
+            --phase public-swiftpm-resolution \
+            --output "$RUNNER_TEMP/publication-resources/public-swiftpm-resolution.json" \
+            --workspace "$GITHUB_WORKSPACE" \
+            --track "$RUNNER_TEMP/codex-agent-public-derived-data" \
+            --track "$RUNNER_TEMP/codex-agent-public-packages" \
+            -- /bin/bash -euo pipefail -c '
+              cd codex-agent-runtime-ios/apple/RemoteConsumer
+              xcodebuild -scheme CodexAgentRemoteConsumer \
+                -configuration Release \
+                -destination "generic/platform=iOS Simulator" \
+                -derivedDataPath "$RUNNER_TEMP/codex-agent-public-derived-data" \
+                -clonedSourcePackagesDirPath "$RUNNER_TEMP/codex-agent-public-packages" \
+                -disablePackageRepositoryCache \
+                CODE_SIGNING_ALLOWED=NO clean build
+            '
+      - name: Publish the exact verified Central Portal bundle
         env:
-          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
-          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
-      - name: Upload publication verification evidence
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          CENTRAL_BUNDLE: ${{ steps.candidate.outputs.bundle }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
+        run: >-
+          python3 release/scripts/measure_release_phase.py
+          --phase central-publication
+          --output "$RUNNER_TEMP/publication-resources/central-publication.json"
+          --workspace "$GITHUB_WORKSPACE"
+          --track "$PAYLOAD"
+          -- /bin/bash release/scripts/publish_central_bundle.sh
+          "$PAYLOAD/$CENTRAL_BUNDLE"
+          "codex-agent-${RELEASE_TAG}-${{ github.event.workflow_run.head_sha }}"
+          "$RUNNER_TEMP/central-deployment-status.json"
+      - name: Upload publication evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-agent-ios-publication-verification
-          if-no-files-found: warn
+          name: codex-agent-${{ steps.candidate.outputs.tag }}-publication
           path: |
-            codex-agent-runtime-ios/build/reports/ios-release/**
-            codex-agent-runtime-ios/build/swift-authentication-tests.xcresult
-            codex-agent-runtime-ios/build/swift-authentication-tests-summary.json
+            ${{ runner.temp }}/central-deployment-status.json
+            ${{ runner.temp }}/publication-resources/**
+            ${{ runner.temp }}/verified-candidate/candidate-manifest.json
+            ${{ runner.temp }}/verified-candidate/release-artifact-report.json
+          if-no-files-found: warn
+          retention-days: 90

@@ -114,6 +114,36 @@ class IosCodexFacadeHardeningTest {
     }
 
     @Test
+    fun fullBacklogAlwaysPrecedesConcurrentLiveEvent() = runBlocking {
+        val fixture = BroadcastFixture()
+        try {
+            val backlog = List(64, ::authenticationEvent)
+            backlog.forEach { fixture.upstream.emit(it) }
+            val firstBacklogEventEntered = CompletableDeferred<Unit>()
+            val releaseBacklog = CompletableDeferred<Unit>()
+            val received = Channel<AgentEvent>(Channel.UNLIMITED)
+            val observation = fixture.broadcast.observeEvents { event ->
+                if (event == backlog.first()) {
+                    firstBacklogEventEntered.complete(Unit)
+                    runBlocking { releaseBacklog.await() }
+                }
+                received.trySend(event)
+            }
+
+            firstBacklogEventEntered.awaitTest()
+            val live = AgentEvent.Authenticated
+            fixture.upstream.emit(live)
+            releaseBacklog.complete(Unit)
+
+            backlog.forEach { assertEquals(it, received.receiveTest()) }
+            assertEquals(live, received.receiveTest())
+            observation.close()
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
     fun cancelingOneObserverDoesNotAffectAnother() = runBlocking {
         val fixture = BroadcastFixture()
         try {
@@ -140,8 +170,11 @@ class IosCodexFacadeHardeningTest {
         val states = Channel<IosCodexAuthenticationState>(Channel.UNLIMITED)
         val observation = fixture.broadcast.observeAuthenticationState { states.trySend(it) }
         assertEquals(IosCodexAuthenticationStatus.SIGNED_OUT, states.receiveTest().status)
-        fixture.broadcast.markClosed()
-        assertEquals(IosCodexAuthenticationStatus.CLOSED, states.receiveTest().status)
+        fixture.broadcast.markClosed(7, "facade closed")
+        val closed = states.receiveTest()
+        assertEquals(IosCodexAuthenticationStatus.CLOSED, closed.status)
+        assertEquals(7, closed.generation)
+        assertEquals("facade closed", closed.terminalReason)
         assertEquals(IosCodexAuthenticationStatus.CLOSED, fixture.broadcast.authenticationState.status)
         fixture.broadcast.joinObservers()
         observation.close()
@@ -231,6 +264,30 @@ class IosCodexFacadeHardeningTest {
         assertEquals(1, clientClosed)
     }
 
+    @Test
+    fun operationCloseDetachesWithoutCancellation() {
+        val job = SupervisorJob()
+        var cancellations = 0
+        val operation = IosCodexOperation(job, generation = 11) { cancellations++ }
+        operation.close()
+        assertFalse(job.isCancelled)
+        assertEquals(0, cancellations)
+        assertEquals(11L, operation.generation)
+        job.cancel()
+    }
+
+    @Test
+    fun directOperationCancellationCancelsJobAndMatchingHandlerOnce() {
+        val job = SupervisorJob()
+        var cancellations = 0
+        val operation = IosCodexOperation(job, generation = 12) { cancellations++ }
+        operation.cancel()
+        operation.cancel()
+        operation.close()
+        assertTrue(job.isCancelled)
+        assertEquals(1, cancellations)
+    }
+
     private fun controller(
         cancelHierarchy: () -> Unit = {},
         joinHierarchy: suspend () -> Unit = {},
@@ -265,7 +322,7 @@ private class BroadcastFixture : AutoCloseable {
     val broadcast = IosCodexEventBroadcast(upstream, scope)
 
     override fun close() {
-        broadcast.markClosed()
+        broadcast.markClosed(1, "test fixture closed")
         scope.cancel()
     }
 }
