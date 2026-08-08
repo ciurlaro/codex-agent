@@ -2,7 +2,6 @@ import java.io.File
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.vanniktech.maven.publish.SourcesJar
-import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.bundling.Zip
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
@@ -16,11 +15,15 @@ plugins {
 private val codexRevision = "25af12f7e61572b0bc18ddb1008be543b91519b0"
 private val codexArchiveSha256 = "42f627a7b32db41582c73a8eafd9ec4b35d6c3ff81bd3d4455cfd6224d79d329"
 private val codexCargoLockSha256 = "e0843448b5767ff36a2a3b15212feb480cd4eaafe8a0c0ca08547e3c7da03a05"
-private val resolvedCargoLockSha256 = "eaf0e5889447eaaaa0fd512219f8b1377ad5d848e3ef7644b7300e5f767c6351"
+private val resolvedCargoLockSha256 = "ee2dd92b50f58a15f6769afc77d9aded675eef50f7c0f68564fb0ba9a45c523b"
+private val libsqlite3SysVersion = "0.37.0"
+private val libsqlite3SysArchiveSha256 = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
+private val expectedSqliteSourceSha256 = "9512509b1bccb7461f79bea8aad6280ae4699e925fa4804381b71f59e7efb0c5"
+private val expectedPatchedSqliteSourceSha256 = "a0b50ae286c86c1890c2144641682820a42aa38021ad5fa9457d99c636f0d057"
 private val pinnedRustToolchain = "1.95.0"
 private val rustLibrary = "libcodex_agent_ios_bridge.a"
 private val minimumIosVersion = "15.0"
-private val expectedSwiftTestCount = 12
+private val expectedSwiftTestCount = 18
 private val expectedXcodeVersion = "26.6"
 private val expectedXcodeBuild = "17F113"
 private val expectedSwiftVersion = "6.3.3"
@@ -29,6 +32,8 @@ val provenanceRecordFile = layout.projectDirectory.file("native/provenance.json"
 val provenanceInputs = mapOf(
     "adapterPatchSha256" to layout.projectDirectory.file("native/patches/0001-uninitialized-in-process-host.patch"),
     "lockPatchSha256" to layout.projectDirectory.file("native/patches/0002-locked-ios-bridge.patch"),
+    "sqliteWorkspacePatchSha256" to layout.projectDirectory.file("native/patches/0003-pinned-ios-sqlite.patch"),
+    "sqliteSourcePatchSha256" to layout.projectDirectory.file("native/sqlite/0001-ios-filesystem-probes.patch"),
     "bridgeManifestSha256" to layout.projectDirectory.file("native/bridge/Cargo.toml"),
     "bridgeSourceSha256" to layout.projectDirectory.file("native/bridge/src/lib.rs"),
     "cHeaderSha256" to layout.projectDirectory.file("native/include/codex_agent_ios.h"),
@@ -40,6 +45,8 @@ val verifyCodexIosProvenance = tasks.register<VerifyCodexIosProvenanceTask>("ver
     provenanceFile.set(provenanceRecordFile)
     adapterPatch.set(provenanceInputs.getValue("adapterPatchSha256"))
     lockPatch.set(provenanceInputs.getValue("lockPatchSha256"))
+    sqliteWorkspacePatch.set(provenanceInputs.getValue("sqliteWorkspacePatchSha256"))
+    sqliteSourcePatch.set(provenanceInputs.getValue("sqliteSourcePatchSha256"))
     bridgeManifest.set(provenanceInputs.getValue("bridgeManifestSha256"))
     bridgeSource.set(provenanceInputs.getValue("bridgeSourceSha256"))
     cHeader.set(provenanceInputs.getValue("cHeaderSha256"))
@@ -48,6 +55,10 @@ val verifyCodexIosProvenance = tasks.register<VerifyCodexIosProvenanceTask>("ver
     cargoLockSha256.set(codexCargoLockSha256)
     preparedCargoLockSha256.set(resolvedCargoLockSha256)
     rustToolchain.set(pinnedRustToolchain)
+    sqliteVersion.set(libsqlite3SysVersion)
+    sqliteArchiveSha256.set(libsqlite3SysArchiveSha256)
+    sqliteSourceSha256.set(expectedSqliteSourceSha256)
+    patchedSqliteSourceSha256.set(expectedPatchedSqliteSourceSha256)
 }
 
 val prepareCodexIosSource = tasks.register<PrepareCodexIosSourceTask>("prepareCodexIosSource") {
@@ -56,9 +67,17 @@ val prepareCodexIosSource = tasks.register<PrepareCodexIosSourceTask>("prepareCo
     archiveSha256.set(codexArchiveSha256)
     cargoLockSha256.set(codexCargoLockSha256)
     preparedCargoLockSha256.set(resolvedCargoLockSha256)
+    sqliteVersion.set(libsqlite3SysVersion)
+    sqliteArchiveSha256.set(libsqlite3SysArchiveSha256)
+    sqliteSourceSha256.set(expectedSqliteSourceSha256)
+    patchedSqliteSourceSha256.set(expectedPatchedSqliteSourceSha256)
     providers.gradleProperty("codexAgent.codexIosArchiveFile").orNull?.let { path ->
         localArchive.set(rootProject.layout.projectDirectory.file(path))
     }
+    providers.gradleProperty("codexAgent.libsqlite3SysArchiveFile").orNull?.let { path ->
+        localSqliteArchive.set(rootProject.layout.projectDirectory.file(path))
+    }
+    sqlitePatch.set(layout.projectDirectory.file("native/sqlite/0001-ios-filesystem-probes.patch"))
     patches.from(layout.projectDirectory.dir("native/patches").asFileTree.matching { include("*.patch") })
     bridgeSource.set(layout.projectDirectory.dir("native/bridge"))
     outputDirectory.set(layout.buildDirectory.dir("codex-source"))
@@ -114,8 +133,8 @@ fun registerRustBuild(name: String, target: String) = tasks.register<PinnedCargo
         "-Cdebuginfo=0",
     )
     extraEnvironment.put(
-        "CFLAGS",
-        "-include ${layout.projectDirectory.file("native/bridge/sqlite-ios-privacy.h").asFile.absolutePath}",
+        "LIBSQLITE3_FLAGS",
+        "SQLITE_ENABLE_LOCKING_STYLE=0 -DCODEX_AGENT_IOS_SQLITE_NO_FILESYSTEM_PROBES",
     )
     outputs.file(layout.buildDirectory.file("rust/$target/release/$rustLibrary"))
 }
@@ -267,46 +286,72 @@ val privacyManifest =
     layout.projectDirectory.file("apple/Sources/CodexAgentAuthentication/PrivacyInfo.xcprivacy")
 
 val prepareCodexAgentReleaseXCFramework =
-    tasks.register<Sync>("prepareCodexAgentReleaseXCFramework") {
+    tasks.register<Exec>("prepareCodexAgentReleaseXCFramework") {
         dependsOn("assembleCodexAgentReleaseXCFramework")
-        into(releaseXCFrameworkDirectory)
-        from(assembledXCFrameworkDirectory)
-        listOf("ios-arm64", "ios-arm64-simulator").forEach { slice ->
-            from(privacyManifest) {
-                into("$slice/CodexAgent.framework")
-            }
+        inputs.dir(assembledXCFrameworkDirectory)
+        inputs.file(privacyManifest)
+        outputs.dir(releaseXCFrameworkDirectory)
+        doFirst {
+            project.delete(releaseXCFrameworkDirectory)
         }
+        commandLine(
+            "/bin/bash",
+            "-c",
+            """
+                set -euo pipefail
+                mkdir -p "${releaseXCFrameworkDirectory.get().asFile.parentFile.absolutePath}"
+                /bin/cp -cR \
+                    "${assembledXCFrameworkDirectory.get().asFile.absolutePath}" \
+                    "${releaseXCFrameworkDirectory.get().asFile.absolutePath}"
+                for slice in ios-arm64 ios-arm64-simulator; do
+                    /bin/cp \
+                        "${privacyManifest.asFile.absolutePath}" \
+                        "${releaseXCFrameworkDirectory.get().asFile.absolutePath}/${'$'}slice/CodexAgent.framework/PrivacyInfo.xcprivacy"
+                done
+            """.trimIndent(),
+        )
     }
 
-val stageCodexAgentAppleDistribution = tasks.register<Sync>("stageCodexAgentAppleDistribution") {
+val stageCodexAgentAppleDistribution = tasks.register<Exec>("stageCodexAgentAppleDistribution") {
     dependsOn(prepareCodexAgentReleaseXCFramework)
-    into(appleDistributionDirectory)
-    from(layout.projectDirectory.file("apple/Package.swift")) {
-        into("CodexAgentPackage")
+    inputs.files(
+        layout.projectDirectory.file("apple/Package.swift"),
+        layout.projectDirectory.dir("apple/Sources"),
+        layout.projectDirectory.dir("apple/Tests"),
+        releaseXCFrameworkDirectory,
+        rootProject.layout.projectDirectory.file("LICENSE"),
+        rootProject.layout.projectDirectory.file("THIRD_PARTY_NOTICES.md"),
+        rootProject.layout.projectDirectory.file(
+            "codex-agent-runtime-android/src/main/assets/openai-codex-LICENSE.txt",
+        ),
+        rootProject.layout.projectDirectory.file(
+            "codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt",
+        ),
+        layout.projectDirectory.dir("apple/TestApp"),
+    )
+    outputs.dir(appleDistributionDirectory)
+    doFirst {
+        project.delete(appleDistributionDirectory)
     }
-    from(layout.projectDirectory.dir("apple/Sources")) {
-        into("CodexAgentPackage/Sources")
-    }
-    from(layout.projectDirectory.dir("apple/Tests")) {
-        into("CodexAgentPackage/Tests")
-    }
-    from(releaseXCFrameworkDirectory) {
-        into("CodexAgentPackage/CodexAgent.xcframework")
-    }
-    from(rootProject.layout.projectDirectory.file("LICENSE")) {
-        into("CodexAgentPackage")
-        rename { "LICENSE.txt" }
-    }
-    from(rootProject.layout.projectDirectory.file("THIRD_PARTY_NOTICES.md")) {
-        into("CodexAgentPackage")
-    }
-    from(rootProject.layout.projectDirectory.dir("codex-agent-runtime-android/src/main/assets")) {
-        include("openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt")
-        into("CodexAgentPackage")
-    }
-    from(layout.projectDirectory.dir("apple/TestApp")) {
-        into("CodexAgentTestApp")
-    }
+    commandLine(
+        "/bin/bash",
+        "-c",
+        """
+            set -euo pipefail
+            distribution="${appleDistributionDirectory.get().asFile.absolutePath}"
+            package="${appleDistributionDirectory.get().dir("CodexAgentPackage").asFile.absolutePath}"
+            mkdir -p "${'$'}package"
+            /bin/cp "${layout.projectDirectory.file("apple/Package.swift").asFile.absolutePath}" "${'$'}package/"
+            /bin/cp -R "${layout.projectDirectory.dir("apple/Sources").asFile.absolutePath}" "${'$'}package/Sources"
+            /bin/cp -R "${layout.projectDirectory.dir("apple/Tests").asFile.absolutePath}" "${'$'}package/Tests"
+            /bin/cp -cR "${releaseXCFrameworkDirectory.get().asFile.absolutePath}" "${'$'}package/CodexAgent.xcframework"
+            /bin/cp "${rootProject.layout.projectDirectory.file("LICENSE").asFile.absolutePath}" "${'$'}package/LICENSE.txt"
+            /bin/cp "${rootProject.layout.projectDirectory.file("THIRD_PARTY_NOTICES.md").asFile.absolutePath}" "${'$'}package/"
+            /bin/cp "${rootProject.layout.projectDirectory.file("codex-agent-runtime-android/src/main/assets/openai-codex-LICENSE.txt").asFile.absolutePath}" "${'$'}package/"
+            /bin/cp "${rootProject.layout.projectDirectory.file("codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt").asFile.absolutePath}" "${'$'}package/"
+            /bin/cp -R "${layout.projectDirectory.dir("apple/TestApp").asFile.absolutePath}" "${'$'}distribution/CodexAgentTestApp"
+        """.trimIndent(),
+    )
 }
 
 val verifyCodexAgentSwiftPackage = tasks.register<Exec>("verifyCodexAgentSwiftPackage") {
@@ -375,6 +420,42 @@ val packageCodexAgentAppleDistribution = tasks.register<Zip>("packageCodexAgentA
     from(appleDistributionDirectory.map { it.dir("CodexAgentPackage") })
 }
 
+val verifyIosLicensePackaging = tasks.register<Exec>("verifyIosLicensePackaging") {
+    dependsOn(stageCodexAgentAppleDistribution)
+    val packageDirectory = appleDistributionDirectory.map { it.dir("CodexAgentPackage") }
+    val report = layout.buildDirectory.file("reports/ios-release/license-packaging.txt")
+    inputs.files(
+        rootProject.layout.projectDirectory.file("LICENSE"),
+        rootProject.layout.projectDirectory.file("THIRD_PARTY_NOTICES.md"),
+        rootProject.layout.projectDirectory.file(
+            "codex-agent-runtime-android/src/main/assets/openai-codex-LICENSE.txt",
+        ),
+        rootProject.layout.projectDirectory.file(
+            "codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt",
+        ),
+    )
+    outputs.file(report)
+    commandLine(
+        "/bin/bash",
+        "-c",
+        """
+            set -euo pipefail
+            package="${packageDirectory.get().asFile.absolutePath}"
+            cmp "${rootProject.layout.projectDirectory.file("LICENSE").asFile.absolutePath}" "${'$'}package/LICENSE.txt"
+            cmp "${rootProject.layout.projectDirectory.file("THIRD_PARTY_NOTICES.md").asFile.absolutePath}" "${'$'}package/THIRD_PARTY_NOTICES.md"
+            cmp "${rootProject.layout.projectDirectory.file("codex-agent-runtime-android/src/main/assets/openai-codex-LICENSE.txt").asFile.absolutePath}" "${'$'}package/openai-codex-LICENSE.txt"
+            cmp "${rootProject.layout.projectDirectory.file("codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt").asFile.absolutePath}" "${'$'}package/openai-codex-NOTICE.txt"
+            grep -F 'GNU General Public License v3.0 or later' "${layout.projectDirectory.file("build.gradle.kts").asFile.absolutePath}"
+            mkdir -p "${report.get().asFile.parentFile.absolutePath}"
+            shasum -a 256 \
+                "${'$'}package/LICENSE.txt" \
+                "${'$'}package/THIRD_PARTY_NOTICES.md" \
+                "${'$'}package/openai-codex-LICENSE.txt" \
+                "${'$'}package/openai-codex-NOTICE.txt" > "${report.get().asFile.absolutePath}"
+        """.trimIndent(),
+    )
+}
+
 val swiftPackageArchiveName = "CodexAgent-${project.version}.xcframework.zip"
 val packageCodexAgentSwiftPackageBinary = tasks.register<Zip>("packageCodexAgentSwiftPackageBinary") {
     dependsOn(prepareCodexAgentReleaseXCFramework)
@@ -440,30 +521,21 @@ val verifyIosDeploymentTargets = tasks.register<Exec>("verifyIosDeploymentTarget
 
 val verifyIosPrivacyManifest = tasks.register<Exec>("verifyIosPrivacyManifest") {
     dependsOn(prepareCodexAgentReleaseXCFramework, verifyCodexAgentSwiftPackage)
-    val reportDirectory = layout.buildDirectory.dir("reports/ios-release/privacy")
-    outputs.dir(reportDirectory)
+    val auditScript = rootProject.layout.projectDirectory.file("release/scripts/audit_ios_privacy.py")
+    val dataFlowInventory = rootProject.layout.projectDirectory.file("release/ios-data-flow-0.2.0.json")
+    val auditReport = layout.buildDirectory.file("reports/ios-release/privacy/audit.json")
+    inputs.files(auditScript, privacyManifest, dataFlowInventory)
+    inputs.dir(releaseXCFrameworkDirectory)
+    inputs.dir(layout.buildDirectory.dir("CodexAgentTestApp.xcarchive"))
+    outputs.file(auditReport)
     commandLine(
-        "/bin/bash",
-        "-c",
-        """
-            set -euo pipefail
-            report="${reportDirectory.get().asFile.absolutePath}"
-            mkdir -p "${'$'}report"
-            /usr/bin/plutil -lint "${privacyManifest.asFile.absolutePath}" | tee "${'$'}report/manifest-lint.txt"
-            framework_count=${'$'}(find "${releaseXCFrameworkDirectory.get().asFile.absolutePath}" -name PrivacyInfo.xcprivacy -type f | wc -l | tr -d ' ')
-            test "${'$'}framework_count" -eq 2
-            archive="${layout.buildDirectory.file("CodexAgentTestApp.xcarchive").get().asFile.absolutePath}"
-            app_count=${'$'}(find "${'$'}archive/Products/Applications" -name PrivacyInfo.xcprivacy -type f | wc -l | tr -d ' ')
-            test "${'$'}app_count" -ge 1
-            binary="${'$'}archive/Products/Applications/CodexAgentTestApp.app/CodexAgentTestApp"
-            nm -u "${'$'}binary" > "${'$'}report/undefined-symbols.txt"
-            ! grep -Eq '_(statfs|fstatfs)${'$'}' "${'$'}report/undefined-symbols.txt"
-            grep -Eq '_(stat|fstat|fstatat|lstat)${'$'}' "${'$'}report/undefined-symbols.txt"
-            grep -q 'NSPrivacyAccessedAPICategoryFileTimestamp' "${privacyManifest.asFile.absolutePath}"
-            grep -q 'C617.1' "${privacyManifest.asFile.absolutePath}"
-            printf '{"frameworkManifests":%s,"archivedAppManifests":%s,"diskSpaceSymbols":false,"fileTimestampReason":"C617.1"}\n' \
-                "${'$'}framework_count" "${'$'}app_count" > "${'$'}report/audit.json"
-        """.trimIndent(),
+        "python3",
+        auditScript.asFile.absolutePath,
+        "--xcframework", releaseXCFrameworkDirectory.get().asFile.absolutePath,
+        "--manifest", privacyManifest.asFile.absolutePath,
+        "--archive", layout.buildDirectory.file("CodexAgentTestApp.xcarchive").get().asFile.absolutePath,
+        "--data-flow-inventory", dataFlowInventory.asFile.absolutePath,
+        "--output", auditReport.get().asFile.absolutePath,
     )
 }
 
@@ -472,6 +544,9 @@ val verifyIosReleaseBudgets = tasks.register<Exec>("verifyIosReleaseBudgets") {
     val budgets = rootProject.layout.projectDirectory.file("release/ios-budgets-0.2.0.json")
     val report = layout.buildDirectory.file("reports/ios-release/artifact-metrics.json")
     inputs.file(budgets)
+    inputs.file(packageCodexAgentSwiftPackageBinary.flatMap { it.archiveFile })
+    inputs.dir(releaseXCFrameworkDirectory)
+    inputs.dir(layout.buildDirectory.dir("CodexAgentTestApp.xcarchive"))
     outputs.file(report)
     commandLine(
         "/bin/bash",
@@ -524,6 +599,7 @@ tasks.register("verifyIosRuntime") {
         verifyCodexAgentSwiftPackage,
         verifyCodexAgentSwiftAuthenticationTests,
         verifyIosDeploymentTargets,
+        verifyIosLicensePackaging,
         verifyIosPrivacyManifest,
         verifyIosReleaseBudgets,
     )

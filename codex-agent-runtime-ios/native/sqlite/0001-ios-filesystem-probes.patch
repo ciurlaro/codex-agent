@@ -1,0 +1,21 @@
+--- a/sqlite3/sqlite3.c
++++ b/sqlite3/sqlite3.c
+@@ -39344 +39344,2 @@
+-#if defined(__APPLE__) || SQLITE_ENABLE_LOCKING_STYLE
++#if SQLITE_ENABLE_LOCKING_STYLE \
++ || (defined(__APPLE__) && !defined(CODEX_AGENT_IOS_SQLITE_NO_FILESYSTEM_PROBES))
+@@ -39483 +39484,2 @@
+-#if SQLITE_ENABLE_LOCKING_STYLE || defined(__APPLE__)
++#if SQLITE_ENABLE_LOCKING_STYLE \
++ || (defined(__APPLE__) && !defined(CODEX_AGENT_IOS_SQLITE_NO_FILESYSTEM_PROBES))
+@@ -40753 +40755 @@
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(CODEX_AGENT_IOS_SQLITE_NO_FILESYSTEM_PROBES)
+@@ -45762 +45764,2 @@
+-#if defined(__APPLE__) || SQLITE_ENABLE_LOCKING_STYLE
++#if SQLITE_ENABLE_LOCKING_STYLE \
++ || (defined(__APPLE__) && !defined(CODEX_AGENT_IOS_SQLITE_NO_FILESYSTEM_PROBES))
+@@ -45959 +45962,2 @@
+-#if defined(__APPLE__) || SQLITE_ENABLE_LOCKING_STYLE
++#if SQLITE_ENABLE_LOCKING_STYLE \
++ || (defined(__APPLE__) && !defined(CODEX_AGENT_IOS_SQLITE_NO_FILESYSTEM_PROBES))

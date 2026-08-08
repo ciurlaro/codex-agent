@@ -39,6 +39,12 @@ class PrepareCodexIosSourceTaskTest {
 
             assertEquals("after\n", project.resolve("build/codex-source/marker.txt").readText())
             assertTrue(project.resolve("build/codex-source/codex-rs/ios-bridge/Cargo.toml").isFile)
+            assertEquals(
+                "sqlite-patched\n",
+                project.resolve(
+                    "build/codex-source/codex-rs/third-party/libsqlite3-sys/sqlite3/sqlite3.c",
+                ).readText(),
+            )
         } finally {
             project.deleteRecursively()
         }
@@ -137,6 +143,22 @@ class PrepareCodexIosSourceTaskTest {
         cargoLockHash: String,
         preparedCargoLockHash: String = cargoLockHash,
     ): PrepareCodexIosSourceTask {
+        val sqliteSource = "sqlite-original\n".encodeToByteArray()
+        val sqliteArchive = projectDirectory.resolve("libsqlite3-sys.crate")
+        writeTarGz(
+            sqliteArchive,
+            mapOf("libsqlite3-sys-0.37.0/sqlite3/sqlite3.c" to sqliteSource),
+        )
+        projectDirectory.resolve("sqlite.patch").writeText(
+            """
+            diff --git a/sqlite3/sqlite3.c b/sqlite3/sqlite3.c
+            --- a/sqlite3/sqlite3.c
+            +++ b/sqlite3/sqlite3.c
+            @@ -1 +1 @@
+            -sqlite-original
+            +sqlite-patched
+            """.trimIndent() + "\n",
+        )
         val project = ProjectBuilder.builder().withProjectDir(projectDirectory).build()
         return project.tasks.register("prepareCodexIosSource", PrepareCodexIosSourceTask::class.java).get().apply {
             this.revision.set(revision)
@@ -144,6 +166,12 @@ class PrepareCodexIosSourceTaskTest {
             cargoLockSha256.set(cargoLockHash)
             preparedCargoLockSha256.set(preparedCargoLockHash)
             localArchive.set(project.layout.projectDirectory.file("codex.tar.gz"))
+            sqliteVersion.set("0.37.0")
+            sqliteArchiveSha256.set(sqliteArchive.sha256())
+            sqliteSourceSha256.set(sqliteSource.sha256())
+            patchedSqliteSourceSha256.set("sqlite-patched\n".encodeToByteArray().sha256())
+            localSqliteArchive.set(project.layout.projectDirectory.file("libsqlite3-sys.crate"))
+            sqlitePatch.set(project.layout.projectDirectory.file("sqlite.patch"))
             patches.from(project.layout.projectDirectory.file("change.patch"))
             bridgeSource.set(project.layout.projectDirectory.dir("bridge"))
             outputDirectory.set(project.layout.buildDirectory.dir("codex-source"))

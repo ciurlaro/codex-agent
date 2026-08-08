@@ -44,10 +44,31 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
     @get:Input
     abstract val preparedCargoLockSha256: Property<String>
 
+    @get:Input
+    abstract val sqliteVersion: Property<String>
+
+    @get:Input
+    abstract val sqliteArchiveSha256: Property<String>
+
+    @get:Input
+    abstract val sqliteSourceSha256: Property<String>
+
+    @get:Input
+    abstract val patchedSqliteSourceSha256: Property<String>
+
     @get:InputFile
     @get:Optional
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val localArchive: RegularFileProperty
+
+    @get:InputFile
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val localSqliteArchive: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sqlitePatch: RegularFileProperty
 
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -67,6 +88,13 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
         requireHash(archiveSha256.get())
         requireHash(cargoLockSha256.get())
         requireHash(preparedCargoLockSha256.get())
+        val expectedSqliteVersion = sqliteVersion.get()
+        require(expectedSqliteVersion.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+"))) {
+            "invalid libsqlite3-sys version"
+        }
+        requireHash(sqliteArchiveSha256.get())
+        requireHash(sqliteSourceSha256.get())
+        requireHash(patchedSqliteSourceSha256.get())
         val temporary = Files.createTempDirectory(temporaryDir.toPath(), "source-")
         try {
             val archive = temporary.resolve("codex.tar.gz")
@@ -100,6 +128,55 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
             check(cargoLock.isFile && cargoLock.sha256() == cargoLockSha256.get()) {
                 "Codex iOS Cargo.lock SHA-256 mismatch"
             }
+
+            val sqliteArchive = temporary.resolve("libsqlite3-sys.crate")
+            if (localSqliteArchive.isPresent) {
+                Files.copy(
+                    localSqliteArchive.get().asFile.toPath(),
+                    sqliteArchive,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } else {
+                download(
+                    URI(
+                        "https://static.crates.io/crates/libsqlite3-sys/" +
+                            "libsqlite3-sys-$expectedSqliteVersion.crate",
+                    ),
+                    sqliteArchive,
+                )
+            }
+            check(sqliteArchive.toFile().sha256() == sqliteArchiveSha256.get()) {
+                "libsqlite3-sys archive SHA-256 mismatch"
+            }
+            val sqliteExtracted = temporary.resolve("sqlite-extracted").toFile().also { it.mkdirs() }
+            files.copy {
+                from(archives.tarTree(archives.gzip(sqliteArchive.toFile())))
+                into(sqliteExtracted)
+            }
+            val sqliteRoots = sqliteExtracted.listFiles().orEmpty().filter(java.io.File::isDirectory)
+            check(
+                sqliteRoots.size == 1 &&
+                    sqliteRoots.single().name == "libsqlite3-sys-$expectedSqliteVersion"
+            ) {
+                "libsqlite3-sys archive must contain the exact version root"
+            }
+            val sqliteRoot = sqliteRoots.single()
+            val sqliteSource = sqliteRoot.resolve("sqlite3/sqlite3.c")
+            check(sqliteSource.isFile && sqliteSource.sha256() == sqliteSourceSha256.get()) {
+                "libsqlite3-sys sqlite3.c SHA-256 mismatch"
+            }
+            exec.exec {
+                workingDir(sqliteRoot)
+                commandLine("patch", "-p1", "-N", "-i", sqlitePatch.get().asFile.absolutePath)
+            }
+            check(sqliteSource.sha256() == patchedSqliteSourceSha256.get()) {
+                "Patched libsqlite3-sys sqlite3.c SHA-256 mismatch"
+            }
+            files.copy {
+                from(sqliteRoot)
+                into(staged.resolve("codex-rs/third-party/libsqlite3-sys"))
+            }
+
             patches.files.sortedBy(java.io.File::getName).forEach { patch ->
                 exec.exec {
                     workingDir(staged)

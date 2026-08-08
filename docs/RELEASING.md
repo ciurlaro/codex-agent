@@ -4,7 +4,14 @@ No API key or stored ChatGPT credential is part of this release process.
 Automated verification is credential-free; the real-model acceptance test uses
 interactive ChatGPT browser login in the Swift test app.
 
-## Automated candidate verification
+## Phase 1: automated candidate verification
+
+Run the **Release candidate** workflow manually from a protected ref with an
+exact `vX.Y.Z` input, or push a protected `candidate/vX.Y.Z` tag. The workflow
+rejects an unprotected source ref. Configure the `release-candidate` environment
+for the signing key required to construct the exact Central bundle. The
+workflow has read-only repository permission and never creates a tag or GitHub
+release and never uploads to Maven Central.
 
 1. On Apple Silicon macOS with full Xcode, Rust `1.95.0`, and both Apple Rust
    targets installed, run:
@@ -43,6 +50,35 @@ interactive ChatGPT browser login in the Swift test app.
    `:codex-agent-runtime-ios:verifyCodexAgentRemoteSwiftPackage`. Rebuilding the
    ZIP from unchanged inputs must produce the same checksum.
 
+   CI preserves the ZIP and checksum before running the committed-checksum
+   gate. If that gate fails after an intentional binary change, use the failed
+   candidate artifact only to review and commit the new root `Package.swift`
+   checksum, then rerun the complete candidate; a failed candidate is never a
+   publication input.
+
+The candidate workflow performs those gates in measured, sequential phases. It
+records actual filesystem peak/minimum-free space, system memory availability,
+and command-process-tree resident memory for Rust, XCFramework assembly,
+Swift packaging, and Maven staging. APFS clone-on-write staging avoids physical
+copies of the multi-gigabyte static framework; safe Apple packaging
+intermediates are removed before Maven staging, and staged Maven files are
+consumed as they are streamed into the deterministic Portal ZIP.
+
+It creates, without publishing, the exact SwiftPM ZIP and the exact signed
+Central Portal bundle. `release-artifact-report.json` contains every Swift ZIP
+member, every static archive member grouped by dependency, every generated
+Maven artifact, every Central ZIP entry, hashes, sizes, and the phase resource
+reports. `build_central_bundle.py` enforces a conservative
+`1,000,000,000`-byte Portal upload ceiling and fails on unsigned artifacts. A
+candidate over that limit is not publication-ready: do not drop the iOS
+artifact implicitly. Either reduce it without changing runtime behavior, or
+make SwiftPM the explicit reviewed iOS distribution channel before retrying.
+
+The exact payload is retained as a GitHub Actions artifact. The final candidate
+step runs `verifyPublicationReadiness`; while privacy or static-framework GPL
+approval is false, the payload remains available as evidence but the workflow
+conclusion is failure, so publication cannot start.
+
 ## Manual ChatGPT browser-login acceptance
 
 This is the required real-model release test; it is deliberately not automated
@@ -80,31 +116,32 @@ with a reusable credential.
    compilation/linking and the Simulator browser-login acceptance must still
    pass.
 
-## Publishing after acceptance
+## Phase 2: protected publication
 
-1. Set one immutable version in the root build; never reuse a released version. The
-   publication workflow passes the actual GitHub release tag to
-   `verifyReleaseMetadata`, which must match the Gradle version, SwiftPM URL and
-   filename, and RemoteConsumer exact dependency before publication.
-2. Commit the matching root `Package.swift` URL/checksum and all candidate
-   sources. Rebuild the binary ZIP from that exact commit and confirm its
-   checksum is unchanged.
-3. Create a draft GitHub release targeting that commit and upload exactly
-   `CodexAgent-0.2.0.xcframework.zip`. Do not publish the draft until all prior
-   checks and manual acceptance pass.
-4. Configure only the Maven Central secrets
-   `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`,
-   `SIGNING_IN_MEMORY_KEY`, and `SIGNING_IN_MEMORY_KEY_PASSWORD`.
-5. Publish the matching release/tag. The release workflow rebuilds the
-   credential-free gates, resolves the public URL from a clean remote SwiftPM
-   consumer, and only then publishes to Maven Central.
-6. Resolve all three Maven coordinates and the public Swift package from clean
+1. Set one immutable version and commit the matching root `Package.swift`
+   checksum before starting the candidate. Never reuse a released version.
+2. Require reviewers on the `release-publication` GitHub environment. Store
+   only `MAVEN_CENTRAL_USERNAME` and `MAVEN_CENTRAL_PASSWORD` there; candidate
+   signing happens in phase 1. No ChatGPT credential or `OPENAI_API_KEY` is
+   allowed in either environment.
+3. A successful **Release candidate** `workflow_run` is the only publication
+   trigger. The publication job downloads its payload, re-hashes the exact
+   Swift and Central files, binds them to the successful commit and current
+   approval scope, and reruns `verifyPublicationReadiness` after environment
+   approval.
+4. The job creates a draft release and tag itself, uploads the verified SwiftPM
+   ZIP, downloads it again to compare SHA-256, and only then makes the release
+   public. A manually published release is never a trigger.
+5. It resolves the now-public exact Swift package from a clean remote consumer.
+   Only after that succeeds does it stream the already-verified Central bundle
+   to the Portal and wait for `PUBLISHED`; Maven artifacts are not rebuilt.
+6. Resolve all Maven coordinates and the public Swift package from clean
    consumers before updating any consumer repository.
 
-Publication also requires `verifyPublicationReadiness`. It remains blocked
-until the exact Apple collected-data declarations and static-framework GPL
-distribution decision are approved in `release/0.2.0-approvals.json`. Inspect
-the archived sample in Xcode Organizer and retain its aggregate privacy report.
+Publication remains blocked until the exact hash-bound Apple collected-data
+review and static-framework GPL distribution decision are approved in
+`release/0.2.0-approvals.json`. Inspect the archived sample in Xcode Organizer
+and retain its aggregate privacy report; it remains manual evidence.
 
 Before release, manually cover interactive ChatGPT login, background/foreground
 transitions, forced termination/relaunch, a signed physical iPhone, public

@@ -19,9 +19,19 @@ let package = Package(
             dependencies: ["CodexAgent"],
             resources: [.copy("PrivacyInfo.xcprivacy")]
         ),
+        .target(
+            name: "CodexAgentSQLiteTestSupport",
+            dependencies: ["CodexAgent"],
+            path: "Tests/SQLiteTestSupport",
+            publicHeadersPath: "include"
+        ),
         .testTarget(
             name: "CodexAgentAuthenticationTests",
-            dependencies: ["CodexAgent", "CodexAgentAuthentication"]
+            dependencies: [
+                "CodexAgent",
+                "CodexAgentAuthentication",
+                "CodexAgentSQLiteTestSupport",
+            ]
         ),
     ]
 )

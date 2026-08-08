@@ -17,15 +17,46 @@ final class CodexCancellation {
 }
 
 @MainActor
+final class CodexOperationHandle {
+    let generation: Int64
+    private var cancelHandler: (() -> Void)?
+    private var detachHandler: (() -> Void)?
+
+    init(
+        generation: Int64,
+        cancel: @escaping () -> Void,
+        detach: @escaping () -> Void
+    ) {
+        self.generation = generation
+        cancelHandler = cancel
+        detachHandler = detach
+    }
+
+    func cancel() {
+        guard let cancelHandler else { return }
+        self.cancelHandler = nil
+        detachHandler = nil
+        cancelHandler()
+    }
+
+    func detach() {
+        guard let detachHandler else { return }
+        cancelHandler = nil
+        self.detachHandler = nil
+        detachHandler()
+    }
+}
+
+@MainActor
 protocol CodexAuthenticationDriving: AnyObject {
     var authenticationState: IosCodexAuthenticationState { get }
     func observeEvents(_ observer: @escaping (AgentEvent) -> Void) -> CodexCancellation
     func observeAuthenticationState(
         _ observer: @escaping (IosCodexAuthenticationState) -> Void
     ) -> CodexCancellation
-    func authenticate(_ completion: @escaping (String?) -> Void) -> CodexCancellation
-    func cancelAuthentication(_ completion: @escaping (String?) -> Void) -> CodexCancellation
-    func signOut(_ completion: @escaping (String?) -> Void) -> CodexCancellation
+    func authenticate(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle
+    func cancelAuthentication(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle
+    func signOut(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle
 }
 
 @MainActor
@@ -56,25 +87,37 @@ private final class IosFacadeAuthenticationDriver: CodexAuthenticationDriving {
         return CodexCancellation { observation.close() }
     }
 
-    func authenticate(_ completion: @escaping (String?) -> Void) -> CodexCancellation {
+    func authenticate(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle {
         let operation = facade.authenticateWithChatGpt { error in
             DispatchQueue.main.async { completion(error) }
         }
-        return CodexCancellation { operation.close() }
+        return CodexOperationHandle(
+            generation: operation.generation,
+            cancel: { operation.cancel() },
+            detach: { operation.close() }
+        )
     }
 
-    func cancelAuthentication(_ completion: @escaping (String?) -> Void) -> CodexCancellation {
+    func cancelAuthentication(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle {
         let operation = facade.cancelAuthentication { error in
             DispatchQueue.main.async { completion(error) }
         }
-        return CodexCancellation { operation.close() }
+        return CodexOperationHandle(
+            generation: operation.generation,
+            cancel: { operation.cancel() },
+            detach: { operation.close() }
+        )
     }
 
-    func signOut(_ completion: @escaping (String?) -> Void) -> CodexCancellation {
+    func signOut(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle {
         let operation = facade.signOut { error in
             DispatchQueue.main.async { completion(error) }
         }
-        return CodexCancellation { operation.close() }
+        return CodexOperationHandle(
+            generation: operation.generation,
+            cancel: { operation.cancel() },
+            detach: { operation.close() }
+        )
     }
 }
 
@@ -102,15 +145,25 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
     private let browserFactory: CodexBrowserSessionFactory
     private var eventObservation: CodexCancellation?
     private var stateObservation: CodexCancellation?
-    private var authenticationOperation: CodexCancellation?
-    private var cancellationOperation: CodexCancellation?
+    private var authenticationOperation: CodexOperationHandle?
+    private var cancellationOperation: CodexOperationHandle?
     private var cancellationToken: UUID?
-    private var signOutOperation: CodexCancellation?
+    private var signOutOperation: CodexOperationHandle?
     private var signOutToken: UUID?
     private var browserSession: CodexBrowserSession?
     private weak var anchor: ASPresentationAnchor?
-    private var activeAttempt: UUID?
+    private struct Attempt {
+        let id: UUID
+        var generation: Int64?
+        var ownsLogin: Bool
+    }
+
+    private var activeAttempt: Attempt?
     private var completion: ((String?) -> Void)?
+    private var lastStateGeneration: Int64 = 0
+    private var lastStateStatus: IosCodexAuthenticationStatus?
+    private var lastPendingSignInUrl: String?
+    private var lastTerminalReason: String?
     private var closed = false
 
     public convenience init(facade: IosCodexAgentFacade) {
@@ -133,6 +186,7 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
         self.driver = driver
         self.browserFactory = browserFactory
         super.init()
+        lastStateGeneration = driver.authenticationState.generation
         update(driver.authenticationState)
         eventObservation = driver.observeEvents { [weak self] event in
             self?.receive(event)
@@ -167,26 +221,44 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             return
         }
 
-        let attempt = UUID()
-        activeAttempt = attempt
+        let attemptID = UUID()
+        let ownsLogin = state.status != .authenticating || supersedesAuxiliaryOperation
+        activeAttempt = Attempt(
+            id: attemptID,
+            generation: ownsLogin ? nil : state.generation,
+            ownsLogin: ownsLogin
+        )
         anchor = presentationAnchor
         self.completion = completion
         isAuthenticating = true
 
         if state.status == .authenticating && !supersedesAuxiliaryOperation {
             if let signInUrl = state.pendingSignInUrl {
-                presentBrowser(signInUrl, attempt: attempt)
+                presentBrowser(signInUrl, attempt: attemptID)
             }
             return
         }
 
-        authenticationOperation = driver.authenticate { [weak self] error in
-            guard let self, self.activeAttempt == attempt else { return }
+        var completedSynchronously = false
+        let operation = driver.authenticate { [weak self] error in
+            completedSynchronously = true
+            guard let self, self.activeAttempt?.id == attemptID else { return }
             if let error {
-                self.finish(attempt: attempt, error: error)
-            } else if self.driver.authenticationState.status == .authenticated {
-                self.finish(attempt: attempt, error: nil)
+                self.finish(attempt: attemptID, error: error)
+            } else {
+                self.authenticationOperation?.detach()
+                self.authenticationOperation = nil
             }
+        }
+        guard activeAttempt?.id == attemptID else {
+            operation.detach()
+            return
+        }
+        activeAttempt?.generation = operation.generation
+        if completedSynchronously {
+            operation.detach()
+        } else {
+            authenticationOperation = operation
         }
     }
 
@@ -205,7 +277,11 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             return
         }
         if let attempt = activeAttempt {
-            finish(attempt: attempt, error: "ChatGPT authentication was canceled.")
+            finish(
+                attempt: attempt.id,
+                error: "ChatGPT authentication was canceled.",
+                cancelOperation: true
+            )
         }
         let token = UUID()
         cancellationToken = token
@@ -214,12 +290,13 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             completed = true
             guard self?.cancellationToken == token else { return }
             self?.cancellationToken = nil
+            self?.cancellationOperation?.detach()
             self?.cancellationOperation = nil
             completion?(error)
         }
         if completed {
             cancellationToken = nil
-            operation.close()
+            operation.detach()
         } else {
             cancellationOperation = operation
         }
@@ -231,12 +308,16 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             return
         }
         if let attempt = activeAttempt {
-            finish(attempt: attempt, error: "ChatGPT authentication was canceled by sign-out.")
+            finish(
+                attempt: attempt.id,
+                error: "ChatGPT authentication was canceled by sign-out.",
+                cancelOperation: true
+            )
         }
-        cancellationOperation?.close()
+        cancellationOperation?.cancel()
         cancellationOperation = nil
         cancellationToken = nil
-        signOutOperation?.close()
+        signOutOperation?.cancel()
         let token = UUID()
         signOutToken = token
         var completed = false
@@ -244,12 +325,13 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             completed = true
             guard self?.signOutToken == token else { return }
             self?.signOutToken = nil
+            self?.signOutOperation?.detach()
             self?.signOutOperation = nil
             completion(error)
         }
         if completed {
             signOutToken = nil
-            operation.close()
+            operation.detach()
         } else {
             signOutOperation = operation
         }
@@ -261,22 +343,28 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
 
     deinit {
         let driver = driver
-        let shouldCancelLogin = activeAttempt != nil
+        let shouldCancelLogin = activeAttempt?.ownsLogin == true
         let browserSession = browserSession
-        let operations = [
-            authenticationOperation,
-            cancellationOperation,
-            signOutOperation,
-            eventObservation,
-            stateObservation,
-        ]
+        let authenticationOperation = authenticationOperation
+        let cancellationOperation = cancellationOperation
+        let signOutOperation = signOutOperation
+        let eventObservation = eventObservation
+        let stateObservation = stateObservation
         DispatchQueue.main.async {
             browserSession?.cancel()
-            operations.forEach { $0?.close() }
+            if shouldCancelLogin {
+                authenticationOperation?.cancel()
+            } else {
+                authenticationOperation?.detach()
+            }
+            cancellationOperation?.cancel()
+            signOutOperation?.cancel()
+            eventObservation?.close()
+            stateObservation?.close()
             guard shouldCancelLogin else { return }
-            var cleanupOperation: CodexCancellation?
+            var cleanupOperation: CodexOperationHandle?
             cleanupOperation = driver.cancelAuthentication { _ in
-                cleanupOperation?.close()
+                cleanupOperation?.detach()
                 cleanupOperation = nil
             }
         }
@@ -284,35 +372,39 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
 
     private func cleanup() {
         guard !closed else { return }
-        let wasAuthenticating = driver.authenticationState.status == .authenticating
+        let ownsLogin = activeAttempt?.ownsLogin == true
         closed = true
         if let attempt = activeAttempt {
-            finish(attempt: attempt, error: "ChatGPT authentication session was closed.")
+            finish(
+                attempt: attempt.id,
+                error: "ChatGPT authentication session was closed.",
+                cancelOperation: ownsLogin
+            )
         }
         browserSession?.cancel()
         browserSession = nil
-        authenticationOperation?.close()
+        authenticationOperation?.detach()
         authenticationOperation = nil
-        cancellationOperation?.close()
+        cancellationOperation?.cancel()
         cancellationOperation = nil
         cancellationToken = nil
-        signOutOperation?.close()
+        signOutOperation?.cancel()
         signOutOperation = nil
         signOutToken = nil
         eventObservation?.close()
         eventObservation = nil
         stateObservation?.close()
         stateObservation = nil
-        if wasAuthenticating {
-            var cleanupOperation: CodexCancellation?
+        if ownsLogin {
+            var cleanupOperation: CodexOperationHandle?
             var completed = false
             let operation = driver.cancelAuthentication { _ in
                 completed = true
-                cleanupOperation?.close()
+                cleanupOperation?.detach()
                 cleanupOperation = nil
             }
             if completed {
-                operation.close()
+                operation.detach()
             } else {
                 cleanupOperation = operation
             }
@@ -329,40 +421,68 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
     }
 
     private func update(_ state: IosCodexAuthenticationState) {
+        guard record(state) else { return }
+        lastStateGeneration = state.generation
         isAuthenticated = state.status == .authenticated
-        guard let attempt = activeAttempt else { return }
+        guard var attempt = activeAttempt else { return }
+        if attempt.generation == nil {
+            attempt.generation = state.generation
+            activeAttempt = attempt
+        }
+        guard let attemptGeneration = attempt.generation else { return }
         switch state.status {
         case .authenticated:
-            finish(attempt: attempt, error: nil)
+            guard state.generation >= attemptGeneration else { return }
+            finish(attempt: attempt.id, error: nil)
         case .signedOut:
+            guard state.generation >= attemptGeneration else { return }
             guard cancellationToken == nil, signOutToken == nil else { return }
-            finish(attempt: attempt, error: "ChatGPT authentication was canceled or failed.")
+            finish(
+                attempt: attempt.id,
+                error: state.terminalReason ?? "ChatGPT authentication was canceled or failed."
+            )
         case .closed:
-            finish(attempt: attempt, error: "Codex Agent facade is closed.")
+            guard state.generation >= attemptGeneration else { return }
+            finish(
+                attempt: attempt.id,
+                error: state.terminalReason ?? "Codex Agent facade is closed."
+            )
         case .authenticating:
+            guard state.generation == attemptGeneration else {
+                if state.generation > attemptGeneration && attempt.ownsLogin {
+                    attempt.ownsLogin = false
+                    activeAttempt = attempt
+                }
+                return
+            }
             if let signInUrl = state.pendingSignInUrl {
-                presentBrowser(signInUrl, attempt: attempt)
+                presentBrowser(signInUrl, attempt: attempt.id)
             }
         default:
             break
         }
     }
 
+    private func record(_ state: IosCodexAuthenticationState) -> Bool {
+        guard state.generation >= lastStateGeneration else { return false }
+        if state.generation == lastStateGeneration,
+            state.status == lastStateStatus,
+            state.pendingSignInUrl == lastPendingSignInUrl,
+            state.terminalReason == lastTerminalReason {
+            return false
+        }
+        lastStateStatus = state.status
+        lastPendingSignInUrl = state.pendingSignInUrl
+        lastTerminalReason = state.terminalReason
+        return true
+    }
+
     private func receive(_ event: AgentEvent) {
         eventHandler?(event)
-        guard let attempt = activeAttempt else { return }
-
-        if let required = event as? AgentEventAuthenticationRequired {
-            presentBrowser(required.signInUrl, attempt: attempt)
-        } else if event is AgentEventAuthenticated {
-            finish(attempt: attempt, error: nil)
-        } else if let failure = event as? AgentEventFailure, failure.sessionId == nil {
-            finish(attempt: attempt, error: failure.message)
-        }
     }
 
     private func presentBrowser(_ signInUrl: String, attempt: UUID) {
-        guard browserSession == nil, activeAttempt == attempt else { return }
+        guard browserSession == nil, activeAttempt?.id == attempt else { return }
         guard
             let url = URL(string: signInUrl),
             url.scheme?.lowercased() == "https",
@@ -391,7 +511,7 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
     }
 
     private func browserDidComplete(attempt: UUID, error: Error?) {
-        guard activeAttempt == attempt else { return }
+        guard activeAttempt?.id == attempt else { return }
         browserSession = nil
         guard let error else { return }
         let nsError = error as NSError
@@ -403,8 +523,8 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
     }
 
     private func cancelFailedPresentation(attempt: UUID, message: String) {
-        finish(attempt: attempt, error: message)
-        cancellationOperation?.close()
+        finish(attempt: attempt, error: message, cancelOperation: true)
+        cancellationOperation?.cancel()
         let token = UUID()
         cancellationToken = token
         var completed = false
@@ -412,23 +532,32 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             completed = true
             guard self?.cancellationToken == token else { return }
             self?.cancellationToken = nil
+            self?.cancellationOperation?.detach()
             self?.cancellationOperation = nil
         }
         if completed {
             cancellationToken = nil
-            operation.close()
+            operation.detach()
         } else {
             cancellationOperation = operation
         }
     }
 
-    private func finish(attempt: UUID, error: String?) {
-        guard activeAttempt == attempt else { return }
+    private func finish(
+        attempt: UUID,
+        error: String?,
+        cancelOperation: Bool = false
+    ) {
+        guard activeAttempt?.id == attempt else { return }
         activeAttempt = nil
         isAuthenticating = false
         browserSession?.cancel()
         browserSession = nil
-        authenticationOperation?.close()
+        if cancelOperation {
+            authenticationOperation?.cancel()
+        } else {
+            authenticationOperation?.detach()
+        }
         authenticationOperation = nil
         let completion = self.completion
         self.completion = nil

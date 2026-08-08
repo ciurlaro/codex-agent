@@ -28,9 +28,12 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.UIntVar
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.toKString
+import kotlinx.cinterop.value
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -44,13 +47,16 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUUID
-import platform.posix.RUSAGE_SELF
+import platform.darwin.KERN_SUCCESS
+import platform.darwin.MACH_TASK_BASIC_INFO
+import platform.darwin.MACH_TASK_BASIC_INFO_COUNT
+import platform.darwin.mach_task_basic_info_data_t
+import platform.darwin.mach_task_self_
+import platform.darwin.task_info
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fputs
 import platform.posix.getenv
-import platform.posix.getrusage
-import platform.posix.rusage
 
 class IosCodexRuntimeTest {
     @Test
@@ -149,7 +155,7 @@ class IosCodexRuntimeTest {
                 assertTrue(event.signInUrl.contains("redirect_uri="))
                 assertTrue(event.signInUrl.contains("localhost"))
 
-                startOperation.close()
+                startOperation.cancel()
                 withTimeout(60_000) {
                     while (facade.authenticationState.status != IosCodexAuthenticationStatus.SIGNED_OUT) {
                         kotlinx.coroutines.yield()
@@ -223,8 +229,8 @@ class IosCodexRuntimeTest {
             val startup = mutableListOf<Long>()
             val shutdown = mutableListOf<Long>()
             var coldStartupMillis = 0L
-            var idlePeakResidentBytes = 0L
-            var recursiveSearchPeakResidentBytes = 0L
+            var idleCurrentResidentBytes = 0L
+            var recursiveSearchCurrentResidentBytes = 0L
             repeat(6) { iteration ->
                 val connection = AppServerConnection(
                     runtimeFactory = IosCodexRuntimeFactory(test.configuration),
@@ -243,7 +249,7 @@ class IosCodexRuntimeTest {
                 assertTrue(startupMillis < 30_000, "startup took ${startupMillis}ms")
                 if (iteration == 0) {
                     coldStartupMillis = startupMillis
-                    idlePeakResidentBytes = peakResidentBytes()
+                    idleCurrentResidentBytes = currentResidentBytes()
                     repeat(500) { index ->
                         NSFileManager.defaultManager.createFileAtPath(
                             "${test.workspace}/metric-$index.txt",
@@ -255,7 +261,7 @@ class IosCodexRuntimeTest {
                     assertTrue(
                         tools.call(test, "search_text", json("query" to "missing-metric-value")).success,
                     )
-                    recursiveSearchPeakResidentBytes = peakResidentBytes()
+                    recursiveSearchCurrentResidentBytes = currentResidentBytes()
                 } else {
                     startup += startupMillis
                 }
@@ -269,8 +275,8 @@ class IosCodexRuntimeTest {
                 coldStartupMillis = coldStartupMillis,
                 startup = startup,
                 shutdown = shutdown,
-                idlePeakResidentBytes = idlePeakResidentBytes,
-                recursiveSearchPeakResidentBytes = recursiveSearchPeakResidentBytes,
+                idleCurrentResidentBytes = idleCurrentResidentBytes,
+                recursiveSearchCurrentResidentBytes = recursiveSearchCurrentResidentBytes,
             )
         }
     }
@@ -433,18 +439,27 @@ private fun json(vararg values: Pair<String, String>) = buildJsonObject {
     values.forEach { (key, value) -> put(key, value) }
 }
 
-private fun peakResidentBytes(): Long = memScoped {
-    val usage = alloc<rusage>()
-    check(getrusage(RUSAGE_SELF, usage.ptr) == 0)
-    usage.ru_maxrss
+private fun currentResidentBytes(): Long = memScoped {
+    val info = alloc<mach_task_basic_info_data_t>()
+    val count = alloc<UIntVar>()
+    count.value = MACH_TASK_BASIC_INFO_COUNT.toUInt()
+    check(
+        task_info(
+            mach_task_self_,
+            MACH_TASK_BASIC_INFO.toUInt(),
+            info.ptr.reinterpret(),
+            count.ptr,
+        ) == KERN_SUCCESS,
+    )
+    info.resident_size.toLong()
 }
 
 private fun writeRuntimeMetrics(
     coldStartupMillis: Long,
     startup: List<Long>,
     shutdown: List<Long>,
-    idlePeakResidentBytes: Long,
-    recursiveSearchPeakResidentBytes: Long,
+    idleCurrentResidentBytes: Long,
+    recursiveSearchCurrentResidentBytes: Long,
 ) {
     val output = getenv("CODEX_AGENT_IOS_METRICS_PATH")?.toKString() ?: return
     fun median(values: List<Long>) = values.sorted()[values.size / 2]
@@ -459,8 +474,9 @@ private fun writeRuntimeMetrics(
           "shutdownMilliseconds": $shutdown,
           "shutdownMedianMilliseconds": ${median(shutdown)},
           "shutdownMaximumMilliseconds": ${shutdown.max()},
-          "idlePeakResidentBytes": $idlePeakResidentBytes,
-          "recursiveSearchPeakResidentBytes": $recursiveSearchPeakResidentBytes,
+          "memoryMeasurement": "mach_task_basic_info.current_resident_size",
+          "idleCurrentResidentBytes": $idleCurrentResidentBytes,
+          "recursiveSearchCurrentResidentBytes": $recursiveSearchCurrentResidentBytes,
           "authenticatedTurnPeakResidentBytes": null
         }
     """.trimIndent()

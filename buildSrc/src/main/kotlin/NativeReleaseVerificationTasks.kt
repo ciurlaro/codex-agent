@@ -82,6 +82,14 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sqliteWorkspacePatch: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sqliteSourcePatch: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
     abstract val bridgeManifest: RegularFileProperty
 
     @get:InputFile
@@ -107,6 +115,18 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
     @get:Input
     abstract val rustToolchain: Property<String>
 
+    @get:Input
+    abstract val sqliteVersion: Property<String>
+
+    @get:Input
+    abstract val sqliteArchiveSha256: Property<String>
+
+    @get:Input
+    abstract val sqliteSourceSha256: Property<String>
+
+    @get:Input
+    abstract val patchedSqliteSourceSha256: Property<String>
+
     @TaskAction
     fun verify() {
         val record = provenanceFile.get().asFile.readText()
@@ -123,9 +143,23 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
             "Codex iOS prepared Cargo.lock provenance mismatch"
         }
         check(value("rustToolchain") == rustToolchain.get()) { "Codex iOS Rust toolchain provenance mismatch" }
+        check(value("libsqlite3SysVersion") == sqliteVersion.get()) {
+            "Codex iOS libsqlite3-sys version provenance mismatch"
+        }
+        check(value("libsqlite3SysArchiveSha256") == sqliteArchiveSha256.get()) {
+            "Codex iOS libsqlite3-sys archive provenance mismatch"
+        }
+        check(value("sqliteSourceSha256") == sqliteSourceSha256.get()) {
+            "Codex iOS SQLite source provenance mismatch"
+        }
+        check(value("patchedSqliteSourceSha256") == patchedSqliteSourceSha256.get()) {
+            "Codex iOS patched SQLite source provenance mismatch"
+        }
         mapOf(
             "adapterPatchSha256" to adapterPatch,
             "lockPatchSha256" to lockPatch,
+            "sqliteWorkspacePatchSha256" to sqliteWorkspacePatch,
+            "sqliteSourcePatchSha256" to sqliteSourcePatch,
             "bridgeManifestSha256" to bridgeManifest,
             "bridgeSourceSha256" to bridgeSource,
             "cHeaderSha256" to cHeader,
