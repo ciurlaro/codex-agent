@@ -52,6 +52,19 @@ import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
 import platform.Foundation.NSFileProtectionKey
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLIsExcludedFromBackupKey
+import platform.darwin.DISPATCH_SOURCE_TYPE_VNODE
+import platform.darwin.DISPATCH_VNODE_ATTRIB
+import platform.darwin.DISPATCH_VNODE_EXTEND
+import platform.darwin.DISPATCH_VNODE_RENAME
+import platform.darwin.DISPATCH_VNODE_WRITE
+import platform.darwin.dispatch_activate
+import platform.darwin.dispatch_queue_create
+import platform.darwin.dispatch_source_cancel
+import platform.darwin.dispatch_source_create
+import platform.darwin.dispatch_source_set_cancel_handler
+import platform.darwin.dispatch_source_set_event_handler
+import platform.darwin.dispatch_source_t
+import platform.posix.open
 
 internal class IosCodexRuntime(
     private val configuration: IosCodexRuntimeConfiguration,
@@ -65,6 +78,7 @@ internal class IosCodexRuntime(
 
     private var native: CPointer<CodexAgentIosRuntime>? = null
     private var receiver: Job? = null
+    private var credentialMonitor: IosCodexCredentialProtectionMonitor? = null
     private var started = false
 
     override val events: Flow<CodexRuntimeEvent> = eventsChannel.receiveAsFlow()
@@ -75,8 +89,13 @@ internal class IosCodexRuntime(
         started = true
         try {
             val handle = withContext(Dispatchers.Default) { startNative(configuration) }
+            var monitor: IosCodexCredentialProtectionMonitor? = null
             try {
-                withContext(Dispatchers.Default) { applyIosCredentialProtection(configuration) }
+                monitor = withContext(Dispatchers.Default) {
+                    IosCodexCredentialProtectionMonitor(configuration) { error ->
+                        emit(CodexRuntimeEvent.IoFailure(error.visibleMessage()))
+                    }
+                }
             } catch (error: Throwable) {
                 try {
                     withContext(Dispatchers.Default) { shutdownNative(handle) }
@@ -87,6 +106,7 @@ internal class IosCodexRuntime(
                 throw error
             }
             native = handle
+            credentialMonitor = monitor
             receiver = scope.launch { receiveEvents(handle) }
         } catch (error: Throwable) {
             eventsChannel.trySend(CodexRuntimeEvent.StartFailure(error.visibleMessage()))
@@ -111,10 +131,11 @@ internal class IosCodexRuntime(
         val state = lifecycle.withLock {
             if (closed) return
             closed = true
-            native to receiver
+            Triple(native, receiver, credentialMonitor)
         }
         val handle = state.first
         val receiverJob = state.second
+        val protectionMonitor = state.third
         var failure: Throwable? = null
         if (handle != null) {
             runCatching {
@@ -126,9 +147,11 @@ internal class IosCodexRuntime(
         }
         receiverJob?.join()
         if (handle != null) codex_agent_ios_runtime_destroy(handle)
+        protectionMonitor?.close()
         lifecycle.withLock {
             native = null
             receiver = null
+            credentialMonitor = null
         }
         scope.cancel()
         eventsChannel.close()
@@ -308,6 +331,38 @@ internal fun applyIosCredentialProtection(configuration: IosCodexRuntimeConfigur
         ) { "Could not exclude Codex authentication state from backups" }
     }
 }
+
+internal class IosCodexCredentialProtectionMonitor(
+    private val configuration: IosCodexRuntimeConfiguration,
+    private val onFailure: (Throwable) -> Unit = {},
+) : AutoCloseable {
+    private val descriptor: Int
+    private val source: dispatch_source_t
+
+    init {
+        applyIosCredentialProtection(configuration)
+        descriptor = open(configuration.codexHomePath, DARWIN_O_EVTONLY)
+        check(descriptor >= 0) { "Could not watch iOS Codex authentication state" }
+        source = checkNotNull(
+            dispatch_source_create(
+                DISPATCH_SOURCE_TYPE_VNODE,
+                descriptor.toULong(),
+                (DISPATCH_VNODE_WRITE or DISPATCH_VNODE_EXTEND or
+                    DISPATCH_VNODE_ATTRIB or DISPATCH_VNODE_RENAME).toULong(),
+                dispatch_queue_create("io.github.ciurlaro.codex-agent.credentials", null),
+            ),
+        ) { "Could not create iOS Codex authentication-state watcher" }
+        dispatch_source_set_event_handler(source) {
+            runCatching { applyIosCredentialProtection(configuration) }.onFailure(onFailure)
+        }
+        dispatch_source_set_cancel_handler(source) { platform.posix.close(descriptor) }
+        dispatch_activate(source)
+    }
+
+    override fun close() = dispatch_source_cancel(source)
+}
+
+private const val DARWIN_O_EVTONLY = 0x8000
 
 internal fun iosFileProtectionValue(protection: IosCodexCredentialProtection): String =
     checkNotNull(

@@ -43,3 +43,19 @@ tasks.register<VerifyReleaseMetadataTask>("verifyReleaseMetadata") {
         layout.projectDirectory.file("codex-agent-runtime-ios/apple/RemoteConsumer/Package.swift"),
     )
 }
+
+tasks.register("verifyPublicationReadiness") {
+    group = "verification"
+    description = "Requires external Apple privacy and static-framework GPL distribution approvals."
+    val approvals = layout.projectDirectory.file("release/0.2.0-approvals.json")
+    inputs.file(approvals)
+    doLast {
+        val contents = approvals.asFile.readText()
+        check(Regex(""""privacyCollectedDataReviewApproved"\s*:\s*true""").containsMatchIn(contents)) {
+            "Apple collected-data declarations require product approval before publication"
+        }
+        check(Regex(""""staticFrameworkGplDistributionApproved"\s*:\s*true""").containsMatchIn(contents)) {
+            "Static-framework GPL distribution requires an external product decision before publication"
+        }
+    }
+}

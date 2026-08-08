@@ -8,37 +8,67 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.buildJsonObject
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileProtectionComplete
+import platform.Foundation.NSFileProtectionCompleteUnlessOpen
+import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
+import platform.Foundation.NSFileProtectionKey
+import platform.Foundation.NSNumber
+import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUUID
 
 class IosCodexCredentialHardeningTest {
     @Test
-    fun protectionExcludesHomeExistingStateAndLaterChildFromBackup() {
+    fun everyPolicyProtectsHomeExistingAuthAndLaterCredentialFileWithoutTestReapply() = runBlocking {
         IosCodexCredentialProtection.entries.forEach { policy ->
             val fixture = fixture(policy.name)
+            val existingState = "${fixture.codexHome}/auth.json"
+            val laterChild = "${fixture.codexHome}/refreshed-auth.json"
+            assertTrue(NSFileManager.defaultManager.createFileAtPath(existingState, null, null))
+            val expectedProtection = iosFileProtectionValue(policy)
+            val monitor = IosCodexCredentialProtectionMonitor(fixture.configuration(policy))
             try {
-                val existingState = "${fixture.codexHome}/auth.json"
-                assertTrue(NSFileManager.defaultManager.createFileAtPath(existingState, null, null))
-                applyIosCredentialProtection(fixture.configuration(policy))
+                val protectionAttributesAvailable = fileProtection(fixture.codexHome) != null
+                assertProtected(fixture.codexHome, expectedProtection, protectionAttributesAvailable)
+                assertProtected(existingState, expectedProtection, protectionAttributesAvailable)
 
-                val laterChild = "${fixture.codexHome}/refreshed-auth.json"
                 assertTrue(NSFileManager.defaultManager.createFileAtPath(laterChild, null, null))
-                applyIosCredentialProtection(fixture.configuration(policy))
-
-                listOf(fixture.codexHome, existingState, laterChild).forEach { path ->
-                    val values = NSURL.fileURLWithPath(path).resourceValuesForKeys(
-                        listOf(NSURLIsExcludedFromBackupKey),
-                        error = null,
-                    )
-                    assertEquals(true, values?.get(NSURLIsExcludedFromBackupKey), path)
+                // Read the inherited values first. The production directory watcher, not this
+                // test, corrects platforms/filesystems that do not inherit the requested policy.
+                fileProtection(laterChild)
+                excludedFromBackup(laterChild)
+                withTimeout(TEST_TIMEOUT_MILLIS) {
+                    while (
+                        (protectionAttributesAvailable && fileProtection(laterChild) != expectedProtection) ||
+                        !excludedFromBackup(laterChild)
+                    ) {
+                        yield()
+                    }
                 }
+                assertProtected(laterChild, expectedProtection, protectionAttributesAvailable)
             } finally {
+                monitor.close()
                 fixture.remove()
             }
         }
+    }
+
+    @Test
+    fun everyPolicyMapsToItsExactAppleFileProtectionValue() {
+        assertEquals(NSFileProtectionComplete, iosFileProtectionValue(IosCodexCredentialProtection.WHEN_UNLOCKED))
+        assertEquals(
+            NSFileProtectionCompleteUntilFirstUserAuthentication,
+            iosFileProtectionValue(IosCodexCredentialProtection.AFTER_FIRST_UNLOCK),
+        )
+        assertEquals(
+            NSFileProtectionCompleteUnlessOpen,
+            iosFileProtectionValue(IosCodexCredentialProtection.WHILE_OPEN),
+        )
     }
 
     @Test
@@ -62,8 +92,29 @@ class IosCodexCredentialHardeningTest {
         }
     }
 
+    private fun assertProtected(path: String, expectedProtection: String, attributesAvailable: Boolean) {
+        val actualProtection = fileProtection(path)
+        if (attributesAvailable) {
+            assertEquals(expectedProtection, actualProtection, path)
+        } else {
+            assertEquals(null, actualProtection, "The simulator filesystem must consistently omit $NSFileProtectionKey")
+        }
+        assertTrue(excludedFromBackup(path), path)
+    }
+
+    private fun fileProtection(path: String): Any? =
+        NSFileManager.defaultManager.attributesOfItemAtPath(path, error = null)?.get(NSFileProtectionKey)
+
+    private fun excludedFromBackup(path: String): Boolean {
+        val value = NSURL.fileURLWithPath(path).resourceValuesForKeys(
+            listOf(NSURLIsExcludedFromBackupKey),
+            error = null,
+        )?.get(NSURLIsExcludedFromBackupKey)
+        return (value as? NSNumber)?.boolValue ?: (value as? Boolean ?: false)
+    }
+
     private fun fixture(label: String): CredentialFixture {
-        val sandbox = "${platform.Foundation.NSTemporaryDirectory()}codex-agent-$label-${NSUUID.UUID().UUIDString}"
+        val sandbox = "${NSTemporaryDirectory()}codex-agent-$label-${NSUUID.UUID().UUIDString}"
         val workspace = "$sandbox/workspace"
         val codexHome = "$sandbox/codex-home"
         val fileManager = NSFileManager.defaultManager
@@ -87,5 +138,9 @@ class IosCodexCredentialHardeningTest {
         fun remove() {
             NSFileManager.defaultManager.removeItemAtPath(sandbox, null)
         }
+    }
+
+    private companion object {
+        const val TEST_TIMEOUT_MILLIS = 5_000L
     }
 }

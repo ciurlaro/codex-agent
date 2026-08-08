@@ -40,6 +40,8 @@ runtime path settings. The former unused `temporaryPath` property remains as a
 deprecated, inert source-compatibility property and no longer creates an unused
 directory. Equivalent workspace spellings are compared through normalized real
 paths.
+Only one active local runtime may own a canonical Codex home in a process. A
+second runtime is rejected until the first has shut down or failed cleanly.
 
 The model receives these dynamic tools:
 
@@ -80,11 +82,15 @@ the existing `AgentEvent` stream; it dismisses the browser sheet when
 `AgentEvent.Authenticated` arrives. No separate app deep link, duplicate token
 exchange, or second handshake is introduced.
 
-The wrapper owns the facade's single event observation and forwards every event
-through `eventHandler`, so an Apple host must observe through the wrapper rather
-than start a competing facade observation. Minimal usage is:
+The facade owns the single common-client event collector and rebroadcasts each
+event through independent bounded observer mailboxes. The authentication
+wrapper and application observers can therefore subscribe simultaneously.
+Minimal usage requires both imports:
 
 ```swift
+import CodexAgent
+import CodexAgentAuthentication
+
 let authentication = CodexChatGPTAuthenticationSession(facade: facade)
 authentication.eventHandler = { event in
     // Handle the same AgentEvent values used by the Kotlin client.
@@ -107,8 +113,10 @@ configuration or diagnostic strings.
 shared client plus iOS runtime as `CodexAgent` and the small native browser
 presenter as `CodexAgentAuthentication`. The facade only adds lifecycle and
 authentication operations. `apple/TestApp` is a standalone SwiftUI consumer
-project. All Rust binaries, package metadata, and the test app target iOS 14 or
+project. All Rust binaries, package metadata, and the test app target iOS 15 or
 newer.
+The `0.2.0` binary supports iPhoneOS Arm64 and Apple Silicon Simulator Arm64.
+Intel Simulator (`iosX64`) is intentionally unsupported.
 
 `packageCodexAgentSwiftPackageBinary` creates the reproducible release asset
 `CodexAgent-0.2.0.xcframework.zip`; its generated checksum must match the root
@@ -125,7 +133,7 @@ Run on an Apple Silicon macOS host with full Xcode selected through
 ```shell
 rustup toolchain install 1.95.0 --profile minimal \
   --target aarch64-apple-ios,aarch64-apple-ios-sim
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
   ./gradlew verifyIosRuntime
 ```
 

@@ -13,7 +13,7 @@ interactive ChatGPT browser login in the Swift test app.
    ./gradlew -p buildSrc test
    ./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag=v0.2.0
    ./gradlew verifyRepository
-   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+   DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
      ./gradlew verifyIosRuntime
    ```
 
@@ -51,7 +51,7 @@ with a reusable credential.
 1. Stage the test application:
 
    ```shell
-   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+   DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
      ./gradlew :codex-agent-runtime-ios:stageCodexAgentAppleDistribution
    ```
 
@@ -100,6 +100,16 @@ with a reusable credential.
    consumer, and only then publishes to Maven Central.
 6. Resolve all three Maven coordinates and the public Swift package from clean
    consumers before updating any consumer repository.
+
+Publication also requires `verifyPublicationReadiness`. It remains blocked
+until the exact Apple collected-data declarations and static-framework GPL
+distribution decision are approved in `release/0.2.0-approvals.json`. Inspect
+the archived sample in Xcode Organizer and retain its aggregate privacy report.
+
+Before release, manually cover interactive ChatGPT login, background/foreground
+transitions, forced termination/relaunch, a signed physical iPhone, public
+SwiftPM resolution, Maven Central resolution, and final `codex-mobile`
+verification. Credential-free CI does not claim any of those results.
 
 For migration-only Maven verification, publish the same fixed version to an
 isolated local repository:

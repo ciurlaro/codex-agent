@@ -1,7 +1,7 @@
 package io.github.ciurlaro.codexmobile.app.runtime.ios
 
-import io.github.ciurlaro.codexmobile.agent.AgentEvent
 import io.github.ciurlaro.codexmobile.agent.AgentApprovalPreset
+import io.github.ciurlaro.codexmobile.agent.AgentEvent
 import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolCall
@@ -10,21 +10,26 @@ import io.github.ciurlaro.codexmobile.agent.CodexAgentClient
 import io.github.ciurlaro.codexmobile.agent.CodexAuthenticationMethod
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import platform.Foundation.NSLock
 
 enum class IosCodexAuthenticationStatus {
     SIGNED_OUT,
@@ -51,18 +56,26 @@ class IosCodexAgentFacade(
         builtInToolDispatcher = runtimeFactory.workspaceTools,
     )
     private val events = IosCodexEventBroadcast(client.events, scope)
-    private val closeController = IosFacadeCloseController(
-        cancelHierarchy = {
-            closed = true
-            events.markClosed()
-            rootJob.cancel()
-        },
-        joinHierarchy = { rootJob.join() },
-        closeClient = client::close,
-    )
+    private val authenticationMutex = Mutex()
+    private val authenticationLock = NSLock()
+    private var authenticationGeneration = 0L
 
     @Volatile
     private var closed = false
+
+    private val closeController = IosFacadeCloseController(
+        rejectNewOperations = {
+            closed = true
+            authenticationLock.locked { authenticationGeneration++ }
+        },
+        publishClosed = events::markClosed,
+        cancelHierarchy = rootJob::cancel,
+        closeClient = client::close,
+        joinHierarchy = {
+            rootJob.join()
+            events.joinObservers()
+        },
+    )
 
     val authenticationState: IosCodexAuthenticationState
         get() = events.authenticationState
@@ -86,17 +99,25 @@ class IosCodexAgentFacade(
             client.authenticate(CodexAuthenticationMethod.ChatGptBrowser)
         }
 
-    fun cancelAuthentication(completion: (String?) -> Unit): IosCodexOperation =
-        launchOperation(completion) {
-            client.cancelAuthentication()
-            events.markSignedOut()
+    fun cancelAuthentication(completion: (String?) -> Unit): IosCodexOperation {
+        val generation = nextAuthenticationGeneration()
+        return launchOperation(completion) {
+            authenticationMutex.withLock {
+                client.cancelAuthentication()
+                if (isCurrentAuthentication(generation)) events.markSignedOut()
+            }
         }
+    }
 
-    fun signOut(completion: (String?) -> Unit): IosCodexOperation =
-        launchOperation(completion) {
-            client.signOut()
-            events.markSignedOut()
+    fun signOut(completion: (String?) -> Unit): IosCodexOperation {
+        val generation = nextAuthenticationGeneration()
+        return launchOperation(completion) {
+            authenticationMutex.withLock {
+                client.signOut()
+                if (isCurrentAuthentication(generation)) events.markSignedOut()
+            }
         }
+    }
 
     fun runWorkspaceAcceptance(completion: (String?) -> Unit): IosCodexOperation =
         launchOperation(completion) {
@@ -143,34 +164,61 @@ class IosCodexAgentFacade(
         operation: suspend () -> Unit,
     ): IosCodexOperation {
         check(!closed) { "iOS Codex facade is closed" }
+        val generation = nextAuthenticationGeneration()
         events.markAuthenticating()
-        return launchOperation(completion) {
-            try {
-                operation()
-            } catch (error: Throwable) {
-                events.markSignedOut()
-                throw error
+        return launchOperation(
+            completion = completion,
+            onCancel = {
+                scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    authenticationMutex.withLock {
+                        if (
+                            isCurrentAuthentication(generation) &&
+                            events.authenticationState.status == IosCodexAuthenticationStatus.AUTHENTICATING
+                        ) {
+                            runCatching { client.cancelAuthentication() }
+                            if (isCurrentAuthentication(generation)) events.markSignedOut()
+                        }
+                    }
+                }
+            },
+        ) {
+            authenticationMutex.withLock {
+                if (!isCurrentAuthentication(generation)) return@withLock
+                try {
+                    operation()
+                } catch (error: Throwable) {
+                    if (isCurrentAuthentication(generation)) events.markSignedOut()
+                    throw error
+                }
             }
         }
     }
 
+    private fun nextAuthenticationGeneration(): Long = authenticationLock.locked {
+        check(!closed) { "iOS Codex facade is closed" }
+        ++authenticationGeneration
+    }
+
+    private fun isCurrentAuthentication(generation: Long): Boolean =
+        authenticationLock.locked { !closed && authenticationGeneration == generation }
+
     private fun launchOperation(
         completion: (String?) -> Unit,
+        onCancel: () -> Unit = {},
         operation: suspend () -> Unit,
     ): IosCodexOperation {
         check(!closed) { "iOS Codex facade is closed" }
-        return IosCodexOperation(
-            scope.launch {
-                try {
-                    operation()
-                    completion(null)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Throwable) {
-                    completion(error.message ?: "iOS Codex operation failed")
-                }
-            },
-        )
+        val job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                operation()
+                completion(null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                completion(error.message ?: "iOS Codex operation failed")
+            }
+        }
+        return IosCodexOperation(job, onCancel)
     }
 
     private suspend fun workspaceTool(
@@ -191,13 +239,9 @@ class IosCodexAgentFacade(
         ),
     )
 
-    override fun close() {
-        closeController.close()
-    }
+    override fun close() = closeController.close()
 
-    internal suspend fun closeAndJoin() {
-        closeController.closeAndJoin()
-    }
+    internal suspend fun closeAndJoin() = closeController.closeAndJoin()
 
     private companion object {
         const val ACCEPTANCE_INPUT = "acceptance-input.txt"
@@ -210,137 +254,250 @@ class IosCodexAgentFacade(
 }
 
 internal class IosFacadeCloseController(
+    private val rejectNewOperations: () -> Unit,
+    private val publishClosed: () -> Unit,
     private val cancelHierarchy: () -> Unit,
-    private val joinHierarchy: suspend () -> Unit,
     private val closeClient: () -> Unit,
+    private val joinHierarchy: suspend () -> Unit,
+    private val timeoutMillis: Long = CLOSE_TIMEOUT_MILLIS,
 ) {
-    private val closeStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
-    private val closeCompleted = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val closeStarted = CompletableDeferred<Unit>()
+    private val closeCompleted = CompletableDeferred<Result<Unit>>()
+    private val shutdownScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     fun close() {
         if (!closeStarted.complete(Unit)) return
+        rejectNewOperations()
+        publishClosed()
         cancelHierarchy()
-        CoroutineScope(Dispatchers.Default).launch {
-            try {
-                joinHierarchy()
-                closeClient()
-            } finally {
-                closeCompleted.complete(Unit)
-            }
+        val clientClose = shutdownScope.async { closeClient() }
+        shutdownScope.launch {
+            closeCompleted.complete(
+                runCatching {
+                    withTimeout(timeoutMillis) {
+                        val clientFailure = runCatching { clientClose.await() }.exceptionOrNull()
+                        val joinFailure = runCatching { joinHierarchy() }.exceptionOrNull()
+                        (clientFailure ?: joinFailure)?.let { throw it }
+                        Unit
+                    }
+                },
+            )
         }
     }
 
     suspend fun closeAndJoin() {
         close()
-        closeCompleted.await()
+        closeCompleted.await().getOrThrow()
+    }
+
+    private companion object {
+        const val CLOSE_TIMEOUT_MILLIS = 5_000L
     }
 }
 
 internal class IosCodexEventBroadcast(
     upstream: Flow<AgentEvent>,
-    private val scope: CoroutineScope,
+    upstreamScope: CoroutineScope,
 ) {
-    private val mailboxLock = kotlinx.coroutines.sync.Mutex()
-    private val mailboxes = mutableMapOf<Long, kotlinx.coroutines.channels.Channel<AgentEvent>>()
+    private val lock = NSLock()
+    private val observerRoot = SupervisorJob()
+    private val observerScope = CoroutineScope(observerRoot + Dispatchers.Default)
+    private val eventMailboxes = mutableMapOf<Long, Channel<AgentEvent>>()
+    private val stateMailboxes = mutableMapOf<Long, Channel<IosCodexAuthenticationState>>()
     private val backlog = ArrayDeque<AgentEvent>(EVENT_CAPACITY)
-    private var firstObserverAttached = false
+    private var backlogOverflowed = false
     private var nextObserverId = 0L
-    private val state = MutableStateFlow(
-        IosCodexAuthenticationState(IosCodexAuthenticationStatus.SIGNED_OUT),
-    )
+    private var closed = false
+
+    @Volatile
+    private var state = IosCodexAuthenticationState(IosCodexAuthenticationStatus.SIGNED_OUT)
 
     val authenticationState: IosCodexAuthenticationState
-        get() = state.value
+        get() = state
 
-    @Suppress("unused")
-    private val upstreamCollection = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+    private val upstreamCollection = upstreamScope.launch(start = CoroutineStart.UNDISPATCHED) {
         upstream.collect { event ->
+            distribute(event)
             when (event) {
-                is AgentEvent.AuthenticationRequired -> state.value = IosCodexAuthenticationState(
-                    IosCodexAuthenticationStatus.AUTHENTICATING,
-                    event.signInUrl,
+                is AgentEvent.AuthenticationRequired -> updateAuthenticationState(
+                    IosCodexAuthenticationState(
+                        IosCodexAuthenticationStatus.AUTHENTICATING,
+                        event.signInUrl,
+                    ),
                 )
                 is AgentEvent.DeviceCodeAuthenticationRequired -> markAuthenticating()
-                AgentEvent.Authenticated -> state.value = IosCodexAuthenticationState(
-                    IosCodexAuthenticationStatus.AUTHENTICATED,
+                AgentEvent.Authenticated -> updateAuthenticationState(
+                    IosCodexAuthenticationState(IosCodexAuthenticationStatus.AUTHENTICATED),
                 )
                 is AgentEvent.Failure -> if (event.sessionId == null) markSignedOut()
                 else -> Unit
-            }
-            mailboxLock.lock()
-            try {
-                if (!firstObserverAttached) {
-                    if (backlog.size == EVENT_CAPACITY) backlog.removeFirst()
-                    backlog.addLast(event)
-                } else {
-                    mailboxes.values.forEach { it.trySend(event) }
-                }
-            } finally {
-                mailboxLock.unlock()
             }
         }
     }
 
     fun observeEvents(observer: (AgentEvent) -> Unit): IosCodexObservation {
-        val mailbox = kotlinx.coroutines.channels.Channel<AgentEvent>(
-            capacity = EVENT_CAPACITY,
-            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
-        )
-        val job = scope.launch {
-            val observerId: Long
-            val initialEvents: List<AgentEvent>
-            mailboxLock.lock()
-            try {
+        val mailbox = Channel<AgentEvent>(EVENT_CAPACITY)
+        var observerId = -1L
+        val initial = lock.locked {
+            if (closed) {
+                emptyList()
+            } else {
                 observerId = nextObserverId++
-                initialEvents = if (firstObserverAttached) emptyList() else backlog.toList()
-                if (!firstObserverAttached) {
-                    firstObserverAttached = true
+                eventMailboxes[observerId] = mailbox
+                backlog.toList().also {
                     backlog.clear()
-                }
-                mailboxes[observerId] = mailbox
-            } finally {
-                mailboxLock.unlock()
-            }
-
-            try {
-                initialEvents.forEach(observer)
-                for (event in mailbox) observer(event)
-            } finally {
-                withContext(kotlinx.coroutines.NonCancellable) {
-                    mailboxLock.lock()
-                    try {
-                        mailboxes.remove(observerId)?.close()
-                    } finally {
-                        mailboxLock.unlock()
-                    }
+                    backlogOverflowed = false
                 }
             }
         }
-        return IosCodexObservation(job)
+        if (observerId < 0) {
+            mailbox.close()
+            return IosCodexObservation {}
+        }
+        initial.forEach { check(mailbox.trySend(it).isSuccess) }
+        val job = observerScope.launch {
+            try {
+                for (event in mailbox) observer(event)
+            } catch (_: IosCodexObserverOverflowException) {
+                observer(observerOverflowEvent())
+            } finally {
+                unregisterEventObserver(observerId, mailbox)
+            }
+        }
+        return IosCodexObservation {
+            unregisterEventObserver(observerId, mailbox)
+            job.cancel()
+        }
     }
 
-    fun observeAuthenticationState(observer: (IosCodexAuthenticationState) -> Unit) =
-        IosCodexObservation(
-            scope.launch(start = CoroutineStart.UNDISPATCHED) { state.collect(observer) },
+    fun observeAuthenticationState(
+        observer: (IosCodexAuthenticationState) -> Unit,
+    ): IosCodexObservation {
+        val mailbox = Channel<IosCodexAuthenticationState>(
+            capacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
         )
-
-    fun markAuthenticating() {
-        state.value = IosCodexAuthenticationState(IosCodexAuthenticationStatus.AUTHENTICATING)
+        var observerId = -1L
+        val initial = lock.locked {
+            if (!closed) {
+                observerId = nextObserverId++
+                stateMailboxes[observerId] = mailbox
+            }
+            state
+        }
+        check(mailbox.trySend(initial).isSuccess)
+        if (observerId < 0) mailbox.close()
+        val job = observerScope.launch {
+            try {
+                for (value in mailbox) observer(value)
+            } finally {
+                unregisterStateObserver(observerId, mailbox)
+            }
+        }
+        return IosCodexObservation {
+            unregisterStateObserver(observerId, mailbox)
+            job.cancel()
+        }
     }
 
-    fun markSignedOut() {
-        state.value = IosCodexAuthenticationState(IosCodexAuthenticationStatus.SIGNED_OUT)
-    }
+    fun markAuthenticating() = updateAuthenticationState(
+        IosCodexAuthenticationState(IosCodexAuthenticationStatus.AUTHENTICATING),
+    )
+
+    fun markSignedOut() = updateAuthenticationState(
+        IosCodexAuthenticationState(IosCodexAuthenticationStatus.SIGNED_OUT),
+    )
 
     fun markClosed() {
-        state.value = IosCodexAuthenticationState(IosCodexAuthenticationStatus.CLOSED)
+        val channels = lock.locked {
+            if (closed) return
+            state = IosCodexAuthenticationState(IosCodexAuthenticationStatus.CLOSED)
+            stateMailboxes.values.forEach { it.trySend(state) }
+            closed = true
+            backlog.clear()
+            (eventMailboxes.values + stateMailboxes.values).also {
+                eventMailboxes.clear()
+                stateMailboxes.clear()
+            }
+        }
+        channels.forEach { it.close() }
         upstreamCollection.cancel()
+        observerRoot.complete()
     }
+
+    suspend fun joinObservers() = observerRoot.join()
+
+    private fun distribute(event: AgentEvent) {
+        val overflowed = mutableListOf<Channel<AgentEvent>>()
+        lock.locked {
+            if (closed) return
+            if (eventMailboxes.isEmpty()) {
+                if (!backlogOverflowed && backlog.size < EVENT_CAPACITY) {
+                    backlog.addLast(event)
+                } else if (!backlogOverflowed) {
+                    backlog.clear()
+                    backlog.addLast(backlogOverflowEvent())
+                    backlogOverflowed = true
+                }
+                return
+            }
+            val subscriptions = eventMailboxes.iterator()
+            while (subscriptions.hasNext()) {
+                val (_, mailbox) = subscriptions.next()
+                if (mailbox.trySend(event).isFailure) {
+                    subscriptions.remove()
+                    overflowed += mailbox
+                }
+            }
+        }
+        overflowed.forEach { it.close(IosCodexObserverOverflowException()) }
+    }
+
+    private fun updateAuthenticationState(value: IosCodexAuthenticationState) {
+        lock.locked {
+            if (closed) return
+            state = value
+            stateMailboxes.values.forEach { it.trySend(value) }
+        }
+    }
+
+    private fun unregisterEventObserver(observerId: Long, mailbox: Channel<AgentEvent>) {
+        lock.locked {
+            if (eventMailboxes[observerId] === mailbox) eventMailboxes.remove(observerId)
+        }
+        mailbox.close()
+    }
+
+    private fun unregisterStateObserver(
+        observerId: Long,
+        mailbox: Channel<IosCodexAuthenticationState>,
+    ) {
+        lock.locked {
+            if (stateMailboxes[observerId] === mailbox) stateMailboxes.remove(observerId)
+        }
+        mailbox.close()
+    }
+
+    private fun observerOverflowEvent() = AgentEvent.Failure(
+        sessionId = null,
+        code = "ios_observer_overflow",
+        message = "The iOS event observer was closed because its 64-event mailbox overflowed.",
+        recoverable = true,
+    )
+
+    private fun backlogOverflowEvent() = AgentEvent.Failure(
+        sessionId = null,
+        code = "ios_event_backlog_overflow",
+        message = "The iOS event backlog overflowed while no observers were registered.",
+        recoverable = true,
+    )
 
     private companion object {
         const val EVENT_CAPACITY = 64
     }
 }
+
+private class IosCodexObserverOverflowException : IllegalStateException("iOS observer overflow")
 
 private fun io.github.ciurlaro.codexmobile.agent.BuiltInToolResult.requireSuccess() =
     apply { check(success) { text() } }
@@ -350,13 +507,43 @@ private fun io.github.ciurlaro.codexmobile.agent.BuiltInToolResult.text(): Strin
         ?: error("Workspace tool returned unexpected content")
 
 class IosCodexObservation internal constructor(
-    private val job: Job,
+    private val closeHandler: () -> Unit,
 ) : AutoCloseable {
-    override fun close() = job.cancel()
+    private val lock = NSLock()
+    private var closed = false
+
+    internal constructor(job: Job) : this(job::cancel)
+
+    override fun close() {
+        val shouldClose = lock.locked {
+            if (closed) false else true.also { closed = true }
+        }
+        if (shouldClose) closeHandler()
+    }
 }
 
 class IosCodexOperation internal constructor(
     private val job: Job,
+    private val cancellationHandler: () -> Unit = {},
 ) : AutoCloseable {
-    override fun close() = job.cancel()
+    private val lock = NSLock()
+    private var closed = false
+
+    override fun close() {
+        val shouldClose = lock.locked {
+            if (closed) false else true.also { closed = true }
+        }
+        if (!shouldClose) return
+        job.cancel()
+        cancellationHandler()
+    }
+}
+
+private inline fun <T> NSLock.locked(block: () -> T): T {
+    lock()
+    return try {
+        block()
+    } finally {
+        unlock()
+    }
 }

@@ -62,6 +62,9 @@ The embedded App Server retains ownership of PKCE, its localhost callback,
 token persistence/refresh, and completion events; the Apple wrapper never
 receives or stores OAuth tokens. API-key authentication remains optional and is
 not needed for CI, release verification, or the supported end-user flow.
+Swift consumers must explicitly `import CodexAgent` and
+`import CodexAgentAuthentication`; the authentication product does not
+re-export the binary module.
 
 The iOS capability profile advertises only sandboxed file read, directory list,
 text search, atomic file write, and workspace-confined `apply_patch` tools. The
@@ -121,7 +124,7 @@ exists. No consumer repository is updated by this project.
 ./gradlew :codex-agent-client:compileKotlinIosArm64 \
   :codex-agent-client:compileKotlinIosSimulatorArm64
 ./gradlew :codex-agent-runtime-android:connectedDebugAndroidTest
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
   ./gradlew verifyIosRuntime
 ```
 
@@ -142,3 +145,6 @@ See [protocol provenance](docs/PROTOCOL.md) and the
 
 Codex Agent is licensed under GPL-3.0-or-later. The bundled Codex App Server is
 licensed separately under Apache-2.0; see [third-party notices](THIRD_PARTY_NOTICES.md).
+Distribution of the static Apple framework under the GPL remains an explicit
+external product approval and is blocked by `verifyPublicationReadiness` until
+that decision is recorded.

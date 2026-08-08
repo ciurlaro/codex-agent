@@ -1,3 +1,4 @@
+import CodexAgent
 import CodexAgentAuthentication
 import SwiftUI
 
@@ -20,6 +21,9 @@ struct CodexAgentTestApp: App {
                     host.runWorkspaceAcceptance()
                 }
                 .disabled(!host.authenticated)
+                Button("Close runtime") {
+                    host.close()
+                }
             }
             .padding()
         }
@@ -34,6 +38,7 @@ final class AgentHost: ObservableObject {
     private let facade: IosCodexAgentFacade
     private let browserAuthentication: CodexChatGPTAuthenticationSession
     private var operation: IosCodexOperation?
+    private var closed = false
 
     init() {
         let sandbox = NSHomeDirectory()
@@ -79,6 +84,16 @@ final class AgentHost: ObservableObject {
         }
     }
 
+    func close() {
+        guard !closed else { return }
+        closed = true
+        operation?.close()
+        operation = nil
+        browserAuthentication.close()
+        facade.close()
+        status = "Closed"
+    }
+
     private func handle(_ event: AgentEvent) {
         if event is AgentEventAuthenticationRequired {
             status = "Complete ChatGPT sign-in in the secure browser sheet."
@@ -88,10 +103,5 @@ final class AgentHost: ObservableObject {
         } else if let failure = event as? AgentEventFailure {
             status = "\(failure.code): \(failure.message)"
         }
-    }
-
-    deinit {
-        operation?.close()
-        facade.close()
     }
 }

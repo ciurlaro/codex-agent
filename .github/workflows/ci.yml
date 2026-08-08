@@ -22,8 +22,10 @@ jobs:
       - run: ./gradlew verifyRepository --stacktrace
 
   ios:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 180
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -31,9 +33,26 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Verify pinned Apple toolchain
+        run: |
+          xcodebuild -version | tee "$RUNNER_TEMP/xcode-version.txt"
+          swift --version | tee "$RUNNER_TEMP/swift-version.txt"
+          grep -Fx 'Xcode 26.6' "$RUNNER_TEMP/xcode-version.txt"
+          grep -Fx 'Build version 17F113' "$RUNNER_TEMP/xcode-version.txt"
+          grep -F 'Apple Swift version 6.3.3' "$RUNNER_TEMP/swift-version.txt"
       - name: Install pinned Rust toolchain
         run: >-
           rustup toolchain install 1.95.0 --profile minimal
           --target aarch64-apple-ios,aarch64-apple-ios-sim
       - name: Verify embedded iOS runtime and Apple package
         run: ./gradlew verifyIosRuntime --stacktrace
+      - name: Upload iOS verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-agent-ios-verification
+          if-no-files-found: warn
+          path: |
+            codex-agent-runtime-ios/build/reports/ios-release/**
+            codex-agent-runtime-ios/build/swift-authentication-tests.xcresult
+            codex-agent-runtime-ios/build/swift-authentication-tests-summary.json

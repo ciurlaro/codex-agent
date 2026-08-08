@@ -1,3 +1,4 @@
+import CodexAgent
 import CodexAgentAuthentication
 
 public func makeCodexAgentRuntime(

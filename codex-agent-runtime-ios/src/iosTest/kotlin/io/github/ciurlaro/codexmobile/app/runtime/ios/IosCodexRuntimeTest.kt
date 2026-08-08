@@ -27,6 +27,10 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.toKString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -40,6 +44,13 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUUID
+import platform.posix.RUSAGE_SELF
+import platform.posix.fclose
+import platform.posix.fopen
+import platform.posix.fputs
+import platform.posix.getenv
+import platform.posix.getrusage
+import platform.posix.rusage
 
 class IosCodexRuntimeTest {
     @Test
@@ -138,11 +149,12 @@ class IosCodexRuntimeTest {
                 assertTrue(event.signInUrl.contains("redirect_uri="))
                 assertTrue(event.signInUrl.contains("localhost"))
 
-                val cancelResult = CompletableDeferred<String?>()
-                val cancelOperation = facade.cancelAuthentication(cancelResult::complete)
-                assertNull(withTimeout(60_000) { cancelResult.await() })
-                cancelOperation.close()
                 startOperation.close()
+                withTimeout(60_000) {
+                    while (facade.authenticationState.status != IosCodexAuthenticationStatus.SIGNED_OUT) {
+                        kotlinx.coroutines.yield()
+                    }
+                }
                 observation.close()
             } finally {
                 facade.close()
@@ -180,6 +192,86 @@ class IosCodexRuntimeTest {
         TestWorkspace().use { test ->
             val result = executeIosWorkspaceTool(test.configuration, "list_directory", buildJsonObject {})
             assertTrue(result.success)
+        }
+    }
+
+    @Test
+    fun duplicateRuntimeOwnershipIsRejectedAndReusableAfterCleanShutdown() = runBlocking {
+        TestWorkspace().use { test ->
+            val first = IosCodexRuntime(test.configuration)
+            val duplicate = IosCodexRuntime(test.configuration)
+            first.start()
+            try {
+                val error = runCatching { duplicate.start() }.exceptionOrNull()
+                assertIs<IosCodexRuntimeException>(error)
+                assertTrue(error.message.orEmpty().contains("already owns"))
+            } finally {
+                duplicate.close()
+                first.close()
+            }
+            IosCodexRuntime(test.configuration).also {
+                it.start()
+                it.close()
+            }
+            Unit
+        }
+    }
+
+    @Test
+    fun recordsStartupShutdownAndMemoryReleaseMetrics() = runBlocking {
+        TestWorkspace().use { test ->
+            val startup = mutableListOf<Long>()
+            val shutdown = mutableListOf<Long>()
+            var coldStartupMillis = 0L
+            var idlePeakResidentBytes = 0L
+            var recursiveSearchPeakResidentBytes = 0L
+            repeat(6) { iteration ->
+                val connection = AppServerConnection(
+                    runtimeFactory = IosCodexRuntimeFactory(test.configuration),
+                    initializeParams = InitializeParams(
+                        clientInfo = ClientInfo("ios-release-metrics", "0.2.0", "iOS Release Metrics"),
+                        capabilities = InitializeCapabilities(
+                            experimentalApi = true,
+                            mcpServerOpenaiFormElicitation = false,
+                        ),
+                    ),
+                    requestTimeoutMillis = 60_000,
+                )
+                val startMark = kotlin.time.TimeSource.Monotonic.markNow()
+                connection.ensureStarted()
+                val startupMillis = startMark.elapsedNow().inWholeMilliseconds
+                assertTrue(startupMillis < 30_000, "startup took ${startupMillis}ms")
+                if (iteration == 0) {
+                    coldStartupMillis = startupMillis
+                    idlePeakResidentBytes = peakResidentBytes()
+                    repeat(500) { index ->
+                        NSFileManager.defaultManager.createFileAtPath(
+                            "${test.workspace}/metric-$index.txt",
+                            null,
+                            null,
+                        )
+                    }
+                    val tools = IosCodexRuntimeFactory(test.configuration).workspaceTools
+                    assertTrue(
+                        tools.call(test, "search_text", json("query" to "missing-metric-value")).success,
+                    )
+                    recursiveSearchPeakResidentBytes = peakResidentBytes()
+                } else {
+                    startup += startupMillis
+                }
+                val shutdownMark = kotlin.time.TimeSource.Monotonic.markNow()
+                connection.shutdown()
+                val shutdownMillis = shutdownMark.elapsedNow().inWholeMilliseconds
+                assertTrue(shutdownMillis < 5_000, "shutdown took ${shutdownMillis}ms")
+                if (iteration > 0) shutdown += shutdownMillis
+            }
+            writeRuntimeMetrics(
+                coldStartupMillis = coldStartupMillis,
+                startup = startup,
+                shutdown = shutdown,
+                idlePeakResidentBytes = idlePeakResidentBytes,
+                recursiveSearchPeakResidentBytes = recursiveSearchPeakResidentBytes,
+            )
         }
     }
 
@@ -339,4 +431,43 @@ private fun BuiltInToolResult.text(): String = (content.single() as BuiltInToolC
 
 private fun json(vararg values: Pair<String, String>) = buildJsonObject {
     values.forEach { (key, value) -> put(key, value) }
+}
+
+private fun peakResidentBytes(): Long = memScoped {
+    val usage = alloc<rusage>()
+    check(getrusage(RUSAGE_SELF, usage.ptr) == 0)
+    usage.ru_maxrss
+}
+
+private fun writeRuntimeMetrics(
+    coldStartupMillis: Long,
+    startup: List<Long>,
+    shutdown: List<Long>,
+    idlePeakResidentBytes: Long,
+    recursiveSearchPeakResidentBytes: Long,
+) {
+    val output = getenv("CODEX_AGENT_IOS_METRICS_PATH")?.toKString() ?: return
+    fun median(values: List<Long>) = values.sorted()[values.size / 2]
+    val json = """
+        {
+          "warmupCycles": 1,
+          "measuredCycles": 5,
+          "coldStartupMilliseconds": $coldStartupMillis,
+          "startupMilliseconds": $startup,
+          "startupMedianMilliseconds": ${median(startup)},
+          "startupMaximumMilliseconds": ${startup.max()},
+          "shutdownMilliseconds": $shutdown,
+          "shutdownMedianMilliseconds": ${median(shutdown)},
+          "shutdownMaximumMilliseconds": ${shutdown.max()},
+          "idlePeakResidentBytes": $idlePeakResidentBytes,
+          "recursiveSearchPeakResidentBytes": $recursiveSearchPeakResidentBytes,
+          "authenticatedTurnPeakResidentBytes": null
+        }
+    """.trimIndent()
+    val file = checkNotNull(fopen(output, "w")) { "Could not write iOS runtime metrics" }
+    try {
+        check(fputs(json, file) >= 0)
+    } finally {
+        fclose(file)
+    }
 }

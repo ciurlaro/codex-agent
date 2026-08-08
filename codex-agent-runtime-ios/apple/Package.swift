@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "CodexAgent",
-    platforms: [.iOS(.v14)],
+    platforms: [.iOS(.v15)],
     products: [
         .library(name: "CodexAgent", targets: ["CodexAgent"]),
         .library(
@@ -16,11 +16,12 @@ let package = Package(
         .binaryTarget(name: "CodexAgent", path: "CodexAgent.xcframework"),
         .target(
             name: "CodexAgentAuthentication",
-            dependencies: ["CodexAgent"]
+            dependencies: ["CodexAgent"],
+            resources: [.copy("PrivacyInfo.xcprivacy")]
         ),
         .testTarget(
             name: "CodexAgentAuthenticationTests",
-            dependencies: ["CodexAgentAuthentication"]
+            dependencies: ["CodexAgent", "CodexAgentAuthentication"]
         ),
     ]
 )

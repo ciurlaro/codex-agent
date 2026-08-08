@@ -1,5 +1,6 @@
 use std::fs;
 use std::fs::OpenOptions;
+use std::collections::HashSet;
 use std::io;
 use std::io::Read;
 use std::io::Write;
@@ -10,6 +11,7 @@ use std::slice;
 use std::str;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -72,6 +74,7 @@ const ALLOWED_DYNAMIC_TOOLS: [&str; 5] = [
 ];
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+static ACTIVE_CODEX_HOMES: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -176,6 +179,39 @@ fn ensure_disjoint_runtime_paths(workspace: &Path, codex_home: &Path) -> Result<
     Ok(())
 }
 
+struct CodexHomeLease {
+    path: PathBuf,
+}
+
+impl CodexHomeLease {
+    fn acquire(path: &Path) -> Result<Self, String> {
+        let mut active = ACTIVE_CODEX_HOMES
+            .get_or_init(|| Mutex::new(HashSet::new()))
+            .lock()
+            .map_err(|_| "iOS Codex home registry lock is poisoned".to_string())?;
+        if !active.insert(path.to_path_buf()) {
+            return Err(format!(
+                "An iOS Codex runtime already owns this Codex home: {}",
+                path.display()
+            ));
+        }
+        Ok(Self {
+            path: path.to_path_buf(),
+        })
+    }
+}
+
+impl Drop for CodexHomeLease {
+    fn drop(&mut self) {
+        if let Ok(mut active) = ACTIVE_CODEX_HOMES
+            .get_or_init(|| Mutex::new(HashSet::new()))
+            .lock()
+        {
+            active.remove(&self.path);
+        }
+    }
+}
+
 enum BridgeCommand {
     Message(Vec<u8>),
     Shutdown,
@@ -207,6 +243,7 @@ pub struct CodexAgentIosRuntime {
     event_rx: Mutex<mpsc::Receiver<BridgeEvent>>,
     worker: Mutex<Option<JoinHandle<()>>>,
     closing: Arc<AtomicBool>,
+    codex_home_lease: Mutex<Option<CodexHomeLease>>,
 }
 
 #[derive(Serialize)]
@@ -230,7 +267,8 @@ pub extern "C" fn codex_agent_ios_runtime_start(
         let configuration: RuntimeConfiguration =
             serde_json::from_str(configuration).map_err(display_error)?;
         let paths = configuration.validate()?;
-        let native = start_runtime(paths)?;
+        let codex_home_lease = CodexHomeLease::acquire(&paths.codex_home)?;
+        let native = start_runtime(paths, codex_home_lease)?;
         unsafe { runtime.write(Box::into_raw(Box::new(native))) };
         Ok(())
     })
@@ -404,7 +442,10 @@ fn write_buffer(output: *mut CodexAgentIosBuffer, value: String) -> Result<(), S
     Ok(())
 }
 
-fn start_runtime(paths: RuntimePaths) -> Result<CodexAgentIosRuntime, String> {
+fn start_runtime(
+    paths: RuntimePaths,
+    codex_home_lease: CodexHomeLease,
+) -> Result<CodexAgentIosRuntime, String> {
     let (command_tx, command_rx) = mpsc::channel(QUEUE_CAPACITY);
     let (event_tx, event_rx) = mpsc::channel(QUEUE_CAPACITY);
     let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
@@ -443,6 +484,7 @@ fn start_runtime(paths: RuntimePaths) -> Result<CodexAgentIosRuntime, String> {
             event_rx: Mutex::new(event_rx),
             worker: Mutex::new(Some(worker)),
             closing,
+            codex_home_lease: Mutex::new(Some(codex_home_lease)),
         }),
         Err(error) => {
             let _ = worker.join();
@@ -841,23 +883,30 @@ async fn send_event(
 }
 
 fn shutdown_runtime(runtime: &CodexAgentIosRuntime) -> Result<(), String> {
-    if !runtime.closing.swap(true, Ordering::AcqRel) {
+    let send_result = if !runtime.closing.swap(true, Ordering::AcqRel) {
         runtime
             .command_tx
             .blocking_send(BridgeCommand::Shutdown)
-            .map_err(|_| "iOS runtime command queue is closed".to_string())?;
-    }
-    if let Some(worker) = runtime
+            .map_err(|_| "iOS runtime command queue is closed".to_string())
+    } else {
+        Ok(())
+    };
+    let join_result = runtime
         .worker
         .lock()
-        .map_err(|_| "iOS runtime worker lock is poisoned".to_string())?
-        .take()
-    {
-        worker
-            .join()
-            .map_err(|_| "iOS runtime worker panicked".to_string())?;
-    }
-    Ok(())
+        .map_err(|_| "iOS runtime worker lock is poisoned".to_string())
+        .and_then(|mut worker| match worker.take() {
+            Some(worker) => worker
+                .join()
+                .map_err(|_| "iOS runtime worker panicked".to_string()),
+            None => Ok(()),
+        });
+    let release_result = runtime
+        .codex_home_lease
+        .lock()
+        .map_err(|_| "iOS Codex home registry lease lock is poisoned".to_string())
+        .map(|mut lease| drop(lease.take()));
+    send_result.and(join_result).and(release_result)
 }
 
 fn execute_workspace_tool(workspace: &Path, tool: &str, arguments: Value) -> WorkspaceToolResult {
@@ -1626,6 +1675,37 @@ mod tests {
             .expect("sibling paths");
         assert_eq!(paths.workspace, workspace);
         assert_eq!(paths.codex_home, codex_home.canonicalize().expect("Codex home"));
+    }
+
+    #[test]
+    fn duplicate_runtime_ownership_is_rejected_and_clean_release_is_reusable() {
+        let (sandbox, workspace) = workspace();
+        let home = sandbox.path().join("state");
+        let paths = configuration(sandbox.path(), &workspace, &home)
+            .validate()
+            .expect("configuration");
+        let first = CodexHomeLease::acquire(&paths.codex_home).expect("first lease");
+        let error = CodexHomeLease::acquire(&paths.codex_home)
+            .err()
+            .expect("duplicate lease must fail");
+        assert!(error.contains("already owns"));
+        drop(first);
+        drop(CodexHomeLease::acquire(&paths.codex_home).expect("reused lease"));
+    }
+
+    #[test]
+    fn failed_start_path_releases_runtime_ownership() {
+        let (sandbox, workspace) = workspace();
+        let home = sandbox.path().join("state");
+        let paths = configuration(sandbox.path(), &workspace, &home)
+            .validate()
+            .expect("configuration");
+        let failed: Result<(), String> = (|| {
+            let _lease = CodexHomeLease::acquire(&paths.codex_home)?;
+            Err("simulated startup failure".to_string())
+        })();
+        assert!(failed.is_err());
+        drop(CodexHomeLease::acquire(&paths.codex_home).expect("lease after failed start"));
     }
 
     #[test]
