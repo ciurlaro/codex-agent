@@ -20,6 +20,7 @@ class NativeReleaseVerificationTasksTest {
                 "Cargo.toml",
                 "lib.rs",
                 "bridge.h",
+                "sqlite.crate", "sqlite.patch", "workspace.patch",
             )
                 .associateWith { name -> directory.resolve(name).apply { writeText(name) } }
             directory.resolve("provenance.json").writeText(
@@ -34,6 +35,9 @@ class NativeReleaseVerificationTasksTest {
                   "libsqlite3SysArchiveSha256": "${"5".repeat(64)}",
                   "sqliteSourceSha256": "${"6".repeat(64)}",
                   "patchedSqliteSourceSha256": "${"7".repeat(64)}",
+                  "releaseLto": "fat",
+                  "releaseCodegenUnits": "1",
+                  "releaseRustFlags": "-Cdebuginfo=0",
                   "adapterPatchSha256": "${inputs.getValue("adapter.patch").sha256()}",
                   "lockPatchSha256": "${inputs.getValue("lock.patch").sha256()}",
                   "sqliteWorkspacePatchSha256": "${inputs.getValue("sqlite-workspace.patch").sha256()}",
@@ -41,6 +45,9 @@ class NativeReleaseVerificationTasksTest {
                   "bridgeManifestSha256": "${inputs.getValue("Cargo.toml").sha256()}",
                   "bridgeSourceSha256": "${inputs.getValue("lib.rs").sha256()}",
                   "cHeaderSha256": "${inputs.getValue("bridge.h").sha256()}"
+                  ,"sqliteSourceArchiveSha256": "${inputs.getValue("sqlite.crate").sha256()}"
+                  ,"sqlitePatchSha256": "${inputs.getValue("sqlite.patch").sha256()}"
+                  ,"workspaceCargoPatchSha256": "${inputs.getValue("workspace.patch").sha256()}"
                 }
                 """.trimIndent(),
             )
@@ -53,15 +60,21 @@ class NativeReleaseVerificationTasksTest {
                 bridgeManifest.set(project.layout.projectDirectory.file("Cargo.toml"))
                 bridgeSource.set(project.layout.projectDirectory.file("lib.rs"))
                 cHeader.set(project.layout.projectDirectory.file("bridge.h"))
+                sqliteArchive.set(project.layout.projectDirectory.file("sqlite.crate"))
+                sqlitePatch.set(project.layout.projectDirectory.file("sqlite.patch"))
+                workspaceCargoPatch.set(project.layout.projectDirectory.file("workspace.patch"))
                 revision.set("1".repeat(40))
                 archiveSha256.set("2".repeat(64))
                 cargoLockSha256.set("3".repeat(64))
                 preparedCargoLockSha256.set("4".repeat(64))
                 rustToolchain.set("1.95.0")
                 sqliteVersion.set("0.37.0")
-                sqliteArchiveSha256.set("5".repeat(64))
+                sqliteArchiveSha256.set(inputs.getValue("sqlite.crate").sha256())
                 sqliteSourceSha256.set("6".repeat(64))
                 patchedSqliteSourceSha256.set("7".repeat(64))
+                releaseLto.set("fat")
+                releaseCodegenUnits.set("1")
+                releaseRustFlags.set("-Cdebuginfo=0")
             }
 
             task.verify()

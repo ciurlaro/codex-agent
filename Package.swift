@@ -16,7 +16,7 @@ let package = Package(
         .binaryTarget(
             name: "CodexAgent",
             url: "https://github.com/ciurlaro/codex-agent/releases/download/v0.2.0/CodexAgent-0.2.0.xcframework.zip",
-            checksum: "9132d805064be88930f1a88a436f266c0ad0ccbec096e62dbc24a514de57e127"
+            checksum: "850054725af3c20c24c126ea54eb5d9a36d251f1d6ee657ec11288f28635ab4b"
         ),
         .target(
             name: "CodexAgentAuthentication",

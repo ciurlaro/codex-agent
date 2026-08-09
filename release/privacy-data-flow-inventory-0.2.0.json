@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "reviewStatus": "pending",
+  "terminalCollectedDataDecision": null,
+  "appleCollectedDataTypes": [],
+  "reviewedNoSdkDeclarationRationale": null,
+  "dataFlows": [
+    {
+      "id": "chatgpt-authentication",
+      "data": "ChatGPT authentication state managed by the embedded App Server",
+      "source": "interactive browser login",
+      "destinations": ["OpenAI authentication services", "sandbox-local Codex home"],
+      "purposes": ["authentication"],
+      "notes": "The Swift wrapper neither exposes nor stores OAuth tokens."
+    },
+    {
+      "id": "agent-request-content",
+      "data": "User prompts and workspace content selected for an agent request",
+      "source": "host application and sandbox-local workspace",
+      "destinations": ["OpenAI model service"],
+      "purposes": ["app functionality"],
+      "notes": "A product reviewer must decide the corresponding Apple collected-data declaration."
+    }
+  ]
+}

@@ -33,6 +33,10 @@ release and never uploads to Maven Central.
    request.
 
 2. Run the Android runtime instrumentation smoke test on an ARM64 Android host.
+   Use the manual `Android Runtime Evidence` workflow. Its artifact records the
+   exact commit, command, device ABI/API, result, test/target APK hashes, and
+   embedded runtime hash. `verifyProtectedCandidate` rejects missing, stale, or
+   non-passing evidence.
 
 3. Build the immutable SwiftPM binary artifact and checksum:
 
@@ -79,6 +83,19 @@ step runs `verifyPublicationReadiness`; while privacy or static-framework GPL
 approval is false, the payload remains available as evidence but the workflow
 conclusion is failure, so publication cannot start.
 
+   After all source changes, run `scripts/verify-swiftpm-reproducibility.sh`.
+   It performs two clean builds and requires byte-for-byte ZIP equality.
+
+4. Stage and consume the exact Maven repository before bundling it:
+
+   ```shell
+   ./gradlew verifyStagedKmpConsumer generateCentralBundleInventory
+   ```
+
+   The isolated consumer resolves `io.github.ciurlaro` only from
+   `CENTRAL_STAGING` and compiles JVM, Android, iOS Arm64, and iOS Simulator
+   Arm64. The deterministic Central bundle is created only after this passes.
+
 ## Manual ChatGPT browser-login acceptance
 
 This is the required real-model release test; it is deliberately not automated
@@ -124,24 +141,33 @@ with a reusable credential.
    only `MAVEN_CENTRAL_USERNAME` and `MAVEN_CENTRAL_PASSWORD` there; candidate
    signing happens in phase 1. No ChatGPT credential or `OPENAI_API_KEY` is
    allowed in either environment.
-3. A successful **Release candidate** `workflow_run` is the only publication
-   trigger. The publication job downloads its payload, re-hashes the exact
-   Swift and Central files, binds them to the successful commit and current
-   approval scope, and reruns `verifyPublicationReadiness` after environment
-   approval.
-4. The job creates a draft release and tag itself, uploads the verified SwiftPM
-   ZIP, downloads it again to compare SHA-256, and only then makes the release
-   public. A manually published release is never a trigger.
-5. It resolves the now-public exact Swift package from a clean remote consumer.
-   Only after that succeeds does it stream the already-verified Central bundle
-   to the Portal and wait for `PUBLISHED`; Maven artifacts are not rebuilt.
-6. Resolve all Maven coordinates and the public Swift package from clean
+3. Run the manual publication workflow with the exact candidate commit and
+   Android evidence run. A successful **Release candidate** `workflow_run` is
+   the only publication trigger; it passes the actual release tag, exact
+   candidate commit, Android evidence, Swift ZIP, and Central bundle forward
+   without rebuilding them.
+4. The protected publication job creates or reuses a draft GitHub release,
+   uploads the exact prebuilt Central bundle as a `USER_MANAGED` deployment, waits for
+   `VALIDATED`, records the deployment ID and hashes on the draft, then
+   publishes the GitHub release and verifies public SwiftPM resolution before
+   releasing that same Central deployment. A rerun reuses the matching record
+   and treats an already `PUBLISHED` deployment as success.
+5. Configure only the Maven Central secrets
+   `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`,
+   `SIGNING_IN_MEMORY_KEY`, and `SIGNING_IN_MEMORY_KEY_PASSWORD`.
+6. Never invoke Maven publication tasks after candidate assembly. Central
+   release consumes only the recorded bundle and rejects deployment-name,
+   candidate-hash, or bundle-hash mismatches.
+7. Resolve all three Maven coordinates and the public Swift package from clean
    consumers before updating any consumer repository.
 
-Publication remains blocked until the exact hash-bound Apple collected-data
-review and static-framework GPL distribution decision are approved in
-`release/0.2.0-approvals.json`. Inspect the archived sample in Xcode Organizer
-and retain its aggregate privacy report; it remains manual evidence.
+Publication also requires `verifyPublicationReadiness`. It remains blocked
+until the exact Apple collected-data declarations and static-framework GPL
+distribution decision are approved in `release/0.2.0-approvals.json`. Inspect
+the archived sample in Xcode Organizer and retain its aggregate privacy report.
+The false privacy approval permits a pending data-flow inventory but does not
+permit publication. Approval requires an approved terminal declaration or a
+reviewed no-declaration rationale, bound to exact manifest/inventory hashes.
 
 Before release, manually cover interactive ChatGPT login, background/foreground
 transitions, forced termination/relaunch, a signed physical iPhone, public

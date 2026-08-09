@@ -233,6 +233,7 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
         isAuthenticating = true
 
         if state.status == .authenticating && !supersedesAuxiliaryOperation {
+            ownsActiveLogin = false
             if let signInUrl = state.pendingSignInUrl {
                 presentBrowser(signInUrl, attempt: attemptID)
             }
@@ -343,7 +344,8 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
 
     deinit {
         let driver = driver
-        let shouldCancelLogin = activeAttempt?.ownsLogin == true
+        let shouldCancelLogin = activeAttempt?.ownsLogin == true &&
+            cancellationToken == nil && signOutToken == nil
         let browserSession = browserSession
         let authenticationOperation = authenticationOperation
         let cancellationOperation = cancellationOperation
@@ -357,8 +359,8 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             } else {
                 authenticationOperation?.detach()
             }
-            cancellationOperation?.cancel()
-            signOutOperation?.cancel()
+            cancellationOperation?.detach()
+            signOutOperation?.detach()
             eventObservation?.close()
             stateObservation?.close()
             guard shouldCancelLogin else { return }
@@ -372,8 +374,12 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
 
     private func cleanup() {
         guard !closed else { return }
-        let ownsLogin = activeAttempt?.ownsLogin == true
+        let shouldCancelLogin = activeAttempt?.ownsLogin == true &&
+            cancellationToken == nil && signOutToken == nil
         closed = true
+        if shouldCancelLogin {
+            _ = driver.cancelAuthentication { _ in }
+        }
         if let attempt = activeAttempt {
             finish(
                 attempt: attempt.id,
@@ -383,19 +389,23 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
         }
         browserSession?.cancel()
         browserSession = nil
-        authenticationOperation?.detach()
+        if shouldCancelLogin {
+            authenticationOperation?.cancel()
+        } else {
+            authenticationOperation?.detach()
+        }
         authenticationOperation = nil
-        cancellationOperation?.cancel()
+        cancellationOperation?.detach()
         cancellationOperation = nil
         cancellationToken = nil
-        signOutOperation?.cancel()
+        signOutOperation?.detach()
         signOutOperation = nil
         signOutToken = nil
         eventObservation?.close()
         eventObservation = nil
         stateObservation?.close()
         stateObservation = nil
-        if ownsLogin {
+        if shouldCancelLogin {
             var cleanupOperation: CodexOperationHandle?
             var completed = false
             let operation = driver.cancelAuthentication { _ in
@@ -550,6 +560,7 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
     ) {
         guard activeAttempt?.id == attempt else { return }
         activeAttempt = nil
+        ownsActiveLogin = false
         isAuthenticating = false
         browserSession?.cancel()
         browserSession = nil

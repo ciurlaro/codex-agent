@@ -2,5 +2,5 @@
   "privacyCollectedDataReviewApproved": false,
   "staticFrameworkGplDistributionApproved": false,
   "privacyManifestSha256": "cd8108ed4e4b888ac9c9693ff093a2d535eb03c60b126dc28a6f912fe971f0cf",
-  "dataFlowInventorySha256": "1755682e26ffb72b5a455f86293b082aec2f7f12e2b2167d9caff4fff02d4023"
+  "privacyDataFlowInventorySha256": "1cba850cbb9b4ab4d3144ab725d8b2048a30bd4dc052d51991a05d29d5860ae9"
 }

@@ -4,13 +4,16 @@ import java.security.MessageDigest
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -30,14 +33,23 @@ abstract class PinnedCargoTask @Inject constructor(
     @get:Input
     abstract val extraEnvironment: MapProperty<String, String>
 
-    @get:Internal
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val workingDirectory: DirectoryProperty
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceInputs: ConfigurableFileCollection
+
+    @get:Input
+    abstract val provenanceValues: MapProperty<String, String>
 
     @get:Internal
     abstract val cargoTargetDirectory: DirectoryProperty
 
     init {
         extraEnvironment.convention(emptyMap())
+        provenanceValues.convention(emptyMap())
     }
 
     @TaskAction
@@ -100,6 +112,18 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val cHeader: RegularFileProperty
 
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sqliteArchive: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val sqlitePatch: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val workspaceCargoPatch: RegularFileProperty
+
     @get:Input
     abstract val revision: Property<String>
 
@@ -126,6 +150,15 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
 
     @get:Input
     abstract val patchedSqliteSourceSha256: Property<String>
+
+    @get:Input
+    abstract val releaseLto: Property<String>
+
+    @get:Input
+    abstract val releaseCodegenUnits: Property<String>
+
+    @get:Input
+    abstract val releaseRustFlags: Property<String>
 
     @TaskAction
     fun verify() {
@@ -155,6 +188,17 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
         check(value("patchedSqliteSourceSha256") == patchedSqliteSourceSha256.get()) {
             "Codex iOS patched SQLite source provenance mismatch"
         }
+        check(value("releaseLto") == releaseLto.get()) { "Codex iOS release LTO provenance mismatch" }
+        check(value("releaseCodegenUnits") == releaseCodegenUnits.get()) {
+            "Codex iOS release codegen-units provenance mismatch"
+        }
+        check(value("releaseRustFlags") == releaseRustFlags.get()) { "Codex iOS release Rust flags provenance mismatch" }
+        check(value("sqliteSourceArchiveSha256") == sqliteArchiveSha256.get()) {
+            "Codex iOS SQLite archive provenance mismatch"
+        }
+        check(sqliteArchive.get().asFile.sha256() == sqliteArchiveSha256.get()) {
+            "Codex iOS SQLite archive SHA-256 mismatch"
+        }
         mapOf(
             "adapterPatchSha256" to adapterPatch,
             "lockPatchSha256" to lockPatch,
@@ -163,6 +207,8 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
             "bridgeManifestSha256" to bridgeManifest,
             "bridgeSourceSha256" to bridgeSource,
             "cHeaderSha256" to cHeader,
+            "sqlitePatchSha256" to sqlitePatch,
+            "workspaceCargoPatchSha256" to workspaceCargoPatch,
         ).forEach { (key, file) ->
             check(file.get().asFile.sha256() == value(key)) { "Codex iOS $key mismatch" }
         }

@@ -24,6 +24,8 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PAYLOAD: ${{ runner.temp }}/verified-candidate
+      MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+      MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,7 +34,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
       - uses: actions/download-artifact@v4
         with:
@@ -53,11 +54,10 @@ jobs:
           echo "bundle=$(jq -r '.centralBundle.path | split("/")[-1]' "$PAYLOAD/candidate-manifest.json")" >> "$GITHUB_OUTPUT"
       - name: Recheck publication approvals after protected-environment approval
         run: ./gradlew verifyPublicationReadiness --no-daemon --stacktrace
-      - name: Create draft release with exact verified SwiftPM asset
+      - name: Create or reuse exact draft release record
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
-          SWIFT_ASSET: ${{ steps.candidate.outputs.asset }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
@@ -68,18 +68,40 @@ jobs:
               git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
               test "$(git rev-list -n 1 "$RELEASE_TAG")" = '${{ github.event.workflow_run.head_sha }}'
             fi
+            gh release download "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern central-deployment.json \
+              --dir "$RUNNER_TEMP" || true
           else
             ! git ls-remote --exit-code origin "refs/tags/$RELEASE_TAG"
-            gh release create "$RELEASE_TAG" "$PAYLOAD/$SWIFT_ASSET" \
+            gh release create "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --target '${{ github.event.workflow_run.head_sha }}' \
               --title "codex-agent $RELEASE_TAG" \
               --generate-notes \
               --draft
-            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
           fi
-          jq -e --arg asset "$SWIFT_ASSET" \
-            '.assets | length == 1 and .[0].name == $asset' "$RUNNER_TEMP/release.json"
+      - name: Upload or reuse exact user-managed Central deployment
+        env:
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
+          CENTRAL_BUNDLE: ${{ steps.candidate.outputs.bundle }}
+        run: |
+          scripts/central-portal.sh validate \
+            "$PAYLOAD/$CENTRAL_BUNDLE" \
+            "$PAYLOAD/candidate-manifest.json" \
+            "$RUNNER_TEMP/central-deployment.json"
+      - name: Bind validated deployment and exact candidate assets to draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
+          SWIFT_ASSET: ${{ steps.candidate.outputs.asset }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "$PAYLOAD/$SWIFT_ASSET" \
+            "$PAYLOAD/candidate-manifest.json" \
+            "$RUNNER_TEMP/central-deployment.json" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
           rm -rf "$RUNNER_TEMP/release-download"
           mkdir "$RUNNER_TEMP/release-download"
           gh release download "$RELEASE_TAG" \
@@ -88,6 +110,7 @@ jobs:
             --dir "$RUNNER_TEMP/release-download"
           test "$(shasum -a 256 "$RUNNER_TEMP/release-download/$SWIFT_ASSET" | awk '{print $1}')" = \
             "$(jq -r '.swiftAsset.sha256' "$PAYLOAD/candidate-manifest.json")"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
           if jq -e '.draft == true' "$RUNNER_TEMP/release.json" >/dev/null; then
             gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
           else
@@ -95,6 +118,8 @@ jobs:
           fi
       - name: Verify public SwiftPM resolution from a clean consumer
         run: |
+          xcodebuild -version
+          swift --version
           mkdir -p "$RUNNER_TEMP/publication-resources"
           python3 release/scripts/measure_release_phase.py \
             --phase public-swiftpm-resolution \
@@ -112,29 +137,31 @@ jobs:
                 -disablePackageRepositoryCache \
                 CODE_SIGNING_ALLOWED=NO clean build
             '
-      - name: Publish the exact verified Central Portal bundle
+      - name: Release the already-validated Central deployment
         env:
-          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
           CENTRAL_BUNDLE: ${{ steps.candidate.outputs.bundle }}
+        run: |
+          scripts/central-portal.sh release \
+            "$PAYLOAD/$CENTRAL_BUNDLE" \
+            "$PAYLOAD/candidate-manifest.json" \
+            "$RUNNER_TEMP/central-deployment.json"
+      - name: Persist published deployment record
+        env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
         run: >-
-          python3 release/scripts/measure_release_phase.py
-          --phase central-publication
-          --output "$RUNNER_TEMP/publication-resources/central-publication.json"
-          --workspace "$GITHUB_WORKSPACE"
-          --track "$PAYLOAD"
-          -- /bin/bash release/scripts/publish_central_bundle.sh
-          "$PAYLOAD/$CENTRAL_BUNDLE"
-          "codex-agent-${RELEASE_TAG}-${{ github.event.workflow_run.head_sha }}"
-          "$RUNNER_TEMP/central-deployment-status.json"
+          gh release upload "$RELEASE_TAG"
+          "$RUNNER_TEMP/central-deployment.json"
+          --repo "$GITHUB_REPOSITORY"
+          --clobber
       - name: Upload publication evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: codex-agent-${{ steps.candidate.outputs.tag }}-publication
           path: |
-            ${{ runner.temp }}/central-deployment-status.json
+            ${{ runner.temp }}/central-deployment.json
             ${{ runner.temp }}/publication-resources/**
             ${{ runner.temp }}/verified-candidate/candidate-manifest.json
             ${{ runner.temp }}/verified-candidate/release-artifact-report.json

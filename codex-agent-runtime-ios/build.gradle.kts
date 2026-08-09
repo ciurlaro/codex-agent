@@ -15,7 +15,7 @@ plugins {
 private val codexRevision = "25af12f7e61572b0bc18ddb1008be543b91519b0"
 private val codexArchiveSha256 = "42f627a7b32db41582c73a8eafd9ec4b35d6c3ff81bd3d4455cfd6224d79d329"
 private val codexCargoLockSha256 = "e0843448b5767ff36a2a3b15212feb480cd4eaafe8a0c0ca08547e3c7da03a05"
-private val resolvedCargoLockSha256 = "ee2dd92b50f58a15f6769afc77d9aded675eef50f7c0f68564fb0ba9a45c523b"
+private val resolvedCargoLockSha256 = "2af535168f77ce538bf9fc797914eb20cabe4f4d05a8d10266be6e52fd0bb1f3"
 private val libsqlite3SysVersion = "0.37.0"
 private val libsqlite3SysArchiveSha256 = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 private val expectedSqliteSourceSha256 = "9512509b1bccb7461f79bea8aad6280ae4699e925fa4804381b71f59e7efb0c5"
@@ -23,7 +23,12 @@ private val expectedPatchedSqliteSourceSha256 = "a0b50ae286c86c1890c214464168282
 private val pinnedRustToolchain = "1.95.0"
 private val rustLibrary = "libcodex_agent_ios_bridge.a"
 private val minimumIosVersion = "15.0"
-private val expectedSwiftTestCount = 18
+private val expectedSwiftTestCount = 23
+private val pinnedSqliteArchiveSha256 = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
+private val sqliteArchiveBytes = 5_295_554L
+private val pinnedReleaseLto = "fat"
+private val pinnedReleaseCodegenUnits = "1"
+private val pinnedReleaseRustFlags = "-Cdebuginfo=0"
 private val expectedXcodeVersion = "26.6"
 private val expectedXcodeBuild = "17F113"
 private val expectedSwiftVersion = "6.3.3"
@@ -38,8 +43,20 @@ val provenanceInputs = mapOf(
     "bridgeSourceSha256" to layout.projectDirectory.file("native/bridge/src/lib.rs"),
     "cHeaderSha256" to layout.projectDirectory.file("native/include/codex_agent_ios.h"),
 )
+val sqlitePatchFile = layout.projectDirectory.file("native/bridge/sqlite-ios-privacy.h")
+val workspaceCargoPatchFile = layout.projectDirectory.file("native/patches/0001-uninitialized-in-process-host.patch")
+val lockPatch = layout.projectDirectory.file("native/patches/0002-locked-ios-bridge.patch")
+val pinnedSqliteArchive = tasks.register<PreparePinnedArchiveTask>("preparePinnedSqliteArchive") {
+    sourceUrl.set("https://static.crates.io/crates/libsqlite3-sys/libsqlite3-sys-0.37.0.crate")
+    expectedSha256.set(pinnedSqliteArchiveSha256)
+    providers.gradleProperty("codexAgent.sqliteArchiveFile").orNull?.let { path ->
+        localArchive.set(rootProject.layout.projectDirectory.file(path))
+    }
+    outputFile.set(layout.buildDirectory.file("pinned-inputs/libsqlite3-sys-0.37.0.crate"))
+}
 
 val verifyCodexIosProvenance = tasks.register<VerifyCodexIosProvenanceTask>("verifyCodexIosProvenance") {
+    dependsOn(pinnedSqliteArchive)
     group = "verification"
     description = "Verifies the pinned iOS native source and bridge provenance."
     provenanceFile.set(provenanceRecordFile)
@@ -50,6 +67,9 @@ val verifyCodexIosProvenance = tasks.register<VerifyCodexIosProvenanceTask>("ver
     bridgeManifest.set(provenanceInputs.getValue("bridgeManifestSha256"))
     bridgeSource.set(provenanceInputs.getValue("bridgeSourceSha256"))
     cHeader.set(provenanceInputs.getValue("cHeaderSha256"))
+    sqliteArchive.set(pinnedSqliteArchive.flatMap { it.outputFile })
+    sqlitePatch.set(sqlitePatchFile)
+    workspaceCargoPatch.set(workspaceCargoPatchFile)
     revision.set(codexRevision)
     archiveSha256.set(codexArchiveSha256)
     cargoLockSha256.set(codexCargoLockSha256)
@@ -59,6 +79,9 @@ val verifyCodexIosProvenance = tasks.register<VerifyCodexIosProvenanceTask>("ver
     sqliteArchiveSha256.set(libsqlite3SysArchiveSha256)
     sqliteSourceSha256.set(expectedSqliteSourceSha256)
     patchedSqliteSourceSha256.set(expectedPatchedSqliteSourceSha256)
+    releaseLto.set(pinnedReleaseLto)
+    releaseCodegenUnits.set(pinnedReleaseCodegenUnits)
+    releaseRustFlags.set(pinnedReleaseRustFlags)
 }
 
 val prepareCodexIosSource = tasks.register<PrepareCodexIosSourceTask>("prepareCodexIosSource") {
@@ -85,10 +108,37 @@ val prepareCodexIosSource = tasks.register<PrepareCodexIosSourceTask>("prepareCo
 
 val codexRustRoot = layout.buildDirectory.dir("codex-source/codex-rs")
 
+tasks.matching { it.name in setOf("commonizeCInterop", "compileIosMainKotlinMetadata") }.configureEach {
+    notCompatibleWithConfigurationCache("Kotlin/Native commonization accesses project state at execution time")
+}
+
+fun PinnedCargoTask.trackNativeInputs() {
+    sourceInputs.from(
+        pinnedSqliteArchive.flatMap { it.outputFile },
+        sqlitePatchFile,
+        workspaceCargoPatchFile,
+        lockPatch,
+        provenanceRecordFile,
+    )
+    provenanceValues.putAll(
+        mapOf(
+            "codexRevision" to codexRevision,
+            "codexArchiveSha256" to codexArchiveSha256,
+            "cargoLockSha256" to codexCargoLockSha256,
+            "preparedCargoLockSha256" to resolvedCargoLockSha256,
+            "rustToolchain" to pinnedRustToolchain,
+            "sqliteArchiveSha256" to pinnedSqliteArchiveSha256,
+            "sqliteArchiveBytes" to sqliteArchiveBytes.toString(),
+            "releaseLto" to pinnedReleaseLto,
+            "releaseCodegenUnits" to pinnedReleaseCodegenUnits,
+            "releaseRustFlags" to pinnedReleaseRustFlags,
+        ),
+    )
+}
+
 val testCodexIosBridge = tasks.register<PinnedCargoTask>("testCodexIosBridge") {
     dependsOn(prepareCodexIosSource)
-    inputs.property("codexRevision", codexRevision)
-    inputs.files(layout.projectDirectory.dir("native/bridge"), layout.projectDirectory.dir("native/patches"))
+    trackNativeInputs()
     toolchain.set(pinnedRustToolchain)
     workingDirectory.set(codexRustRoot)
     cargoTargetDirectory.set(layout.buildDirectory.dir("rust/host"))
@@ -97,8 +147,7 @@ val testCodexIosBridge = tasks.register<PinnedCargoTask>("testCodexIosBridge") {
 
 val testCodexIosDirectToolMode = tasks.register<PinnedCargoTask>("testCodexIosDirectToolMode") {
     dependsOn(prepareCodexIosSource)
-    inputs.property("codexRevision", codexRevision)
-    inputs.files(layout.projectDirectory.dir("native/patches"))
+    trackNativeInputs()
     toolchain.set(pinnedRustToolchain)
     workingDirectory.set(codexRustRoot)
     cargoTargetDirectory.set(layout.buildDirectory.dir("rust/host"))
@@ -116,7 +165,7 @@ val testCodexIosDirectToolMode = tasks.register<PinnedCargoTask>("testCodexIosDi
 
 fun registerRustBuild(name: String, target: String) = tasks.register<PinnedCargoTask>(name) {
     dependsOn(prepareCodexIosSource)
-    inputs.property("codexRevision", codexRevision)
+    trackNativeInputs()
     inputs.property("minimumIosVersion", minimumIosVersion)
     inputs.files(layout.projectDirectory.dir("native/bridge"), layout.projectDirectory.dir("native/patches"))
     toolchain.set(pinnedRustToolchain)
@@ -127,14 +176,20 @@ fun registerRustBuild(name: String, target: String) = tasks.register<PinnedCargo
     )
     extraEnvironment.put("CARGO_PROFILE_RELEASE_DEBUG", "0")
     extraEnvironment.put("CARGO_PROFILE_RELEASE_STRIP", "debuginfo")
+    extraEnvironment.put("CARGO_PROFILE_RELEASE_LTO", pinnedReleaseLto)
+    extraEnvironment.put("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", pinnedReleaseCodegenUnits)
     extraEnvironment.put("IPHONEOS_DEPLOYMENT_TARGET", minimumIosVersion)
     extraEnvironment.put(
         "CARGO_TARGET_${target.uppercase().replace('-', '_')}_RUSTFLAGS",
-        "-Cdebuginfo=0",
+        pinnedReleaseRustFlags,
     )
     extraEnvironment.put(
         "LIBSQLITE3_FLAGS",
         "SQLITE_ENABLE_LOCKING_STYLE=0 -DCODEX_AGENT_IOS_SQLITE_NO_FILESYSTEM_PROBES",
+    )
+    extraEnvironment.put(
+        "CFLAGS",
+        "-include ${sqlitePatchFile.asFile.absolutePath}",
     )
     outputs.file(layout.buildDirectory.file("rust/$target/release/$rustLibrary"))
 }
@@ -282,14 +337,14 @@ val assembledXCFrameworkDirectory =
     layout.buildDirectory.dir("XCFrameworks/release/CodexAgent.xcframework")
 val releaseXCFrameworkDirectory =
     layout.buildDirectory.dir("release-xcframework/CodexAgent.xcframework")
-val privacyManifest =
+val privacyManifestFile =
     layout.projectDirectory.file("apple/Sources/CodexAgentAuthentication/PrivacyInfo.xcprivacy")
 
 val prepareCodexAgentReleaseXCFramework =
     tasks.register<Exec>("prepareCodexAgentReleaseXCFramework") {
         dependsOn("assembleCodexAgentReleaseXCFramework")
         inputs.dir(assembledXCFrameworkDirectory)
-        inputs.file(privacyManifest)
+        inputs.file(privacyManifestFile)
         outputs.dir(releaseXCFrameworkDirectory)
         doFirst {
             project.delete(releaseXCFrameworkDirectory)
@@ -305,9 +360,18 @@ val prepareCodexAgentReleaseXCFramework =
                     "${releaseXCFrameworkDirectory.get().asFile.absolutePath}"
                 for slice in ios-arm64 ios-arm64-simulator; do
                     /bin/cp \
-                        "${privacyManifest.asFile.absolutePath}" \
+                        "${privacyManifestFile.asFile.absolutePath}" \
                         "${releaseXCFrameworkDirectory.get().asFile.absolutePath}/${'$'}slice/CodexAgent.framework/PrivacyInfo.xcprivacy"
+                    archive="${releaseXCFrameworkDirectory.get().asFile.absolutePath}/${'$'}slice/CodexAgent.framework/CodexAgent"
+                    normalized="${'$'}archive.normalized"
+                    rm -f "${'$'}normalized"
+                    /usr/bin/xcrun libtool -static -D -no_warning_for_no_symbols \
+                        "${'$'}archive" -o "${'$'}normalized"
+                    /bin/mv "${'$'}normalized" "${'$'}archive"
                 done
+                info_plist="${releaseXCFrameworkDirectory.get().asFile.absolutePath}/Info.plist"
+                sorted=${'$'}(/usr/bin/plutil -extract AvailableLibraries json -o - "${'$'}info_plist" | /usr/bin/env jq -c 'sort_by(.LibraryIdentifier)')
+                /usr/bin/plutil -replace AvailableLibraries -json "${'$'}sorted" "${'$'}info_plist"
             """.trimIndent(),
         )
     }
@@ -519,24 +583,41 @@ val verifyIosDeploymentTargets = tasks.register<Exec>("verifyIosDeploymentTarget
     )
 }
 
-val verifyIosPrivacyManifest = tasks.register<Exec>("verifyIosPrivacyManifest") {
+val collectIosPrivacyEvidence = tasks.register<Exec>("collectIosPrivacyEvidence") {
     dependsOn(prepareCodexAgentReleaseXCFramework, verifyCodexAgentSwiftPackage)
-    val auditScript = rootProject.layout.projectDirectory.file("release/scripts/audit_ios_privacy.py")
-    val dataFlowInventory = rootProject.layout.projectDirectory.file("release/ios-data-flow-0.2.0.json")
-    val auditReport = layout.buildDirectory.file("reports/ios-release/privacy/audit.json")
-    inputs.files(auditScript, privacyManifest, dataFlowInventory)
-    inputs.dir(releaseXCFrameworkDirectory)
-    inputs.dir(layout.buildDirectory.dir("CodexAgentTestApp.xcarchive"))
-    outputs.file(auditReport)
+    val reportDirectory = layout.buildDirectory.dir("reports/ios-release/privacy")
+    val symbols = reportDirectory.map { it.file("undefined-symbols.txt") }
+    val packaging = reportDirectory.map { it.file("packaging.json") }
+    outputs.files(symbols, packaging)
     commandLine(
-        "python3",
-        auditScript.asFile.absolutePath,
-        "--xcframework", releaseXCFrameworkDirectory.get().asFile.absolutePath,
-        "--manifest", privacyManifest.asFile.absolutePath,
-        "--archive", layout.buildDirectory.file("CodexAgentTestApp.xcarchive").get().asFile.absolutePath,
-        "--data-flow-inventory", dataFlowInventory.asFile.absolutePath,
-        "--output", auditReport.get().asFile.absolutePath,
+        "/bin/bash",
+        "-c",
+        """
+            set -euo pipefail
+            report="${reportDirectory.get().asFile.absolutePath}"
+            mkdir -p "${'$'}report"
+            /usr/bin/plutil -lint "${privacyManifestFile.asFile.absolutePath}" | tee "${'$'}report/manifest-lint.txt"
+            framework_count=${'$'}(find "${releaseXCFrameworkDirectory.get().asFile.absolutePath}" -name PrivacyInfo.xcprivacy -type f | wc -l | tr -d ' ')
+            test "${'$'}framework_count" -eq 2
+            archive="${layout.buildDirectory.file("CodexAgentTestApp.xcarchive").get().asFile.absolutePath}"
+            app_count=${'$'}(find "${'$'}archive/Products/Applications" -name PrivacyInfo.xcprivacy -type f | wc -l | tr -d ' ')
+            test "${'$'}app_count" -ge 1
+            binary="${'$'}archive/Products/Applications/CodexAgentTestApp.app/CodexAgentTestApp"
+            nm -u "${'$'}binary" > "${'$'}report/undefined-symbols.txt"
+            ! grep -Eq '_(statfs|fstatfs)${'$'}' "${'$'}report/undefined-symbols.txt"
+            printf '{"frameworkManifests":%s,"archivedAppManifests":%s}\n' \
+                "${'$'}framework_count" "${'$'}app_count" > "${'$'}report/packaging.json"
+        """.trimIndent(),
     )
+}
+
+val verifyIosPrivacyManifest = tasks.register<VerifyPrivacyRequiredReasonTask>("verifyIosPrivacyManifest") {
+    dependsOn(collectIosPrivacyEvidence)
+    privacyManifest.set(privacyManifestFile)
+    undefinedSymbols.set(layout.buildDirectory.file("reports/ios-release/privacy/undefined-symbols.txt"))
+    reviewsFile.set(rootProject.layout.projectDirectory.file("release/privacy-required-reason-reviews-0.2.0.json"))
+    packagingEvidence.set(layout.buildDirectory.file("reports/ios-release/privacy/packaging.json"))
+    auditFile.set(layout.buildDirectory.file("reports/ios-release/privacy/audit.json"))
 }
 
 val verifyIosReleaseBudgets = tasks.register<Exec>("verifyIosReleaseBudgets") {

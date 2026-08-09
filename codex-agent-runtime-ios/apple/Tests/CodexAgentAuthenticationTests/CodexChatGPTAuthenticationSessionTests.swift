@@ -299,6 +299,73 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
         XCTAssertEqual(detachments, 0)
     }
 
+    func testObserverOwnedLoginCancelThenImmediateCloseDetachesCancellation() {
+        let driver = FakeAuthenticationDriver(autoCompleteAuxiliaryOperations: false)
+        driver.beginObserverOwnedLogin()
+        let session = makeSession(driver)
+        session.authenticate { _ in }
+        session.cancel()
+        session.close()
+
+        XCTAssertEqual(driver.authenticationCalls, 0)
+        XCTAssertEqual(driver.auxiliaryOperationCancellations, 0)
+        driver.completeCancellation()
+        XCTAssertEqual(driver.authenticationState.status, .signedOut)
+        XCTAssertFalse(driver.hasActiveLogin)
+    }
+
+    func testOwnerLoginCancelThenImmediateCloseDetachesCancellation() {
+        let driver = FakeAuthenticationDriver(autoCompleteAuxiliaryOperations: false)
+        let session = makeSession(driver)
+        session.authenticate { _ in }
+        session.cancel()
+        session.close()
+
+        XCTAssertEqual(driver.authenticationOperationCancellations, 0)
+        XCTAssertEqual(driver.auxiliaryOperationCancellations, 0)
+        driver.completeCancellation()
+        XCTAssertEqual(driver.authenticationState.status, .signedOut)
+        XCTAssertFalse(driver.hasActiveLogin)
+    }
+
+    func testSignOutThenImmediateCloseDetachesSignOut() {
+        let driver = FakeAuthenticationDriver(status: .authenticated, autoCompleteAuxiliaryOperations: false)
+        let session = makeSession(driver)
+        session.signOut { _ in }
+        session.close()
+
+        XCTAssertEqual(driver.auxiliaryOperationCancellations, 0)
+        driver.completeSignOut()
+        XCTAssertEqual(driver.authenticationState.status, .signedOut)
+        XCTAssertFalse(driver.hasActiveLogin)
+    }
+
+    func testSuccessfulAuthenticationDoesNotIssueLateCancellation() {
+        let driver = FakeAuthenticationDriver()
+        let session = makeSession(driver)
+        session.authenticate { _ in }
+        driver.succeed()
+        session.close()
+
+        XCTAssertEqual(driver.authenticationOperationCancellations, 0)
+        XCTAssertEqual(driver.cancellationCalls, 0)
+        XCTAssertEqual(driver.authenticationState.status, .authenticated)
+    }
+
+    func testStaleAuxiliaryCompletionAfterNewGenerationDoesNotSignOut() {
+        let driver = FakeAuthenticationDriver(autoCompleteAuxiliaryOperations: false)
+        let session = makeSession(driver)
+        session.authenticate { _ in }
+        session.cancel()
+        session.authenticate { _ in }
+        driver.completeCancellation()
+
+        XCTAssertEqual(driver.authenticationState.status, .authenticating)
+        XCTAssertTrue(driver.hasActiveLogin)
+        driver.succeed()
+        XCTAssertEqual(driver.authenticationState.status, .authenticated)
+    }
+
     private func makeSession(
         _ driver: FakeAuthenticationDriver,
         _ suppliedBrowsers: BrowserStore? = nil
@@ -329,6 +396,8 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
     private(set) var signOutCalls = 0
     private(set) var authenticationOperationCancellations = 0
     private(set) var authenticationOperationDetachments = 0
+    private(set) var auxiliaryOperationCancellations = 0
+    private(set) var hasActiveLogin = false
 
     var eventObserverCount: Int { eventObservers.count }
     var stateObserverCount: Int { stateObservers.count }
@@ -363,12 +432,20 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
 
     func authenticate(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle {
         generation += 1
+        let operationGeneration = generation
         authenticationCalls += 1
-        setState(.authenticating, generation: generation)
+        hasActiveLogin = true
+        setState(.authenticating, generation: operationGeneration)
         completion(nil)
         return CodexOperationHandle(
-            generation: generation,
-            cancel: { [weak self] in self?.authenticationOperationCancellations += 1 },
+            generation: operationGeneration,
+            cancel: { [weak self] in
+                guard let self else { return }
+                self.authenticationOperationCancellations += 1
+                guard self.generation == operationGeneration else { return }
+                self.hasActiveLogin = false
+                self.setState(.signedOut, generation: operationGeneration)
+            },
             detach: { [weak self] in self?.authenticationOperationDetachments += 1 }
         )
     }
@@ -435,12 +512,20 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
         notifyState()
     }
 
+    func beginObserverOwnedLogin() {
+        generation += 1
+        hasActiveLogin = true
+        setState(.authenticating)
+    }
+
     func succeed() {
+        hasActiveLogin = false
         eventObservers.values.forEach { $0(AgentEventAuthenticated.shared) }
         setState(.authenticated, generation: generation)
     }
 
     func fail(_ message: String, code: String = "authentication_failed") {
+        hasActiveLogin = false
         let event = AgentEventFailure(
             sessionId: nil,
             code: code,
@@ -474,6 +559,7 @@ private final class FakeAuthenticationDriver: CodexAuthenticationDriving {
         terminalReason: String?
     ) {
         if pending.0 == generation {
+            hasActiveLogin = false
             setState(status, generation: pending.0, terminalReason: terminalReason)
         }
         pending.1(nil)

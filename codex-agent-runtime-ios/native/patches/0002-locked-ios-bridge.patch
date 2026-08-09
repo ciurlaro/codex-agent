@@ -413,3 +413,13 @@
 @@ -8911 +8933 @@
 -version = "0.0.0"
 +version = "0.145.0"
+
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -7836,5 +7836,3 @@
+ name = "i18n-embed-fl"
+ version = "0.9.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "04b2969d0b3fc6143776c535184c19722032b43e6a642d710fa3f88faec53c2d"
+ dependencies = [
