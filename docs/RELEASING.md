@@ -83,8 +83,13 @@ step runs `verifyPublicationReadiness`; while privacy or static-framework GPL
 approval is false, the payload remains available as evidence but the workflow
 conclusion is failure, so publication cannot start.
 
-   After all source changes, run `scripts/verify-swiftpm-reproducibility.sh`.
-   It performs two clean builds and requires byte-for-byte ZIP equality.
+After all source changes, run:
+
+```shell
+./gradlew :codex-agent-runtime-ios:verifyCodexAgentSwiftPackageReproducibility
+```
+
+It performs two clean builds and requires byte-for-byte ZIP equality.
 
 4. Stage and consume the exact Maven repository before bundling it:
 

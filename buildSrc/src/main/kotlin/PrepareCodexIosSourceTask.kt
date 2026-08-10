@@ -184,7 +184,8 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
                 }
             }
             check(cargoLock.sha256() == preparedCargoLockSha256.get()) {
-                "Prepared Codex iOS Cargo.lock SHA-256 mismatch"
+                "Prepared Codex iOS Cargo.lock SHA-256 mismatch: " +
+                    "expected=${preparedCargoLockSha256.get()} actual=${cargoLock.sha256()}"
             }
             files.copy {
                 from(bridgeSource)

@@ -32,7 +32,7 @@ class NativeReleaseVerificationTasksTest {
                   "preparedCargoLockSha256": "${"4".repeat(64)}",
                   "rustToolchain": "1.95.0",
                   "libsqlite3SysVersion": "0.37.0",
-                  "libsqlite3SysArchiveSha256": "${"5".repeat(64)}",
+                  "libsqlite3SysArchiveSha256": "${inputs.getValue("sqlite.crate").sha256()}",
                   "sqliteSourceSha256": "${"6".repeat(64)}",
                   "patchedSqliteSourceSha256": "${"7".repeat(64)}",
                   "releaseLto": "fat",

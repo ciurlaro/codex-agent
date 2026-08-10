@@ -86,10 +86,11 @@ jobs:
           RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
           CENTRAL_BUNDLE: ${{ steps.candidate.outputs.bundle }}
         run: |
-          scripts/central-portal.sh validate \
-            "$PAYLOAD/$CENTRAL_BUNDLE" \
-            "$PAYLOAD/candidate-manifest.json" \
-            "$RUNNER_TEMP/central-deployment.json"
+          ./gradlew validateCentralDeployment \
+            -PcodexAgent.centralBundle="$PAYLOAD/$CENTRAL_BUNDLE" \
+            -PcodexAgent.candidateManifest="$PAYLOAD/candidate-manifest.json" \
+            -PcodexAgent.centralDeploymentRecord="$RUNNER_TEMP/central-deployment.json" \
+            --no-configuration-cache --stacktrace
       - name: Bind validated deployment and exact candidate assets to draft
         env:
           GH_TOKEN: ${{ github.token }}
@@ -142,10 +143,11 @@ jobs:
           RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
           CENTRAL_BUNDLE: ${{ steps.candidate.outputs.bundle }}
         run: |
-          scripts/central-portal.sh release \
-            "$PAYLOAD/$CENTRAL_BUNDLE" \
-            "$PAYLOAD/candidate-manifest.json" \
-            "$RUNNER_TEMP/central-deployment.json"
+          ./gradlew releaseCentralDeployment \
+            -PcodexAgent.centralBundle="$PAYLOAD/$CENTRAL_BUNDLE" \
+            -PcodexAgent.candidateManifest="$PAYLOAD/candidate-manifest.json" \
+            -PcodexAgent.centralDeploymentRecord="$RUNNER_TEMP/central-deployment.json" \
+            --no-configuration-cache --stacktrace
       - name: Persist published deployment record
         env:
           GH_TOKEN: ${{ github.token }}

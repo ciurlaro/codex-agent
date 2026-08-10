@@ -3,10 +3,14 @@ import java.security.MessageDigest
 import java.util.zip.GZIPOutputStream
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.testfixtures.ProjectBuilder
 
 class PrepareCodexIosSourceTaskTest {
@@ -112,6 +116,8 @@ class PrepareCodexIosSourceTaskTest {
             val revision = "4".repeat(40)
             val archive = project.resolve("codex.tar.gz")
             val lock = "locked\n".encodeToByteArray()
+            val patchedLock = "patched\n".encodeToByteArray()
+            val wrongPin = "0".repeat(64)
             writeTarGz(
                 archive,
                 mapOf(
@@ -121,14 +127,46 @@ class PrepareCodexIosSourceTaskTest {
             )
             project.resolve("bridge").mkdir()
             project.resolve("bridge/Cargo.toml").writeText("[package]\nname = \"bridge\"\n")
-            project.resolve("change.patch").writeText("")
+            project.resolve("change.patch").writeText(
+                """
+                diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+                --- a/codex-rs/Cargo.lock
+                +++ b/codex-rs/Cargo.lock
+                @@ -1 +1 @@
+                -locked
+                +patched
+                """.trimIndent() + "\n",
+            )
 
             val failure = assertFailsWith<IllegalStateException> {
-                task(project, revision, archive.sha256(), lock.sha256(), "0".repeat(64)).prepare()
+                task(project, revision, archive.sha256(), lock.sha256(), wrongPin).prepare()
             }
 
-            assertTrue(failure.message.orEmpty().contains("Prepared Codex iOS Cargo.lock SHA-256 mismatch"))
+            assertContains(failure.message.orEmpty(), "Prepared Codex iOS Cargo.lock SHA-256 mismatch")
+            assertContains(failure.message.orEmpty(), "expected=$wrongPin")
+            assertContains(failure.message.orEmpty(), "actual=${patchedLock.sha256()}")
             assertFalse(project.resolve("build/codex-source").exists())
+        } finally {
+            project.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `patches are relative content-sensitive task inputs`() {
+        val project = fixture()
+        try {
+            val archive = project.resolve("codex.tar.gz").apply { writeText("archive") }
+            project.resolve("bridge").mkdir()
+            project.resolve("bridge/Cargo.toml").writeText("[package]\nname = \"bridge\"\n")
+            val patch = project.resolve("change.patch").apply { writeText("patch") }
+            val task = task(project, "5".repeat(40), archive.sha256(), "0".repeat(64))
+            val getter = PrepareCodexIosSourceTask::class.java.getMethod("getPatches")
+
+            assertTrue(getter.isAnnotationPresent(InputFiles::class.java))
+            assertEquals(
+                PathSensitivity.RELATIVE,
+                getter.getAnnotation(PathSensitive::class.java).value,
+            )
         } finally {
             project.deleteRecursively()
         }

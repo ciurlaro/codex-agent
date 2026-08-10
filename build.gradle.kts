@@ -236,3 +236,5 @@ tasks.register<VerifyCandidateManifestTask>("verifyProtectedCandidate") {
     dependsOn(generateCandidateManifest, verifyAndroidRuntimeEvidence, "verifyPublicationReadiness")
     manifestFile.set(candidateManifest)
 }
+
+registerCentralPortalTasks()
