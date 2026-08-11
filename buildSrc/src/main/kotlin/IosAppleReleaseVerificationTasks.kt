@@ -104,6 +104,25 @@ fun Project.registerIosAppleReleaseVerificationTasks(
 
     val clean = tasks.named("clean")
     val toolchain = tasks.named("verifyAppleToolchain")
+    val candidateCommit = providers.gradleProperty("codexAgent.candidateCommit")
+    val baselineProofFile = rootProject.layout.file(
+        providers.gradleProperty("codexAgent.swiftPmBaselineProof").map(rootProject::file),
+    )
+    val preflightCodexAgentSwiftPackageB =
+        tasks.register<PreflightSwiftPackageBTask>("preflightCodexAgentSwiftPackageB") {
+            expectedCommit.set(candidateCommit)
+            version.set(project.version.toString())
+            expectedUrl.set(
+                "https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/$swiftPackageArchiveName",
+            )
+            repositoryDirectory.set(rootProject.layout.projectDirectory)
+            baselineProof.set(baselineProofFile)
+            manifestFile.set(rootProject.layout.projectDirectory.file("Package.swift"))
+        }
+    if (candidateCommit.isPresent) {
+        clean.configure { dependsOn(preflightCodexAgentSwiftPackageB) }
+        packageCodexAgentSwiftPackageBinary.configure { dependsOn(preflightCodexAgentSwiftPackageB) }
+    }
     packageCodexAgentSwiftPackageBinary.configure { mustRunAfter(clean) }
     toolchain.configure { mustRunAfter(clean) }
     tasks.register<RecordSwiftPackageBaselineTask>("recordCodexAgentSwiftPackageBaseline") {
@@ -121,24 +140,18 @@ fun Project.registerIosAppleReleaseVerificationTasks(
         xcodeVersionFile.set(layout.buildDirectory.file("reports/ios-release/toolchain/xcode.txt"))
         swiftVersionFile.set(layout.buildDirectory.file("reports/ios-release/toolchain/swift.txt"))
         proofFile.set(
-            rootProject.layout.file(
-                providers.gradleProperty("codexAgent.swiftPmBaselineProof").map(rootProject::file),
-            ),
+            baselineProofFile,
         )
     }
 
     tasks.register<VerifySwiftPackageABTask>("verifyCodexAgentSwiftPackageAB") {
-        expectedCommit.set(providers.gradleProperty("codexAgent.candidateCommit"))
+        expectedCommit.set(candidateCommit)
         version.set(project.version.toString())
         expectedUrl.set(
             "https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/$swiftPackageArchiveName",
         )
         repositoryDirectory.set(rootProject.layout.projectDirectory)
-        baselineProof.set(
-            rootProject.layout.file(
-                providers.gradleProperty("codexAgent.swiftPmBaselineProof").map(rootProject::file),
-            ),
-        )
+        baselineProof.set(baselineProofFile)
         archiveFile.set(layout.buildDirectory.file("distributions/$swiftPackageArchiveName"))
         checksumFile.set(swiftPackageChecksumFile)
         manifestFile.set(rootProject.layout.projectDirectory.file("Package.swift"))

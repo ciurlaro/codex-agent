@@ -3,6 +3,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.charset.StandardCharsets.UTF_8
 import javax.inject.Inject
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -72,6 +73,7 @@ abstract class RecordSwiftPackageBaselineTask @Inject constructor(
             put("version", JsonPrimitive(version.get()))
             put("commitA", JsonPrimitive(commit))
             put("treeA", JsonPrimitive(exec.gitText(repository, gitExecutable.get(), "rev-parse", "$commit^{tree}")))
+            put("canonicalBuildRoot", JsonPrimitive(repository.path))
             put("archiveName", JsonPrimitive(archive.name))
             put("archiveBytes", JsonPrimitive(archive.length()))
             put("swiftPmChecksum", JsonPrimitive(checksum))
@@ -113,58 +115,30 @@ abstract class VerifySwiftPackageABTask @Inject constructor(
     @TaskAction
     fun verify() {
         val repository = repositoryDirectory.get().asFile.canonicalFile
-        requireRootManifest(repository, manifestFile.get().asFile)
-        val commitB = verifyCleanCommit(exec, repository, gitExecutable.get(), expectedCommit.get())
         val baselineFile = baselineProof.get().asFile
-        val baseline = baselineFile.readReleaseObject()
-        check(baseline.releaseInt("schemaVersion") == 1 && baseline.releaseString("protocol") == SWIFTPM_AB_PROTOCOL) {
-            "Unsupported SwiftPM A/B baseline proof"
-        }
-        check(baseline.releaseString("version") == version.get()) { "SwiftPM A/B version mismatch" }
-        val commitA = baseline.releaseString("commitA").also(::requireCommit)
-        check(
-            exec.gitText(repository, gitExecutable.get(), "rev-parse", "$commitA^{tree}") ==
-                baseline.releaseString("treeA"),
-        ) { "Commit A tree does not match its baseline proof" }
-        val parents = exec.gitText(repository, gitExecutable.get(), "rev-list", "--parents", "-n", "1", commitB)
-            .split(Regex("\\s+"))
-        check(parents.size == 2 && parents[1] == commitA) { "Commit B must have Commit A as its only direct parent" }
-
-        val changedPaths = exec.gitText(
-            repository, gitExecutable.get(), "diff", "--name-only", "--no-renames", commitA, commitB, "--",
-        ).lines().filter(String::isNotBlank)
-        check(changedPaths.isEmpty() || changedPaths == listOf("Package.swift")) {
-            "Commit B may change only the root Package.swift checksum: $changedPaths"
-        }
-        check(exec.gitMode(repository, gitExecutable.get(), commitA) == exec.gitMode(repository, gitExecutable.get(), commitB)) {
-            "Commit B must not change Package.swift mode or type"
-        }
-
-        val packageABytes = exec.gitBytes(repository, gitExecutable.get(), "show", "$commitA:Package.swift")
-        check(ByteArrayInputStream(packageABytes).releaseDigest() == baseline.releaseString("packageSwiftSha256")) {
-            "Commit A Package.swift hash does not match its baseline proof"
-        }
-        val packageA = parseSwiftManifest(packageABytes.toString(UTF_8), expectedUrl.get())
-        val packageB = parseSwiftManifest(manifestFile.get().asFile.readText(), expectedUrl.get())
-        check(packageA.checksum == baseline.releaseString("packageSwiftChecksum")) {
-            "Commit A checksum metadata does not match its baseline proof"
-        }
-        check(packageA.normalized == packageB.normalized) {
-            "Commit B contains SwiftPM metadata changes other than the CodexAgent checksum"
-        }
+        val state = validateSwiftPackageB(
+            exec, repository, gitExecutable.get(), expectedCommit.get(), version.get(), expectedUrl.get(),
+            baselineFile, manifestFile.get().asFile,
+        )
 
         val archive = archiveFile.get().asFile
         val checksum = swiftChecksum(exec, swiftExecutable.get(), archive)
-        check(checksum == baseline.releaseString("swiftPmChecksum")) { "Commit A/B SwiftPM checksums differ" }
-        check(archive.name == baseline.releaseString("archiveName") && archive.length() == baseline.releaseLong("archiveBytes")) {
+        check(checksum == state.baseline.releaseString("swiftPmChecksum")) { "Commit A/B SwiftPM checksums differ" }
+        check(
+            archive.name == state.baseline.releaseString("archiveName") &&
+                archive.length() == state.baseline.releaseLong("archiveBytes"),
+        ) {
             "Commit A/B SwiftPM archive identity differs"
         }
         check(checksumFile.get().asFile.readText().trim() == checksum) { "Commit B checksum file mismatch" }
-        check(packageB.checksum == checksum) { "Commit B Package.swift checksum does not match its ZIP" }
-        check(provenanceFile.get().asFile.releaseDigest() == baseline.releaseString("nativeProvenanceSha256")) {
+        check(state.packageB.checksum == checksum) { "Commit B Package.swift checksum does not match its ZIP" }
+        check(provenanceFile.get().asFile.releaseDigest() == state.baseline.releaseString("nativeProvenanceSha256")) {
             "Commit A/B native provenance differs"
         }
-        check(toolchainDigest(xcodeVersionFile.get().asFile, swiftVersionFile.get().asFile) == baseline.releaseString("toolchainSha256")) {
+        check(
+            toolchainDigest(xcodeVersionFile.get().asFile, swiftVersionFile.get().asFile) ==
+                state.baseline.releaseString("toolchainSha256"),
+        ) {
             "Commit A/B Apple toolchain evidence differs"
         }
 
@@ -172,21 +146,81 @@ abstract class VerifySwiftPackageABTask @Inject constructor(
             put("schemaVersion", JsonPrimitive(1))
             put("protocol", JsonPrimitive(SWIFTPM_AB_PROTOCOL))
             put("version", JsonPrimitive(version.get()))
-            put("commitA", JsonPrimitive(commitA))
-            put("treeA", baseline.getValue("treeA"))
-            put("commitB", JsonPrimitive(commitB))
-            put("treeB", JsonPrimitive(exec.gitText(repository, gitExecutable.get(), "rev-parse", "$commitB^{tree}")))
-            put("changedPaths", buildJsonArray { changedPaths.forEach { add(JsonPrimitive(it)) } })
+            put("commitA", JsonPrimitive(state.commitA))
+            put("treeA", state.baseline.getValue("treeA"))
+            put("commitB", JsonPrimitive(state.commitB))
+            put("treeB", JsonPrimitive(exec.gitText(repository, gitExecutable.get(), "rev-parse", "${state.commitB}^{tree}")))
+            put("canonicalBuildRoot", JsonPrimitive(repository.path))
+            put("changedPaths", buildJsonArray { state.changedPaths.forEach { add(JsonPrimitive(it)) } })
             put("baselineProofSha256", JsonPrimitive(baselineFile.releaseDigest()))
             put("archiveName", JsonPrimitive(archive.name))
             put("archiveBytes", JsonPrimitive(archive.length()))
-            put("baselineChecksum", JsonPrimitive(baseline.releaseString("swiftPmChecksum")))
+            put("baselineChecksum", JsonPrimitive(state.baseline.releaseString("swiftPmChecksum")))
             put("finalChecksum", JsonPrimitive(checksum))
             put("packageSwiftSha256", JsonPrimitive(manifestFile.get().asFile.releaseDigest()))
             put("nativeProvenanceSha256", JsonPrimitive(provenanceFile.get().asFile.releaseDigest()))
-            put("toolchainSha256", JsonPrimitive(baseline.releaseString("toolchainSha256")))
+            put("toolchainSha256", JsonPrimitive(state.baseline.releaseString("toolchainSha256")))
         })
     }
+}
+
+internal data class SwiftPackageBState(
+    val baseline: JsonObject,
+    val commitA: String,
+    val commitB: String,
+    val changedPaths: List<String>,
+    val packageB: SwiftManifest,
+)
+
+internal fun validateSwiftPackageB(
+    exec: ExecOperations,
+    repository: File,
+    git: String,
+    expectedCommit: String,
+    version: String,
+    expectedUrl: String,
+    baselineFile: File,
+    manifestFile: File,
+): SwiftPackageBState {
+    requireRootManifest(repository, manifestFile)
+    val baseline = baselineFile.readReleaseObject()
+    check(baseline.releaseInt("schemaVersion") == 1 && baseline.releaseString("protocol") == SWIFTPM_AB_PROTOCOL) {
+        "Unsupported SwiftPM A/B baseline proof"
+    }
+    check(baseline.releaseString("version") == version) { "SwiftPM A/B version mismatch" }
+    check(baseline.releaseString("canonicalBuildRoot") == repository.path) {
+        "Commit A/B canonical build roots differ"
+    }
+    val commitB = verifyCleanCommit(exec, repository, git, expectedCommit)
+    val commitA = baseline.releaseString("commitA").also(::requireCommit)
+    check(exec.gitText(repository, git, "rev-parse", "$commitA^{tree}") == baseline.releaseString("treeA")) {
+        "Commit A tree does not match its baseline proof"
+    }
+    val parents = exec.gitText(repository, git, "rev-list", "--parents", "-n", "1", commitB)
+        .split(Regex("\\s+"))
+    check(parents.size == 2 && parents[1] == commitA) { "Commit B must have Commit A as its only direct parent" }
+    val changedPaths = exec.gitText(
+        repository, git, "diff", "--name-only", "--no-renames", commitA, commitB, "--",
+    ).lines().filter(String::isNotBlank)
+    check(changedPaths.isEmpty() || changedPaths == listOf("Package.swift")) {
+        "Commit B may change only the root Package.swift checksum: $changedPaths"
+    }
+    check(exec.gitMode(repository, git, commitA) == exec.gitMode(repository, git, commitB)) {
+        "Commit B must not change Package.swift mode or type"
+    }
+    val packageABytes = exec.gitBytes(repository, git, "show", "$commitA:Package.swift")
+    check(ByteArrayInputStream(packageABytes).releaseDigest() == baseline.releaseString("packageSwiftSha256")) {
+        "Commit A Package.swift hash does not match its baseline proof"
+    }
+    val packageA = parseSwiftManifest(packageABytes.toString(UTF_8), expectedUrl)
+    val packageB = parseSwiftManifest(manifestFile.readText(), expectedUrl)
+    check(packageA.checksum == baseline.releaseString("packageSwiftChecksum")) {
+        "Commit A checksum metadata does not match its baseline proof"
+    }
+    check(packageA.normalized == packageB.normalized) {
+        "Commit B contains SwiftPM metadata changes other than the CodexAgent checksum"
+    }
+    return SwiftPackageBState(baseline, commitA, commitB, changedPaths, packageB)
 }
 
 private const val SWIFTPM_AB_PROTOCOL = "swiftpm-ab-v1"
@@ -195,7 +229,7 @@ private val CODEX_BINARY_TARGET = Regex(
     """(?s)(\.binaryTarget\s*\(\s*name\s*:\s*"CodexAgent"\s*,\s*url\s*:\s*")([^"]+)("\s*,\s*checksum\s*:\s*")([0-9a-f]{64})("\s*\))""",
 )
 
-private data class SwiftManifest(val checksum: String, val normalized: String)
+internal data class SwiftManifest(val checksum: String, val normalized: String)
 
 private fun parseSwiftManifest(contents: String, expectedUrl: String): SwiftManifest {
     val matches = CODEX_BINARY_TARGET.findAll(contents).toList()

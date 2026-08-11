@@ -249,8 +249,10 @@ val protectedCandidatePhases = registerProtectedCandidatePhases(prepareProtected
 
 gradle.projectsEvaluated {
     val ios = project(":codex-agent-runtime-ios").tasks
+    val swiftPackageBPreflight = ios.named("preflightCodexAgentSwiftPackageB")
+    prepareProtectedCandidate.configure { dependsOn(swiftPackageBPreflight) }
     ios.named<VerifySwiftPackageABTask>("verifyCodexAgentSwiftPackageAB") {
-        dependsOn("generateCodexAgentSwiftPackageChecksum")
+        mustRunAfter("generateCodexAgentSwiftPackageChecksum", swiftPackageBPreflight)
         baselineProof.set(swiftBaselineProof)
         proofFile.set(stagedSwiftPmAbProof)
     }
