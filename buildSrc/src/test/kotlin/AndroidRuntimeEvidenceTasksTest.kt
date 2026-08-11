@@ -4,12 +4,29 @@ import java.util.zip.ZipOutputStream
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 class AndroidRuntimeEvidenceTasksTest {
+    @Test
+    fun `Android SDK tool providers remain configuration-cache safe`() {
+        val repository = generateSequence(File(System.getProperty("user.dir")).canonicalFile) { it.parentFile }
+            .first { it.resolve("codex-agent-runtime-android/build.gradle.kts").isFile }
+        val registration = repository.resolve("codex-agent-runtime-android/build.gradle.kts").readText()
+            .substringAfter("val localAndroidSdkPath")
+            .substringBefore("mavenPublishing")
+
+        assertTrue("providers.fileContents" in registration)
+        assertTrue("JavaFile(it, \"platform-tools/adb\")" in registration)
+        assertTrue("JavaFile(it, \"cmdline-tools/latest/bin/apkanalyzer\")" in registration)
+        assertFalse("androidSdkPath.map { file(" in registration)
+        assertFalse("providers.provider" in registration)
+        assertFalse("?: error(" in registration)
+    }
+
     @Test
     fun `valid self-instrumenting evidence binds the report APK AAR and pinned runtime`() = withFixture { fixture ->
         val verified = fixture.verify()

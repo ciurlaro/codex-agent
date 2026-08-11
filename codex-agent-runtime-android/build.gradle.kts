@@ -3,6 +3,7 @@ import com.android.build.api.variant.LibraryAndroidComponentsExtension
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.SourcesJar
+import java.io.File as JavaFile
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
@@ -59,15 +60,18 @@ extensions.getByType<LibraryAndroidComponentsExtension>().onVariants { variant -
     )
 }
 
-val localPropertiesFile = rootProject.layout.projectDirectory.file("local.properties").asFile
+val localAndroidSdkPath = providers.fileContents(rootProject.layout.projectDirectory.file("local.properties"))
+    .asText
+    .map { contents ->
+        contents.lineSequence()
+            .singleOrNull { it.startsWith("sdk.dir=") }
+            ?.substringAfter('=')
+            .orEmpty()
+    }
+    .filter(String::isNotBlank)
 val androidSdkPath = providers.environmentVariable("ANDROID_HOME")
     .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))
-    .orElse(providers.provider {
-        localPropertiesFile.takeIf(File::isFile)?.readLines()
-            ?.singleOrNull { it.startsWith("sdk.dir=") }
-            ?.substringAfter('=')
-            ?: error("ANDROID_HOME, ANDROID_SDK_ROOT, or sdk.dir is required")
-    })
+    .orElse(localAndroidSdkPath)
 
 tasks.register<RecordAndroidRuntimeEvidenceTask>("recordAndroidRuntimeEvidence") {
     group = "verification"
@@ -78,8 +82,10 @@ tasks.register<RecordAndroidRuntimeEvidenceTask>("recordAndroidRuntimeEvidence")
     outputMetadata.set(layout.buildDirectory.file("outputs/apk/androidTest/debug/output-metadata.json"))
     testResults.set(layout.buildDirectory.dir("outputs/androidTest-results/connected/debug"))
     releaseAar.set(layout.buildDirectory.file("outputs/aar/codex-agent-runtime-android-release.aar"))
-    adbExecutable.set(layout.file(androidSdkPath.map { file("$it/platform-tools/adb") }))
-    apkanalyzerExecutable.set(layout.file(androidSdkPath.map { file("$it/cmdline-tools/latest/bin/apkanalyzer") }))
+    adbExecutable.set(layout.file(androidSdkPath.map { JavaFile(it, "platform-tools/adb") }))
+    apkanalyzerExecutable.set(layout.file(androidSdkPath.map {
+        JavaFile(it, "cmdline-tools/latest/bin/apkanalyzer")
+    }))
     repositoryDirectory.set(rootProject.layout.projectDirectory)
     evidenceDirectory.set(layout.buildDirectory.dir("reports/android-runtime-evidence"))
     outputs.upToDateWhen { false }
