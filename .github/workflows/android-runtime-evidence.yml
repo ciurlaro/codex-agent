@@ -1,11 +1,17 @@
 name: Android Runtime Evidence
 
 on:
+  workflow_call:
+    inputs:
+      candidateCommit:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       candidateCommit:
         description: Exact candidate commit SHA
         required: true
+        type: string
 
 permissions:
   contents: read
@@ -13,6 +19,7 @@ permissions:
 jobs:
   arm64-runtime:
     runs-on: [self-hosted, linux, arm64, android]
+    environment: release-candidate
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,32 +30,17 @@ jobs:
           java-version: "17"
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Require the exact ARM64 device
-        run: |
-          test "$(git rev-parse HEAD)" = '${{ inputs.candidateCommit }}'
-          test "$(adb shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
-          test "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -ge 26
-      - name: Run real runtime instrumentation smoke
-        run: ./gradlew :codex-agent-runtime-android:connectedDebugAndroidTest --stacktrace
-      - name: Record exact candidate evidence
-        run: |
-          set -euo pipefail
-          test_apk=$(find codex-agent-runtime-android/build/outputs/apk -type f -name '*androidTest*.apk' -print -quit)
-          target_apk=$(find codex-agent-runtime-android/build/outputs/apk -type f -name '*.apk' ! -name '*androidTest*' -print -quit)
-          runtime=$(find codex-agent-runtime-android/build/generated/codex-runtime -type f -name 'libcodex_app_server.so' -print -quit)
-          test -f "$test_apk" -a -f "$target_apk" -a -f "$runtime"
-          jq -n \
-            --arg commitSha '${{ inputs.candidateCommit }}' \
-            --arg testCommand './gradlew :codex-agent-runtime-android:connectedDebugAndroidTest --stacktrace' \
-            --arg deviceArchitecture "$(adb shell getprop ro.product.cpu.abi | tr -d '\r')" \
-            --argjson deviceApi "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" \
-            --arg testApkSha256 "$(sha256sum "$test_apk" | awk '{print $1}')" \
-            --arg targetApkSha256 "$(sha256sum "$target_apk" | awk '{print $1}')" \
-            --arg runtimeSha256 "$(sha256sum "$runtime" | awk '{print $1}')" \
-            '{schemaVersion:1,commitSha:$commitSha,testCommand:$testCommand,deviceArchitecture:$deviceArchitecture,deviceApi:$deviceApi,result:"passed",testApkSha256:$testApkSha256,targetApkSha256:$targetApkSha256,runtimeSha256:$runtimeSha256}' \
-            > android-runtime-evidence.json
+      - name: Run and record the exact ARM64 runtime smoke
+        run: >-
+          ./gradlew :codex-agent-runtime-android:recordAndroidRuntimeEvidence
+          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
+          --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: codex-agent-android-runtime-evidence-${{ inputs.candidateCommit }}
-          path: android-runtime-evidence.json
+          name: codex-agent-android-runtime-evidence
+          path: |
+            codex-agent-runtime-android/build/reports/android-runtime-evidence/android-runtime-evidence.json
+            codex-agent-runtime-android/build/reports/android-runtime-evidence/codex-agent-runtime-android-debug-androidTest.apk
+            codex-agent-runtime-android/build/reports/android-runtime-evidence/RuntimeBootstrapDeviceTest.xml
           if-no-files-found: error
+          retention-days: 30

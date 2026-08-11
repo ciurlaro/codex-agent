@@ -13,6 +13,7 @@ on:
       - candidate/v*
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -23,197 +24,150 @@ jobs:
   portable-gates:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    outputs:
+      release_tag: ${{ steps.candidate.outputs.release_tag }}
+      commit_a: ${{ steps.candidate.outputs.commit_a }}
+      commit_b: ${{ steps.candidate.outputs.commit_b }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Resolve candidate release tag
-        id: release
-        shell: bash
+      - name: Resolve the protected A/B candidate
+        id: candidate
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          test '${{ github.ref_protected }}' = true
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            tag='${{ inputs.release_tag }}'
-          else
-            test "$GITHUB_REF_TYPE" = tag
-            tag=${GITHUB_REF_NAME#candidate/}
-          fi
-          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          test "$GITHUB_REF_PROTECTED" = true
+          release_tag="${INPUT_RELEASE_TAG:-${GITHUB_REF_NAME#candidate/}}"
+          {
+            printf 'release_tag=%s\n' "$release_tag"
+            printf 'commit_a=%s\n' "$(git rev-parse HEAD^1)"
+            printf 'commit_b=%s\n' "$(git rev-parse 'HEAD^{commit}')"
+          } >> "$GITHUB_OUTPUT"
       - run: ./gradlew -p buildSrc test --no-daemon --stacktrace
-      - run: ./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag='${{ steps.release.outputs.tag }}' --no-daemon --stacktrace
+      - run: >-
+          ./gradlew verifyReleaseMetadata
+          -PcodexAgent.releaseTag=${{ steps.candidate.outputs.release_tag }}
+          --no-daemon --stacktrace
       - run: ./gradlew verifyRepository --no-daemon --stacktrace
 
-  apple-candidate:
+  swiftpm-baseline:
     needs: portable-gates
     runs-on: macos-26
     timeout-minutes: 300
     environment: release-candidate
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      CENTRAL_STAGING: ${{ runner.temp }}/codex-agent-central-repository
-      CANDIDATE_OUTPUT: ${{ runner.temp }}/codex-agent-candidate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.portable-gates.outputs.commit_a }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+          components: llvm-tools-preview
+      - name: Resolve baseline proof path
+        id: paths
+        run: printf 'proof=%s\n' "$RUNNER_TEMP/swiftpm-baseline.json" >> "$GITHUB_OUTPUT"
+      - name: Build Commit A once and record its immutable proof
+        run: >-
+          ./gradlew :codex-agent-runtime-ios:recordCodexAgentSwiftPackageBaseline
+          -PcodexAgent.commitA=${{ needs.portable-gates.outputs.commit_a }}
+          -PcodexAgent.swiftPmBaselineProof=${{ steps.paths.outputs.proof }}
+          --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-agent-swiftpm-commit-a
+          path: ${{ steps.paths.outputs.proof }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  android-runtime-evidence:
+    needs: portable-gates
+    uses: ./.github/workflows/android-runtime-evidence.yml
+    with:
+      candidateCommit: ${{ needs.portable-gates.outputs.commit_b }}
+
+  apple-candidate:
+    needs: [portable-gates, swiftpm-baseline, android-runtime-evidence]
+    runs-on: macos-26
+    timeout-minutes: 300
+    environment: release-candidate
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
       ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.portable-gates.outputs.commit_b }}
+          fetch-depth: 2
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Resolve candidate release tag
-        id: release
-        shell: bash
-        run: |
-          test '${{ github.ref_protected }}' = true
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            tag='${{ inputs.release_tag }}'
-          else
-            test "$GITHUB_REF_TYPE" = tag
-            tag=${GITHUB_REF_NAME#candidate/}
-          fi
-          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-      - name: Verify pinned Apple toolchain
-        run: ./gradlew :codex-agent-runtime-ios:verifyAppleToolchain --no-daemon --stacktrace
       - name: Install pinned Rust toolchain
-        run: >-
-          rustup toolchain install 1.95.0 --profile minimal
-          --target aarch64-apple-ios,aarch64-apple-ios-sim
-      - name: Prepare measurement and output directories
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+          components: llvm-tools-preview
+      - name: Resolve isolated candidate paths
+        id: paths
         run: |
-          test ! -e "$CENTRAL_STAGING"
-          test ! -e "$CANDIDATE_OUTPUT"
-          mkdir -p "$CENTRAL_STAGING" "$CANDIDATE_OUTPUT/resources"
-      - name: Measure Rust build
+          {
+            printf 'baseline=%s\n' "$RUNNER_TEMP/swiftpm-baseline"
+            printf 'android=%s\n' "$RUNNER_TEMP/android-runtime-evidence"
+            printf 'payload=%s\n' "$GITHUB_WORKSPACE/build/protected-candidate/${{ needs.portable-gates.outputs.commit_b }}/payload"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-agent-swiftpm-commit-a
+          path: ${{ steps.paths.outputs.baseline }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-agent-android-runtime-evidence
+          path: ${{ steps.paths.outputs.android }}
+      - name: Assemble the exact protected candidate once
         run: >-
-          python3 release/scripts/measure_release_phase.py
-          --phase rust-build
-          --output "$CANDIDATE_OUTPUT/resources/rust-build.json"
-          --workspace "$GITHUB_WORKSPACE"
-          --track "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/rust"
-          -- ./gradlew
-          :codex-agent-runtime-ios:testCodexIosBridge
-          :codex-agent-runtime-ios:testCodexIosDirectToolMode
-          :codex-agent-runtime-ios:buildCodexIosArm64Rust
-          :codex-agent-runtime-ios:buildCodexIosSimulatorArm64Rust
-          --no-daemon --stacktrace
-      - name: Measure XCFramework assembly and simulator tests
-        run: >-
-          python3 release/scripts/measure_release_phase.py
-          --phase xcframework-assembly
-          --output "$CANDIDATE_OUTPUT/resources/xcframework-assembly.json"
-          --workspace "$GITHUB_WORKSPACE"
-          --track "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/XCFrameworks"
-          --track "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/release-xcframework"
-          -- ./gradlew
-          :codex-agent-runtime-ios:prepareCodexAgentReleaseXCFramework
-          :codex-agent-runtime-ios:compileKotlinIosArm64
-          :codex-agent-runtime-ios:iosSimulatorArm64Test
-          --no-daemon --stacktrace
-      - name: Measure Swift packaging and Apple gates
-        run: >-
-          python3 release/scripts/measure_release_phase.py
-          --phase swift-packaging
-          --output "$CANDIDATE_OUTPUT/resources/swift-packaging.json"
-          --workspace "$GITHUB_WORKSPACE"
-          --track "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/distributions"
-          --track "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/apple-distribution"
-          -- ./gradlew
-          :codex-agent-runtime-ios:packageCodexAgentSwiftPackageBinary
-          :codex-agent-runtime-ios:generateCodexAgentSwiftPackageChecksum
-          :codex-agent-runtime-ios:packageCodexAgentAppleDistribution
-          :codex-agent-runtime-ios:verifyCodexAgentSwiftPackage
-          :codex-agent-runtime-ios:verifyCodexAgentSwiftAuthenticationTests
-          :codex-agent-runtime-ios:verifyIosDeploymentTargets
-          :codex-agent-runtime-ios:verifyIosPrivacyManifest
-          :codex-agent-runtime-ios:verifyIosReleaseBudgets
-          --no-daemon --stacktrace
-      - name: Preserve immutable SwiftPM asset and audit evidence
-        run: |
-          /bin/cp -c codex-agent-runtime-ios/build/distributions/CodexAgent-0.2.0.xcframework.zip "$CANDIDATE_OUTPUT/"
-          /bin/cp codex-agent-runtime-ios/build/distributions/CodexAgent-0.2.0.xcframework.zip.sha256 "$CANDIDATE_OUTPUT/"
-          cp codex-agent-runtime-ios/build/reports/ios-release/privacy/audit.json "$CANDIDATE_OUTPUT/privacy-audit.json"
-      - name: Run the complete iOS gate graph, including the committed SwiftPM checksum
-        run: ./gradlew verifyIosRuntime --no-daemon --stacktrace
-      - name: Remove safe Apple packaging intermediates before Maven staging
-        run: >-
-          rm -rf
-          "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/apple-distribution"
-          "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/release-xcframework"
-          "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/XCFrameworks"
-          "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/swift-consumer-derived-data"
-          "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/swift-tests-derived-data"
-          "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/distributions"
-          "$GITHUB_WORKSPACE/codex-agent-runtime-ios/build/CodexAgentTestApp.xcarchive"
-      - name: Measure exact Maven staging and Central bundle
-        env:
-          CENTRAL_BUNDLE: ${{ runner.temp }}/codex-agent-candidate/codex-agent-0.2.0-central.zip
-          CENTRAL_REPORT: ${{ runner.temp }}/codex-agent-candidate/central-bundle-report.json
-        run: |
-          python3 release/scripts/measure_release_phase.py \
-            --phase maven-publication \
-            --output "$CANDIDATE_OUTPUT/resources/maven-publication.json" \
-            --workspace "$GITHUB_WORKSPACE" \
-            --track "$CENTRAL_STAGING" \
-            --track "$CENTRAL_BUNDLE" \
-            -- /bin/bash -euo pipefail -c '
-              ./gradlew publishAllPublicationsToMigrationRepository \
-                -PcodexAgent.localRepository="$CENTRAL_STAGING" \
-                --no-daemon --no-configuration-cache --stacktrace
-              python3 release/scripts/build_central_bundle.py \
-                --repository "$CENTRAL_STAGING" \
-                --output "$CENTRAL_BUNDLE" \
-                --report "$CENTRAL_REPORT" \
-                --require-signatures \
-                --consume-repository \
-                --required-coordinate io.github.ciurlaro:codex-agent-client:0.2.0 \
-                --required-coordinate io.github.ciurlaro:codex-agent-runtime-android:0.2.0 \
-                --required-coordinate io.github.ciurlaro:codex-agent-runtime-ios:0.2.0
-            '
-      - name: Generate candidate artifact, dependency, and resource report
-        run: |
-          python3 release/scripts/report_release_artifacts.py \
-            --release-tag '${{ steps.release.outputs.tag }}' \
-            --commit "$GITHUB_SHA" \
-            --swift-asset "$CANDIDATE_OUTPUT/CodexAgent-0.2.0.xcframework.zip" \
-            --swift-checksum "$CANDIDATE_OUTPUT/CodexAgent-0.2.0.xcframework.zip.sha256" \
-            --central-bundle "$CANDIDATE_OUTPUT/codex-agent-0.2.0-central.zip" \
-            --central-report "$CANDIDATE_OUTPUT/central-bundle-report.json" \
-            --privacy-report "$CANDIDATE_OUTPUT/privacy-audit.json" \
-            --approvals release/0.2.0-approvals.json \
-            --package-swift Package.swift \
-            --resource-report "$CANDIDATE_OUTPUT/resources/rust-build.json" \
-            --resource-report "$CANDIDATE_OUTPUT/resources/xcframework-assembly.json" \
-            --resource-report "$CANDIDATE_OUTPUT/resources/swift-packaging.json" \
-            --resource-report "$CANDIDATE_OUTPUT/resources/maven-publication.json" \
-            --output "$CANDIDATE_OUTPUT/release-artifact-report.json" \
-            --candidate-manifest "$CANDIDATE_OUTPUT/candidate-manifest.json"
-          rm -rf "$CENTRAL_STAGING"
-      - name: Upload exact candidate payload
-        if: always()
+          ./gradlew assembleProtectedCandidate
+          -PcodexAgent.candidateCommit=${{ needs.portable-gates.outputs.commit_b }}
+          -PcodexAgent.releaseTag=${{ needs.portable-gates.outputs.release_tag }}
+          -PcodexAgent.androidEvidenceFile=${{ steps.paths.outputs.android }}/android-runtime-evidence.json
+          -PcodexAgent.swiftPmBaselineProof=${{ steps.paths.outputs.baseline }}/swiftpm-baseline.json
+          --no-parallel --no-daemon --stacktrace
+      - name: Upload the exact technical candidate
         uses: actions/upload-artifact@v4
         with:
-          name: codex-agent-${{ steps.release.outputs.tag }}-candidate
-          path: ${{ runner.temp }}/codex-agent-candidate/**
+          name: codex-agent-protected-candidate
+          path: ${{ steps.paths.outputs.payload }}/**
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
-      - name: Upload test diagnostics
+      - name: Upload candidate diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codex-agent-${{ steps.release.outputs.tag }}-diagnostics
+          name: codex-agent-protected-candidate-diagnostics
           path: |
             codex-agent-runtime-ios/build/reports/ios-release/**
             codex-agent-runtime-ios/build/swift-authentication-tests-summary.json
+            build/protected-candidate/${{ needs.portable-gates.outputs.commit_b }}/reports/**
           if-no-files-found: warn
           retention-days: 30
-      - name: Require hash-bound privacy and static-framework licence approvals
+      - name: Require external publication approvals
         run: ./gradlew verifyPublicationReadiness --no-daemon --stacktrace

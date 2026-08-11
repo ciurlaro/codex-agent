@@ -5,7 +5,10 @@ import XCTest
 @MainActor
 final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
     func testCancellationFollowedImmediatelyByRetryIgnoresStaleCompletion() {
-        let driver = FakeAuthenticationDriver(autoCompleteAuxiliaryOperations: false)
+        let driver = FakeAuthenticationDriver(
+            autoCompleteAuthenticationOperation: false,
+            autoCompleteAuxiliaryOperations: false
+        )
         let session = makeSession(driver)
         var retryResult: String?
         session.authenticate { _ in }
@@ -16,12 +19,15 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
 
         XCTAssertEqual(driver.authenticationCalls, 2)
         XCTAssertEqual(driver.cancellationCalls, 1)
+        XCTAssertEqual(driver.appServerLoginCancellationCalls, 1)
+        XCTAssertEqual(driver.authenticationOperationCancellations, 0)
+        XCTAssertEqual(driver.authenticationOperationDetachments, 2)
         XCTAssertNil(retryResult)
         XCTAssertTrue(session.isAuthenticated)
     }
 
     func testFailureFollowedByRetryPreservesServerMessage() {
-        let driver = FakeAuthenticationDriver()
+        let driver = FakeAuthenticationDriver(autoCompleteAuthenticationOperation: false)
         let session = makeSession(driver)
         var firstError: String?
         var retryResult: String?
@@ -33,11 +39,14 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
         XCTAssertEqual(firstError, "Server supplied login failure")
         XCTAssertNil(retryResult)
         XCTAssertEqual(driver.authenticationCalls, 2)
+        XCTAssertEqual(driver.authenticationOperationDetachments, 2)
+        XCTAssertEqual(driver.appServerLoginCancellationCalls, 0)
     }
 
     func testSignOutFollowedImmediatelyByAuthentication() {
         let driver = FakeAuthenticationDriver(
             status: .authenticated,
+            autoCompleteAuthenticationOperation: false,
             autoCompleteAuxiliaryOperations: false
         )
         let session = makeSession(driver)
@@ -49,6 +58,8 @@ final class CodexChatGPTAuthenticationSessionTests: XCTestCase {
 
         XCTAssertEqual(driver.signOutCalls, 1)
         XCTAssertEqual(driver.authenticationCalls, 1)
+        XCTAssertEqual(driver.appServerLoginCancellationCalls, 0)
+        XCTAssertEqual(driver.auxiliaryOperationDetachments, 1)
         XCTAssertNil(result)
         XCTAssertTrue(session.isAuthenticated)
     }

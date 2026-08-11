@@ -59,6 +59,32 @@ extensions.getByType<LibraryAndroidComponentsExtension>().onVariants { variant -
     )
 }
 
+val localPropertiesFile = rootProject.layout.projectDirectory.file("local.properties").asFile
+val androidSdkPath = providers.environmentVariable("ANDROID_HOME")
+    .orElse(providers.environmentVariable("ANDROID_SDK_ROOT"))
+    .orElse(providers.provider {
+        localPropertiesFile.takeIf(File::isFile)?.readLines()
+            ?.singleOrNull { it.startsWith("sdk.dir=") }
+            ?.substringAfter('=')
+            ?: error("ANDROID_HOME, ANDROID_SDK_ROOT, or sdk.dir is required")
+    })
+
+tasks.register<RecordAndroidRuntimeEvidenceTask>("recordAndroidRuntimeEvidence") {
+    group = "verification"
+    description = "Runs the exact ARM64 instrumentation smoke and records hash-bound candidate evidence."
+    dependsOn("connectedDebugAndroidTest", "assembleRelease")
+    candidateCommit.set(providers.gradleProperty("codexAgent.candidateCommit"))
+    pinnedRuntimeSha256.set(prepareRuntime.flatMap { it.binarySha256 })
+    outputMetadata.set(layout.buildDirectory.file("outputs/apk/androidTest/debug/output-metadata.json"))
+    testResults.set(layout.buildDirectory.dir("outputs/androidTest-results/connected/debug"))
+    releaseAar.set(layout.buildDirectory.file("outputs/aar/codex-agent-runtime-android-release.aar"))
+    adbExecutable.set(layout.file(androidSdkPath.map { file("$it/platform-tools/adb") }))
+    apkanalyzerExecutable.set(layout.file(androidSdkPath.map { file("$it/cmdline-tools/latest/bin/apkanalyzer") }))
+    repositoryDirectory.set(rootProject.layout.projectDirectory)
+    evidenceDirectory.set(layout.buildDirectory.dir("reports/android-runtime-evidence"))
+    outputs.upToDateWhen { false }
+}
+
 mavenPublishing {
     configure(
         AndroidSingleVariantLibrary(
@@ -98,15 +124,6 @@ mavenPublishing {
             url.set("https://github.com/ciurlaro/codex-agent")
             connection.set("scm:git:https://github.com/ciurlaro/codex-agent.git")
             developerConnection.set("scm:git:ssh://git@github.com/ciurlaro/codex-agent.git")
-        }
-    }
-}
-
-publishing {
-    providers.gradleProperty("codexAgent.localRepository").orNull?.let { path ->
-        repositories.maven {
-            name = "migration"
-            url = uri(path)
         }
     }
 }

@@ -18,7 +18,7 @@ extension CodexChatGPTAuthenticationSessionTests {
     }
 
     func testMultipleObserversReceiveTheSameEvents() {
-        let driver = FakeAuthenticationDriver()
+        let driver = FakeAuthenticationDriver(autoCompleteAuthenticationOperation: false)
         let first = makeSession(driver)
         let second = makeSession(driver)
         var firstEvents: [AgentEvent] = []
@@ -48,6 +48,9 @@ extension CodexChatGPTAuthenticationSessionTests {
         first.cancel()
 
         XCTAssertEqual(driver.authenticationCalls, 1)
+        XCTAssertEqual(driver.appServerLoginCancellationCalls, 1)
+        XCTAssertEqual(driver.authenticationOperationCancellations, 0)
+        XCTAssertEqual(driver.authenticationOperationDetachments, 1)
         XCTAssertNotNil(firstError)
         XCTAssertNotNil(secondError)
         XCTAssertFalse(first.isAuthenticating)
@@ -55,7 +58,7 @@ extension CodexChatGPTAuthenticationSessionTests {
     }
 
     func testFacadeClosingWhileWrapperWaitsFinishesAttempt() {
-        let driver = FakeAuthenticationDriver()
+        let driver = FakeAuthenticationDriver(autoCompleteAuthenticationOperation: false)
         let session = makeSession(driver)
         var result: String?
         session.authenticate { result = $0 }
@@ -64,10 +67,12 @@ extension CodexChatGPTAuthenticationSessionTests {
         XCTAssertEqual(result, "Codex Agent facade is closed.")
         XCTAssertFalse(session.isAuthenticating)
         XCTAssertFalse(session.isAuthenticated)
+        XCTAssertEqual(driver.authenticationOperationDetachments, 1)
+        XCTAssertEqual(driver.appServerLoginCancellationCalls, 0)
     }
 
     func testBrowserCancellationAllowsImmediateRetry() async {
-        let driver = FakeAuthenticationDriver()
+        let driver = FakeAuthenticationDriver(autoCompleteAuthenticationOperation: false)
         let browsers = BrowserStore()
         let session = makeSession(driver, browsers)
         let anchor = ASPresentationAnchor()
@@ -86,8 +91,12 @@ extension CodexChatGPTAuthenticationSessionTests {
         )
         await fulfillment(of: [canceled])
         session.authenticate(from: anchor) { _ in }
+        driver.succeed()
 
         XCTAssertEqual(firstError, "ChatGPT authentication was canceled.")
         XCTAssertEqual(driver.authenticationCalls, 2)
+        XCTAssertEqual(driver.appServerLoginCancellationCalls, 1)
+        XCTAssertEqual(driver.authenticationOperationCancellations, 0)
+        XCTAssertEqual(driver.authenticationOperationDetachments, 2)
     }
 }

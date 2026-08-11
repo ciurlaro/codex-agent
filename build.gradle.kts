@@ -1,9 +1,6 @@
+import java.io.File
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
-import org.gradle.api.tasks.Delete
-import org.gradle.api.tasks.Sync
-import org.gradle.api.tasks.bundling.Zip
-
 plugins {
     base
     alias(libs.plugins.android.kmp.library) apply false
@@ -13,31 +10,28 @@ plugins {
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.maven.publish) apply false
 }
-
-val centralStagingDirectory = layout.buildDirectory.dir("central-staging")
-val cleanCentralStaging = tasks.register<Delete>("cleanCentralStaging") {
-    delete(centralStagingDirectory)
-}
-
+val candidateCommitValue = providers.gradleProperty("codexAgent.candidateCommit")
+val candidateReleaseTag = providers.gradleProperty("codexAgent.releaseTag")
+val candidatePathCommit = candidateCommitValue.orElse("UNBOUND")
+val candidateRoot = layout.buildDirectory.dir(candidatePathCommit.map { "protected-candidate/$it" })
+val candidateArtifacts = candidateRoot.map { it.dir("artifacts") }
+val candidateEvidence = candidateRoot.map { it.dir("evidence") }
+val candidateReports = candidateRoot.map { it.dir("reports") }
+val centralStagingDirectory = candidateRoot.map { it.dir("maven-repository") }
 subprojects {
     pluginManager.withPlugin("maven-publish") {
         extensions.configure<PublishingExtension> {
             repositories.maven {
                 name = "CENTRAL_STAGING"
-                url = rootProject.layout.buildDirectory.dir("central-staging").get().asFile.toURI()
+                url = centralStagingDirectory.get().asFile.toURI()
             }
-        }
-        tasks.withType<PublishToMavenRepository>().configureEach {
-            mustRunAfter(cleanCentralStaging)
         }
     }
 }
-
 allprojects {
     group = "io.github.ciurlaro"
     version = "0.2.0"
 }
-
 tasks.register("verifyRepository") {
     group = "verification"
     description = "Runs the portable client, Android runtime, protocol, and build-logic checks."
@@ -60,181 +54,244 @@ tasks.register("verifyIosRuntime") {
 
 tasks.register<VerifyReleaseMetadataTask>("verifyReleaseMetadata") {
     group = "verification"
-    description = "Verifies that the release tag and public consumer metadata match the project version."
     projectVersion.set(project.version.toString())
-    releaseTag.set(providers.gradleProperty("codexAgent.releaseTag"))
+    releaseTag.set(providers.gradleProperty("codexAgent.releaseTag").orElse("v${project.version}"))
     swiftPackageManifest.set(layout.projectDirectory.file("Package.swift"))
-    remoteConsumerManifest.set(
-        layout.projectDirectory.file("codex-agent-runtime-ios/apple/RemoteConsumer/Package.swift"),
-    )
+    remoteConsumerManifest.set(layout.projectDirectory.file("codex-agent-runtime-ios/apple/RemoteConsumer/Package.swift"))
 }
+
+val publicationApprovals = layout.projectDirectory.file("release/publication-approvals.json")
+val privacyManifestFile = layout.projectDirectory.file(
+    "codex-agent-runtime-ios/apple/Sources/CodexAgentAuthentication/PrivacyInfo.xcprivacy",
+)
+val privacyDataFlowReviewFile = layout.projectDirectory.file("release/privacy-data-flow-review.json")
+val privacyRequiredReasonReview = layout.projectDirectory.file(
+    providers.gradleProperty("codexAgent.privacyRequiredReasonReview").orNull
+        ?: "release/privacy-required-reason-review.json",
+)
 
 tasks.register<VerifyPublicationReadinessTask>("verifyPublicationReadiness") {
     group = "verification"
-    description = "Requires external Apple privacy and static-framework GPL distribution approvals."
-    approvalsFile.set(layout.projectDirectory.file("release/0.2.0-approvals.json"))
-    privacyManifest.set(
-        layout.projectDirectory.file(
-            "codex-agent-runtime-ios/apple/Sources/CodexAgentAuthentication/PrivacyInfo.xcprivacy",
-        ),
-    )
-    privacyInventory.set(layout.projectDirectory.file("release/privacy-data-flow-inventory-0.2.0.json"))
+    approvalsFile.set(publicationApprovals)
+    privacyManifest.set(privacyManifestFile)
+    privacyInventory.set(privacyDataFlowReviewFile)
+}
+
+val androidEvidenceFile = layout.file(providers.gradleProperty("codexAgent.androidEvidenceFile").map(::file))
+val androidEvidenceDirectory = layout.dir(androidEvidenceFile.map { it.asFile.parentFile })
+val swiftBaselineProof = layout.file(providers.gradleProperty("codexAgent.swiftPmBaselineProof").map(::file))
+val prepareProtectedCandidate = tasks.register<PrepareProtectedCandidateTask>("prepareProtectedCandidate") {
+    dependsOn("verifyReleaseMetadata")
+    version.set(project.version.toString())
+    releaseTag.set(candidateReleaseTag)
+    candidateCommit.set(candidateCommitValue)
+    parallelExecution.set(gradle.startParameter.isParallelProjectExecutionEnabled)
+    androidEvidence.set(androidEvidenceFile)
+    baselineProof.set(swiftBaselineProof)
+    repositoryDirectory.set(layout.projectDirectory)
+    candidateDirectory.set(candidateRoot)
 }
 
 val stageCentralRepository = tasks.register("stageCentralRepository") {
     group = "publishing"
-    description = "Stages the exact complete KMP repository without uploading it."
     dependsOn(
-        cleanCentralStaging,
         ":codex-agent-client:publishAllPublicationsToCENTRAL_STAGINGRepository",
         ":codex-agent-runtime-android:publishAllPublicationsToCENTRAL_STAGINGRepository",
         ":codex-agent-runtime-ios:publishAllPublicationsToCENTRAL_STAGINGRepository",
     )
 }
 
-val generateCentralChecksums = tasks.register<Exec>("generateCentralChecksums") {
-    dependsOn(stageCentralRepository)
-    outputs.dir(centralStagingDirectory)
-    commandLine(
-        "/bin/bash", "-c",
-        """
-            set -euo pipefail
-            root="${centralStagingDirectory.get().asFile.absolutePath}"
-            find "${'$'}root" -type f ! -name '*.md5' ! -name '*.sha1' ! -name '*.sha256' ! -name '*.sha512' -print0 |
-              while IFS= read -r -d '' file; do
-                md5 -q "${'$'}file" > "${'$'}file.md5"
-                shasum -a 1 "${'$'}file" | awk '{print ${'$'}1}' > "${'$'}file.sha1"
-              done
-        """.trimIndent(),
-    )
-}
-
-val mavenInventoryFile = layout.buildDirectory.file("reports/release-candidate/maven-inventory.json")
+val mavenInventoryFile = candidateReports.map { it.file("maven-inventory.json") }
 val verifyCentralStaging = tasks.register<VerifyMavenStagingTask>("verifyCentralStaging") {
-    dependsOn(generateCentralChecksums)
+    group = "verification"
+    description = "Verifies the exact signed nine-coordinate staged KMP repository and materializes checksums."
+    dependsOn(stageCentralRepository)
     repositoryDirectory.set(centralStagingDirectory)
     groupId.set(project.group.toString())
     version.set(project.version.toString())
-    expectedArtifactIds.set(
-        listOf(
-            "codex-agent-client",
-            "codex-agent-client-android",
-            "codex-agent-client-iosarm64",
-            "codex-agent-client-iossimulatorarm64",
-            "codex-agent-client-jvm",
-            "codex-agent-runtime-android",
-            "codex-agent-runtime-ios",
-            "codex-agent-runtime-ios-iosarm64",
-            "codex-agent-runtime-ios-iossimulatorarm64",
-        ),
-    )
-    rootMetadataArtifactIds.set(listOf("codex-agent-client", "codex-agent-runtime-ios"))
-    requireSignatures.set(
-        providers.gradleProperty("codexAgent.requireCentralSignatures").map(String::toBoolean).orElse(false),
-    )
+    requireSignatures.set(true)
     inventoryFile.set(mavenInventoryFile)
 }
 
-val cleanKmpConsumerDirectory = layout.buildDirectory.dir("clean-kmp-consumer")
 val rootLocalProperties = layout.projectDirectory.file("local.properties")
-val androidSdkDirectory = providers.environmentVariable("ANDROID_HOME").orElse(
+val rootAndroidSdkDirectory = providers.environmentVariable("ANDROID_HOME").orElse(
     providers.fileContents(rootLocalProperties).asText.map { contents ->
         contents.lineSequence().single { it.startsWith("sdk.dir=") }.substringAfter('=')
     },
 )
-val prepareCleanKmpConsumer = tasks.register<Sync>("prepareCleanKmpConsumer") {
-    into(cleanKmpConsumerDirectory)
-    from(layout.projectDirectory.dir("release/kmp-consumer-template"))
+val cleanKmpConsumerResult = candidateReports.map { it.file("clean-kmp-consumer.json") }
+val verifyStagedKmpConsumer = tasks.register<VerifyStagedKmpConsumerTask>("verifyStagedKmpConsumer") {
+    group = "verification"
+    description = "Builds an isolated four-target KMP consumer from CENTRAL_STAGING only."
+    dependsOn(verifyCentralStaging)
+    repositoryDirectory.set(centralStagingDirectory)
+    templateDirectory.set(layout.projectDirectory.dir("release/kmp-consumer-template"))
+    mavenInventory.set(mavenInventoryFile)
+    gradleWrapper.set(layout.projectDirectory.file("gradlew"))
+    projectVersion.set(project.version.toString())
+    androidSdkDirectory.set(rootAndroidSdkDirectory)
+    consumerDirectory.set(candidateRoot.map { it.dir("clean-consumer") })
+    resultFile.set(cleanKmpConsumerResult)
 }
 
-val cleanKmpConsumerResult = layout.buildDirectory.file("reports/release-candidate/kmp-consumer.json")
-val verifyStagedKmpConsumer = tasks.register<Exec>("verifyStagedKmpConsumer") {
-    notCompatibleWithConfigurationCache("Kotlin/Native publication commonization uses project state at execution time")
-    dependsOn(verifyCentralStaging, prepareCleanKmpConsumer)
-    inputs.dir(centralStagingDirectory)
-    inputs.dir(layout.projectDirectory.dir("release/kmp-consumer-template"))
-    inputs.property("androidSdkDirectory", androidSdkDirectory)
-    outputs.file(cleanKmpConsumerResult)
-    commandLine(
-        "/bin/bash", "-c",
-        """
-            set -euo pipefail
-            printf 'sdk.dir=%s\n' '${androidSdkDirectory.get()}' > "${cleanKmpConsumerDirectory.get().asFile.absolutePath}/local.properties"
-            "${layout.projectDirectory.file("gradlew").asFile.absolutePath}" \
-              -p "${cleanKmpConsumerDirectory.get().asFile.absolutePath}" \
-              --no-configuration-cache \
-              -PCENTRAL_STAGING="${centralStagingDirectory.get().asFile.absolutePath}" \
-              compileKotlinJvm compileAndroidMain \
-              linkDebugFrameworkIosArm64 linkDebugFrameworkIosSimulatorArm64
-            mkdir -p "${cleanKmpConsumerResult.get().asFile.parentFile.absolutePath}"
-            printf '%s\n' '{"jvm":"passed","android":"passed","iosArm64":"passed","iosSimulatorArm64":"passed","codexAgentResolution":"CENTRAL_STAGING-only"}' > "${cleanKmpConsumerResult.get().asFile.absolutePath}"
-        """.trimIndent(),
-    )
-}
-
-val packageCentralBundle = tasks.register<Zip>("packageCentralBundle") {
+val centralBundleFile = candidateArtifacts.map { it.file("codex-agent-${project.version}-central.zip") }
+val centralBundleInventory = candidateReports.map { it.file("central-bundle.json") }
+val packageCentralBundle = tasks.register<BuildCentralBundleTask>("packageCentralBundle") {
+    group = "publishing"
+    description = "Builds and inventories the exact deterministic Central Portal bundle."
     dependsOn(verifyStagedKmpConsumer)
-    archiveFileName.set("codex-agent-${project.version}-central-bundle.zip")
-    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-    isPreserveFileTimestamps = false
-    isReproducibleFileOrder = true
-    from(centralStagingDirectory)
-}
-
-val centralBundleInventory = layout.buildDirectory.file("reports/release-candidate/central-bundle.json")
-val generateCentralBundleInventory = tasks.register<GenerateBundleInventoryTask>("generateCentralBundleInventory") {
-    dependsOn(packageCentralBundle)
-    bundleFile.set(packageCentralBundle.flatMap { it.archiveFile })
+    repositoryDirectory.set(centralStagingDirectory)
     mavenInventory.set(mavenInventoryFile)
     maximumBytes.set(1_000_000_000L)
-    outputFile.set(centralBundleInventory)
+    bundleFile.set(centralBundleFile)
+    inventoryFile.set(centralBundleInventory)
 }
 
-val candidateCommitValue = providers.gradleProperty("codexAgent.candidateCommit").orElse("UNCOMMITTED")
-val androidEvidenceFile = providers.gradleProperty("codexAgent.androidEvidenceFile")
-    .map { layout.projectDirectory.file(it) }
-    .orElse(layout.projectDirectory.file("release/android-runtime-evidence-0.2.0.pending.json"))
-val candidateManifest = layout.buildDirectory.file("reports/release-candidate/candidate-manifest.json")
+val stagedAndroidDirectory = candidateEvidence.map { it.dir("android") }
+val stagedAndroidEvidence = stagedAndroidDirectory.map { it.file("android-runtime-evidence.json") }
+val stageAndroidEvidence = tasks.register<StageAndroidEvidenceTask>("stageAndroidRuntimeEvidence") {
+    evidenceFile.set(androidEvidenceFile)
+    evidenceDirectory.set(androidEvidenceDirectory)
+    outputDirectory.set(stagedAndroidDirectory)
+}
+val stagedAndroidAar = centralStagingDirectory.map {
+    it.file("io/github/ciurlaro/codex-agent-runtime-android/${project.version}/" +
+        "codex-agent-runtime-android-${project.version}.aar")
+}
+val androidEvidenceVerification = tasks.register<VerifyAndroidRuntimeEvidenceTask>("verifyAndroidRuntimeEvidence") {
+    dependsOn(verifyCentralStaging, stageAndroidEvidence)
+    expectedCommit.set(candidateCommitValue)
+    pinnedRuntimeSha256.set(providers.gradleProperty("codexAgent.codexBinarySha256"))
+    evidenceFile.set(stagedAndroidEvidence)
+    evidenceDirectory.set(stagedAndroidDirectory)
+    stagedAar.set(stagedAndroidAar)
+    apkanalyzerExecutable.set(layout.file(rootAndroidSdkDirectory.map { File(it, "cmdline-tools/latest/bin/apkanalyzer") }))
+    verificationFile.set(candidateReports.map { it.file("android-runtime-verification.json") })
+}
+
+val swiftArchiveName = "CodexAgent-${project.version}.xcframework.zip"
+val stagedSwiftZip = candidateArtifacts.map { it.file(swiftArchiveName) }
+val stagedSwiftChecksum = candidateArtifacts.map { it.file("$swiftArchiveName.sha256") }
+val stagedSwiftPmAbProof = candidateEvidence.map { it.file("swiftpm-ab-proof.json") }
+val stageSwiftZip = tasks.register<CopyCandidateFileTask>("stageProtectedSwiftPackage") {
+    sourceFile.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/distributions/$swiftArchiveName"))
+    outputFile.set(stagedSwiftZip)
+}
+val stageSwiftChecksum = tasks.register<CopyCandidateFileTask>("stageProtectedSwiftChecksum") {
+    sourceFile.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/distributions/$swiftArchiveName.sha256"))
+    outputFile.set(stagedSwiftChecksum)
+}
+val stagedPrivacyAudit = candidateEvidence.map { it.file("privacy-audit.json") }
+val stagePrivacyAudit = tasks.register<CopyCandidateFileTask>("stageProtectedPrivacyAudit") {
+    sourceFile.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/privacy/audit.json"))
+    outputFile.set(stagedPrivacyAudit)
+}
+
+val runtimeMetrics = layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/runtime-metrics.json")
+val resourceEvidence = candidateEvidence.map { it.file("resource-measurement.json") }
+val measureCandidateResources = tasks.register<ConsumeReleaseResourceReportTask>("measureProtectedCandidateResources") {
+    phase.set("ios-runtime-benchmark")
+    producerTaskPath.set(":codex-agent-runtime-ios:iosSimulatorArm64Test")
+    metricsFile.set(runtimeMetrics)
+    workspace.set(layout.projectDirectory)
+    trackedPaths.from(candidateArtifacts, centralStagingDirectory)
+    outputFile.set(resourceEvidence)
+}
+
+val candidateManifest = candidateRoot.map { it.file("candidate-manifest.json") }
 val generateCandidateManifest = tasks.register<GenerateCandidateManifestTask>("generateCandidateManifest") {
-    dependsOn(generateCentralBundleInventory, "verifyIosRuntime")
+    group = "publishing"
+    description = "Generates the one canonical hash-bound protected-candidate manifest."
     candidateVersion.set(project.version.toString())
+    releaseTag.set(candidateReleaseTag)
     candidateCommit.set(candidateCommitValue)
-    swiftZip.set(
-        layout.projectDirectory.file(
-            "codex-agent-runtime-ios/build/distributions/CodexAgent-${project.version}.xcframework.zip",
-        ),
-    )
-    swiftChecksum.set(
-        layout.projectDirectory.file(
-            "codex-agent-runtime-ios/build/distributions/CodexAgent-${project.version}.xcframework.zip.sha256",
-        ),
-    )
-    centralBundle.set(packageCentralBundle.flatMap { it.archiveFile })
+    swiftZip.set(stagedSwiftZip)
+    swiftChecksum.set(stagedSwiftChecksum)
+    swiftPmAbProof.set(stagedSwiftPmAbProof)
+    centralBundle.set(centralBundleFile)
     centralInventory.set(centralBundleInventory)
     mavenInventory.set(mavenInventoryFile)
-    approvalsFile.set(layout.projectDirectory.file("release/0.2.0-approvals.json"))
-    privacyManifest.set(
-        layout.projectDirectory.file(
-            "codex-agent-runtime-ios/apple/Sources/CodexAgentAuthentication/PrivacyInfo.xcprivacy",
-        ),
-    )
-    privacyInventory.set(layout.projectDirectory.file("release/privacy-data-flow-inventory-0.2.0.json"))
-    privacyAudit.set(
-        layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/privacy/audit.json"),
-    )
-    privacyReviews.set(layout.projectDirectory.file("release/privacy-required-reason-reviews-0.2.0.json"))
-    androidEvidence.set(androidEvidenceFile)
+    kmpConsumer.set(cleanKmpConsumerResult)
+    androidEvidence.set(stagedAndroidEvidence)
+    privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
+    resourceReports.from(resourceEvidence)
+    approvalsFile.set(publicationApprovals)
+    privacyManifest.set(privacyManifestFile)
+    privacyDataFlowReview.set(privacyDataFlowReviewFile)
+    privacyReviews.set(privacyRequiredReasonReview)
+    packageSwift.set(layout.projectDirectory.file("Package.swift"))
     outputFile.set(candidateManifest)
 }
-
-val verifyAndroidRuntimeEvidence = tasks.register<VerifyAndroidRuntimeEvidenceTask>("verifyAndroidRuntimeEvidence") {
-    expectedCommit.set(candidateCommitValue)
-    evidenceFile.set(androidEvidenceFile)
+val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTask>("verifyCandidateManifest") {
+    dependsOn(generateCandidateManifest)
+    manifestFile.set(candidateManifest)
+    candidateVersion.set(project.version.toString())
+    releaseTag.set(candidateReleaseTag)
+    candidateCommit.set(candidateCommitValue)
+    swiftZip.set(stagedSwiftZip)
+    swiftChecksum.set(stagedSwiftChecksum)
+    swiftPmAbProof.set(stagedSwiftPmAbProof)
+    centralBundle.set(centralBundleFile)
+    centralInventory.set(centralBundleInventory)
+    mavenInventory.set(mavenInventoryFile)
+    kmpConsumer.set(cleanKmpConsumerResult)
+    androidEvidence.set(stagedAndroidEvidence)
+    privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
+    resourceReports.from(resourceEvidence)
+    approvalsFile.set(publicationApprovals)
+    privacyManifest.set(privacyManifestFile)
+    privacyDataFlowReview.set(privacyDataFlowReviewFile)
+    privacyReviews.set(privacyRequiredReasonReview)
+    packageSwift.set(layout.projectDirectory.file("Package.swift"))
 }
 
-tasks.register<VerifyCandidateManifestTask>("verifyProtectedCandidate") {
-    dependsOn(generateCandidateManifest, verifyAndroidRuntimeEvidence, "verifyPublicationReadiness")
-    manifestFile.set(candidateManifest)
+val protectedCandidatePhases = registerProtectedCandidatePhases(prepareProtectedCandidate)
+
+gradle.projectsEvaluated {
+    val ios = project(":codex-agent-runtime-ios").tasks
+    ios.named<VerifySwiftPackageABTask>("verifyCodexAgentSwiftPackageAB") {
+        dependsOn("generateCodexAgentSwiftPackageChecksum")
+        baselineProof.set(swiftBaselineProof)
+        proofFile.set(stagedSwiftPmAbProof)
+    }
+    stageSwiftZip.configure { dependsOn(ios.named("verifyCodexAgentSwiftPackageAB")) }
+    stageSwiftChecksum.configure { dependsOn(ios.named("verifyCodexAgentSwiftPackageAB")) }
+    stagePrivacyAudit.configure { dependsOn(ios.named("verifyIosPrivacyManifest")) }
+    measureCandidateResources.configure { dependsOn(packageCentralBundle) }
+    subprojects {
+        tasks.withType<PublishToMavenRepository>().configureEach { mustRunAfter(protectedCandidatePhases.privacy) }
+    }
+}
+
+tasks.register<VerifyCandidatePayloadTask>("verifyCandidatePayload") {
+    githubOutputFile.set(providers.gradleProperty("codexAgent.githubOutputFile").map(layout.projectDirectory::file))
+    group = "verification"
+    description = "Verifies every transported candidate byte and repository policy binding."
+    manifestFile.set(layout.file(providers.gradleProperty("codexAgent.candidateManifest").map(::file)))
+    payloadDirectory.set(layout.dir(providers.gradleProperty("codexAgent.candidatePayload").map(::file)))
+    expectedVersion.set(project.version.toString())
+    expectedTag.set(candidateReleaseTag)
+    expectedCommit.set(candidateCommitValue)
+    approvalsFile.set(publicationApprovals)
+    privacyManifest.set(privacyManifestFile)
+    privacyDataFlowReview.set(privacyDataFlowReviewFile)
+    privacyReviews.set(privacyRequiredReasonReview)
+    packageSwift.set(layout.projectDirectory.file("Package.swift"))
+    outputFile.set(layout.buildDirectory.file("reports/release-candidate/payload-verification.json"))
+}
+
+tasks.register<VerifyPublicSwiftResolutionTask>("verifyPublicSwiftResolution") {
+    group = "verification"
+    description = "Verifies the public Swift asset bytes and clean SwiftPM resolution."
+    assetUrl.set(
+        "https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/" +
+            "CodexAgent-${project.version}.xcframework.zip",
+    )
+    candidateManifest.set(layout.file(providers.gradleProperty("codexAgent.candidateManifest").map(::file)))
+    consumerDirectory.set(layout.projectDirectory.dir("codex-agent-runtime-ios/apple/RemoteConsumer"))
+    derivedDataDirectory.set(layout.buildDirectory.dir("public-swift-derived-data"))
+    packagesDirectory.set(layout.buildDirectory.dir("public-swift-packages"))
+    outputFile.set(layout.buildDirectory.file("reports/release-candidate/public-swift-resolution.json"))
 }
 
 registerCentralPortalTasks()

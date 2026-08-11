@@ -3,6 +3,8 @@ plugins {
     id("com.android.kotlin.multiplatform.library") version "9.2.1"
 }
 
+val codexAgentVersion = providers.gradleProperty("codexAgent.version").get()
+
 kotlin {
     jvm()
     android {
@@ -18,13 +20,13 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation("io.github.ciurlaro:codex-agent-client:0.2.0")
+            implementation("io.github.ciurlaro:codex-agent-client:$codexAgentVersion")
         }
         androidMain.dependencies {
-            implementation("io.github.ciurlaro:codex-agent-runtime-android:0.2.0")
+            implementation("io.github.ciurlaro:codex-agent-runtime-android:$codexAgentVersion")
         }
         iosMain.dependencies {
-            implementation("io.github.ciurlaro:codex-agent-runtime-ios:0.2.0")
+            implementation("io.github.ciurlaro:codex-agent-runtime-ios:$codexAgentVersion")
         }
     }
 }

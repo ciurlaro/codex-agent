@@ -8,6 +8,16 @@ permissions:
   contents: read
 
 jobs:
+  workflow-lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.3"
+      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - run: actionlint
+
   android-jvm:
     runs-on: ubuntu-24.04
     steps:
@@ -33,19 +43,13 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      - name: Verify pinned Apple toolchain
-        run: |
-          xcodebuild -version | tee "$RUNNER_TEMP/xcode-version.txt"
-          swift --version | tee "$RUNNER_TEMP/swift-version.txt"
-          grep -Fx 'Xcode 26.6' "$RUNNER_TEMP/xcode-version.txt"
-          grep -Fx 'Build version 17F113' "$RUNNER_TEMP/xcode-version.txt"
-          grep -F 'Apple Swift version 6.3.3' "$RUNNER_TEMP/swift-version.txt"
+      - run: ./gradlew :codex-agent-runtime-ios:verifyAppleToolchain --stacktrace
       - name: Install pinned Rust toolchain
-        run: >-
-          rustup toolchain install 1.95.0 --profile minimal
-          --target aarch64-apple-ios,aarch64-apple-ios-sim
-      - name: Verify embedded iOS runtime and Apple package
-        run: ./gradlew verifyIosRuntime --stacktrace
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+          components: llvm-tools-preview
+      - run: ./gradlew verifyIosRuntime --stacktrace
       - name: Upload iOS verification evidence
         if: always()
         uses: actions/upload-artifact@v4

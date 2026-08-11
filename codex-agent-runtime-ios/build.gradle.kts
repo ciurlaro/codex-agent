@@ -164,15 +164,6 @@ mavenPublishing {
     }
 }
 
-publishing {
-    providers.gradleProperty("codexAgent.localRepository").orNull?.let { path ->
-        repositories.maven {
-            name = "migration"
-            url = uri(path)
-        }
-    }
-}
-
 dependencyLocking {
     lockAllConfigurations()
 }
@@ -181,6 +172,7 @@ val appleDistributionTasks = registerIosAppleDistributionTasks(expectedSwiftTest
 val appleReleaseTasks = registerIosAppleReleaseVerificationTasks(
     appleDistributionTasks,
     minimumIosVersion,
+    pinnedRustToolchain,
 )
 
 tasks.register("verifyIosRuntime") {

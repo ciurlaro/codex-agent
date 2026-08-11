@@ -28,6 +28,7 @@ final class FakeAuthenticationDriver: CodexAuthenticationDriving {
     private var generation: Int64 = 0
     private var pendingCancellations: [(Int64, (String?) -> Void)] = []
     private var pendingSignOuts: [(Int64, (String?) -> Void)] = []
+    private let autoCompleteAuthenticationOperation: Bool
     private let autoCompleteAuxiliaryOperations: Bool
     private(set) var authenticationCalls = 0
     private(set) var cancellationCalls = 0
@@ -35,6 +36,8 @@ final class FakeAuthenticationDriver: CodexAuthenticationDriving {
     private(set) var authenticationOperationCancellations = 0
     private(set) var authenticationOperationDetachments = 0
     private(set) var auxiliaryOperationCancellations = 0
+    private(set) var auxiliaryOperationDetachments = 0
+    private(set) var appServerLoginCancellationCalls = 0
     private(set) var hasActiveLogin = false
 
     var eventObserverCount: Int { eventObservers.count }
@@ -42,6 +45,7 @@ final class FakeAuthenticationDriver: CodexAuthenticationDriving {
 
     init(
         status: IosCodexAuthenticationStatus = .signedOut,
+        autoCompleteAuthenticationOperation: Bool = true,
         autoCompleteAuxiliaryOperations: Bool = true
     ) {
         authenticationState = IosCodexAuthenticationState(
@@ -50,6 +54,7 @@ final class FakeAuthenticationDriver: CodexAuthenticationDriving {
             pendingSignInUrl: nil,
             terminalReason: nil
         )
+        self.autoCompleteAuthenticationOperation = autoCompleteAuthenticationOperation
         self.autoCompleteAuxiliaryOperations = autoCompleteAuxiliaryOperations
     }
 
@@ -74,13 +79,17 @@ final class FakeAuthenticationDriver: CodexAuthenticationDriving {
         authenticationCalls += 1
         hasActiveLogin = true
         setState(.authenticating, generation: operationGeneration)
-        completion(nil)
+        if autoCompleteAuthenticationOperation {
+            completion(nil)
+        }
         return CodexOperationHandle(
             generation: operationGeneration,
             cancel: { [weak self] in
                 guard let self else { return }
                 self.authenticationOperationCancellations += 1
-                guard self.generation == operationGeneration else { return }
+                guard self.generation == operationGeneration,
+                    self.authenticationState.status == .authenticating else { return }
+                self.appServerLoginCancellationCalls += 1
                 self.hasActiveLogin = false
                 self.setState(.signedOut, generation: operationGeneration)
             },
@@ -91,6 +100,7 @@ final class FakeAuthenticationDriver: CodexAuthenticationDriving {
     func cancelAuthentication(_ completion: @escaping (String?) -> Void) -> CodexOperationHandle {
         generation += 1
         cancellationCalls += 1
+        appServerLoginCancellationCalls += 1
         let pending = (generation, completion)
         if autoCompleteAuxiliaryOperations {
             complete(
@@ -218,7 +228,11 @@ final class FakeAuthenticationDriver: CodexAuthenticationDriving {
     }
 
     private func auxiliaryOperation(generation: Int64) -> CodexOperationHandle {
-        CodexOperationHandle(generation: generation, cancel: {}, detach: {})
+        CodexOperationHandle(
+            generation: generation,
+            cancel: { [weak self] in self?.auxiliaryOperationCancellations += 1 },
+            detach: { [weak self] in self?.auxiliaryOperationDetachments += 1 }
+        )
     }
 
     private func notifyState() {

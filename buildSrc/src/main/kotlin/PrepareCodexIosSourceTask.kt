@@ -1,11 +1,6 @@
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
-import java.time.Duration
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ArchiveOperations
@@ -19,7 +14,6 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
-import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -57,14 +51,12 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
     abstract val patchedSqliteSourceSha256: Property<String>
 
     @get:InputFile
-    @get:Optional
     @get:PathSensitive(PathSensitivity.NONE)
-    abstract val localArchive: RegularFileProperty
+    abstract val sourceArchive: RegularFileProperty
 
     @get:InputFile
-    @get:Optional
     @get:PathSensitive(PathSensitivity.NONE)
-    abstract val localSqliteArchive: RegularFileProperty
+    abstract val sqliteArchive: RegularFileProperty
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
@@ -97,22 +89,14 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
         requireHash(patchedSqliteSourceSha256.get())
         val temporary = Files.createTempDirectory(temporaryDir.toPath(), "source-")
         try {
-            val archive = temporary.resolve("codex.tar.gz")
-            if (localArchive.isPresent) {
-                Files.copy(localArchive.get().asFile.toPath(), archive, StandardCopyOption.REPLACE_EXISTING)
-            } else {
-                download(
-                    URI("https://github.com/openai/codex/archive/$expectedRevision.tar.gz"),
-                    archive,
-                )
-            }
-            check(archive.toFile().sha256() == archiveSha256.get()) {
+            val archive = sourceArchive.get().asFile
+            check(archive.sha256() == archiveSha256.get()) {
                 "Codex iOS source archive SHA-256 mismatch"
             }
 
             val extracted = temporary.resolve("extracted").toFile().also { it.mkdirs() }
             files.copy {
-                from(archives.tarTree(archives.gzip(archive.toFile())))
+                from(archives.tarTree(archives.gzip(archive)))
                 into(extracted)
             }
             val roots = extracted.listFiles().orEmpty().filter(java.io.File::isDirectory)
@@ -129,28 +113,13 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
                 "Codex iOS Cargo.lock SHA-256 mismatch"
             }
 
-            val sqliteArchive = temporary.resolve("libsqlite3-sys.crate")
-            if (localSqliteArchive.isPresent) {
-                Files.copy(
-                    localSqliteArchive.get().asFile.toPath(),
-                    sqliteArchive,
-                    StandardCopyOption.REPLACE_EXISTING,
-                )
-            } else {
-                download(
-                    URI(
-                        "https://static.crates.io/crates/libsqlite3-sys/" +
-                            "libsqlite3-sys-$expectedSqliteVersion.crate",
-                    ),
-                    sqliteArchive,
-                )
-            }
-            check(sqliteArchive.toFile().sha256() == sqliteArchiveSha256.get()) {
+            val sqliteArchive = this.sqliteArchive.get().asFile
+            check(sqliteArchive.sha256() == sqliteArchiveSha256.get()) {
                 "libsqlite3-sys archive SHA-256 mismatch"
             }
             val sqliteExtracted = temporary.resolve("sqlite-extracted").toFile().also { it.mkdirs() }
             files.copy {
-                from(archives.tarTree(archives.gzip(sqliteArchive.toFile())))
+                from(archives.tarTree(archives.gzip(sqliteArchive)))
                 into(sqliteExtracted)
             }
             val sqliteRoots = sqliteExtracted.listFiles().orEmpty().filter(java.io.File::isDirectory)
@@ -208,20 +177,6 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
         }
     }
 
-    private fun download(url: URI, target: java.nio.file.Path) {
-        check(url.scheme == "https") { "Codex source download must use HTTPS" }
-        val request = HttpRequest.newBuilder(url).timeout(REQUEST_TIMEOUT).GET().build()
-        val client = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .connectTimeout(CONNECT_TIMEOUT)
-            .build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofFile(target))
-        check(response.statusCode() in 200..299) {
-            "Codex source download failed with HTTP ${response.statusCode()}"
-        }
-        check(response.uri().scheme == "https") { "Codex source redirected outside HTTPS" }
-    }
-
     private fun requireHash(value: String) {
         check(value.matches(Regex("[0-9a-f]{64}"))) { "invalid Codex iOS source archive SHA-256" }
     }
@@ -235,10 +190,5 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
             digest.update(buffer, 0, count)
         }
         digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
-    }
-
-    companion object {
-        private val CONNECT_TIMEOUT = Duration.ofSeconds(60)
-        private val REQUEST_TIMEOUT = Duration.ofMinutes(5)
     }
 }

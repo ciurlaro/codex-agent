@@ -14,10 +14,13 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
     var eventObservation: CodexCancellation?
     var stateObservation: CodexCancellation?
     var authenticationOperation: CodexOperationHandle?
-    var cancellationOperation: CodexOperationHandle?
-    var cancellationToken: UUID?
-    var signOutOperation: CodexOperationHandle?
-    var signOutToken: UUID?
+    struct AuxiliaryOperation {
+        let token: UUID
+        var handle: CodexOperationHandle?
+    }
+
+    var pendingCancellation: AuxiliaryOperation?
+    var pendingSignOut: AuxiliaryOperation?
     var browserSession: CodexBrowserSession?
     weak var anchor: ASPresentationAnchor?
     struct Attempt {
@@ -78,7 +81,7 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
         }
 
         let state = driver.authenticationState
-        let supersedesAuxiliaryOperation = cancellationToken != nil || signOutToken != nil
+        let supersedesAuxiliaryOperation = pendingCancellation != nil || pendingSignOut != nil
         if state.status == .authenticated && !supersedesAuxiliaryOperation {
             update(state)
             completion(nil)
@@ -135,39 +138,19 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             completion?(nil)
             return
         }
-        guard cancellationOperation == nil else {
+        guard pendingCancellation == nil else {
             completion?(nil)
             return
         }
-        let state = driver.authenticationState
-        guard activeAttempt != nil || state.status == .authenticating else {
+        guard let attempt = activeAttempt else {
             completion?(nil)
             return
         }
-        if let attempt = activeAttempt {
-            finish(
-                attempt: attempt.id,
-                error: "ChatGPT authentication was canceled.",
-                cancelOperation: true
-            )
-        }
-        let token = UUID()
-        cancellationToken = token
-        var completed = false
-        let operation = driver.cancelAuthentication { [weak self] error in
-            completed = true
-            guard self?.cancellationToken == token else { return }
-            self?.cancellationToken = nil
-            self?.cancellationOperation?.detach()
-            self?.cancellationOperation = nil
-            completion?(error)
-        }
-        if completed {
-            cancellationToken = nil
-            operation.detach()
-        } else {
-            cancellationOperation = operation
-        }
+        cancelAttempt(
+            attempt,
+            message: "ChatGPT authentication was canceled.",
+            completion: completion
+        )
     }
 
     public func signOut(completion: @escaping (String?) -> Void) {
@@ -175,34 +158,20 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
             completion("ChatGPT authentication session is closed.")
             return
         }
-        if let attempt = activeAttempt {
-            finish(
-                attempt: attempt.id,
-                error: "ChatGPT authentication was canceled by sign-out.",
-                cancelOperation: true
-            )
-        }
-        cancellationOperation?.cancel()
-        cancellationOperation = nil
-        cancellationToken = nil
-        signOutOperation?.cancel()
-        let token = UUID()
-        signOutToken = token
-        var completed = false
-        let operation = driver.signOut { [weak self] error in
-            completed = true
-            guard self?.signOutToken == token else { return }
-            self?.signOutToken = nil
-            self?.signOutOperation?.detach()
-            self?.signOutOperation = nil
-            completion(error)
-        }
-        if completed {
-            signOutToken = nil
-            operation.detach()
-        } else {
-            signOutOperation = operation
-        }
+        pendingCancellation?.handle?.cancel()
+        pendingCancellation = nil
+        pendingSignOut?.handle?.cancel()
+        pendingSignOut = nil
+        startSignOut(
+            afterStart: { [self] in
+                guard let attempt = activeAttempt else { return }
+                finish(
+                    attempt: attempt.id,
+                    error: "ChatGPT authentication was canceled by sign-out."
+                )
+            },
+            completion: completion
+        )
     }
 
     public func close() {
@@ -210,81 +179,48 @@ public final class CodexChatGPTAuthenticationSession: NSObject,
     }
 
     deinit {
-        let driver = driver
+        guard !closed else { return }
         let ownsLogin = activeAttempt?.ownsLogin == true
-        let noCancellation = cancellationToken == nil
-        let noSignOut = signOutToken == nil
-        let shouldCancelLogin = ownsLogin && noCancellation && noSignOut
-        let browserSession = browserSession
-        let authenticationOperation = authenticationOperation
-        let cancellationOperation = cancellationOperation
-        let signOutOperation = signOutOperation
-        let eventObservation = eventObservation
-        let stateObservation = stateObservation
+        let hasCancellation = pendingCancellation != nil
+        let hasSignOut = pendingSignOut != nil
+        let cleanup = CodexAuthenticationCleanup(
+            driver: driver,
+            cancelOwnedLogin: ownsLogin && !hasCancellation && !hasSignOut,
+            browserSession: browserSession,
+            authenticationOperation: authenticationOperation,
+            auxiliaryOperations: [pendingCancellation?.handle, pendingSignOut?.handle],
+            observations: [eventObservation, stateObservation]
+        )
         DispatchQueue.main.async {
-            browserSession?.cancel()
-            if shouldCancelLogin {
-                authenticationOperation?.cancel()
-            } else {
-                authenticationOperation?.detach()
-            }
-            cancellationOperation?.detach()
-            signOutOperation?.detach()
-            eventObservation?.close()
-            stateObservation?.close()
-            guard shouldCancelLogin else { return }
-            var cleanupOperation: CodexOperationHandle?
-            cleanupOperation = driver.cancelAuthentication { _ in
-                cleanupOperation?.detach()
-                cleanupOperation = nil
-            }
+            cleanup.perform()
         }
     }
 
     private func cleanup() {
         guard !closed else { return }
-        let shouldCancelLogin = activeAttempt?.ownsLogin == true &&
-            cancellationToken == nil && signOutToken == nil
         closed = true
-        if shouldCancelLogin {
-            var cleanupOperation: CodexOperationHandle?
-            var completed = false
-            let operation = driver.cancelAuthentication { _ in
-                completed = true
-                cleanupOperation?.detach()
-                cleanupOperation = nil
-            }
-            if completed {
-                operation.detach()
-            } else {
-                cleanupOperation = operation
-            }
-        }
-        if let attempt = activeAttempt {
-            finish(
-                attempt: attempt.id,
-                error: "ChatGPT authentication session was closed.",
-                cancelOperation: attempt.ownsLogin
-            )
-        }
-        browserSession?.cancel()
+        let cancelOwnedLogin = activeAttempt?.ownsLogin == true &&
+            pendingCancellation == nil && pendingSignOut == nil
+        activeAttempt = nil
+        isAuthenticating = false
+        let attemptCompletion = completion
+        completion = nil
+        let resources = CodexAuthenticationCleanup(
+            driver: driver,
+            cancelOwnedLogin: cancelOwnedLogin,
+            browserSession: browserSession,
+            authenticationOperation: authenticationOperation,
+            auxiliaryOperations: [pendingCancellation?.handle, pendingSignOut?.handle],
+            observations: [eventObservation, stateObservation]
+        )
         browserSession = nil
-        if shouldCancelLogin {
-            authenticationOperation?.cancel()
-        } else {
-            authenticationOperation?.detach()
-        }
         authenticationOperation = nil
-        cancellationOperation?.detach()
-        cancellationOperation = nil
-        cancellationToken = nil
-        signOutOperation?.detach()
-        signOutOperation = nil
-        signOutToken = nil
-        eventObservation?.close()
+        pendingCancellation = nil
+        pendingSignOut = nil
         eventObservation = nil
-        stateObservation?.close()
         stateObservation = nil
+        resources.perform()
+        attemptCompletion?("ChatGPT authentication session was closed.")
     }
 
     public func presentationAnchor(

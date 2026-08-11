@@ -110,15 +110,6 @@ mavenPublishing {
     }
 }
 
-publishing {
-    providers.gradleProperty("codexAgent.localRepository").orNull?.let { path ->
-        repositories.maven {
-            name = "migration"
-            url = uri(path)
-        }
-    }
-}
-
 dependencyLocking {
     lockAllConfigurations()
 }

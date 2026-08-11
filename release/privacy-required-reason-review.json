@@ -1,0 +1,43 @@
+{
+    "schemaVersion": 1,
+    "reviewStatus": "approved",
+    "evidenceSha256": "a2d3710f22d93aae14a84b5fbb670a449f52e1982e418918042f1968315f1fdf",
+    "policySha256": "edcbdd6cb1959cf326ca837a073f453c23e5f8d2390a43887dba927274e1e54a",
+    "reviews": [
+        {
+            "findingId": "category:NSPrivacyAccessedAPICategoryActiveKeyboards",
+            "reviewStatus": "approved",
+            "disposition": "notRequired",
+            "declarations": [],
+            "rationale": "Every occurrence is the activeInputModes string in generated objc2_ui_kit binding code; no undefined-symbol or runtime-use evidence exists in either framework slice."
+        },
+        {
+            "findingId": "category:NSPrivacyAccessedAPICategoryDiskSpace",
+            "reviewStatus": "approved",
+            "disposition": "declared",
+            "declarations": [
+                {
+                    "category": "NSPrivacyAccessedAPICategoryDiskSpace",
+                    "reasons": [
+                        "E174.1"
+                    ]
+                }
+            ],
+            "rationale": "The sandbox-local runtime checks available disk space so its observable behavior can change when space is insufficient, and the disk-space value is not sent off-device."
+        },
+        {
+            "findingId": "category:NSPrivacyAccessedAPICategorySystemBootTime",
+            "reviewStatus": "approved",
+            "disposition": "notRequired",
+            "declarations": [],
+            "rationale": "Every occurrence is the systemUptime string in generated objc2_foundation binding code; no undefined-symbol or runtime-use evidence exists in either framework slice."
+        },
+        {
+            "findingId": "category:NSPrivacyAccessedAPICategoryUserDefaults",
+            "reviewStatus": "approved",
+            "disposition": "notRequired",
+            "declarations": [],
+            "rationale": "Every occurrence is an NSUserDefaults or standardUserDefaults string in generated objc2_foundation binding code; no undefined-symbol or runtime-use evidence exists in either framework slice."
+        }
+    ]
+}

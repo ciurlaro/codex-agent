@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "reviewStatus": "approved",
+  "terminalCollectedDataDecision": "noSdkDeclaration",
+  "appleCollectedDataTypes": [],
+  "reviewedNoSdkDeclarationRationale": "Product owner reviewed the retained flow inventory and determined that codex-agent itself does not collect Apple-defined user data for the SDK developer. The documented prompt, selected workspace content, model output, and account-identifier flows are used only to perform user-requested authentication and agent functionality with OpenAI; the SDK does not use them for tracking, advertising, analytics, or developer profiling and does not expose OAuth tokens. Host applications remain responsible for reviewing their complete app and service data practices.",
+  "tracking": false,
+  "advertising": false,
+  "dataFlows": [
+    {
+      "id": "chatgpt-authentication",
+      "data": "ChatGPT authentication state managed by the embedded App Server",
+      "source": "interactive browser login",
+      "destinations": [
+        "OpenAI authentication services",
+        "sandbox-local Codex home"
+      ],
+      "purposes": [
+        "authentication"
+      ],
+      "notes": "The Swift wrapper neither exposes nor stores OAuth tokens."
+    },
+    {
+      "id": "codex-account-identifier",
+      "data": "Codex account identifier",
+      "source": "ChatGPT authentication state",
+      "destinations": [
+        "OpenAI over HTTPS"
+      ],
+      "purposes": [
+        "authenticate and serve the request"
+      ]
+    },
+    {
+      "id": "agent-prompt",
+      "data": "user prompt",
+      "source": "host application",
+      "destinations": [
+        "OpenAI over HTTPS"
+      ],
+      "purposes": [
+        "serve the requested model turn"
+      ]
+    },
+    {
+      "id": "selected-workspace-content",
+      "data": "user-selected local file content",
+      "source": "sandbox-local workspace tool result",
+      "destinations": [
+        "OpenAI over HTTPS"
+      ],
+      "purposes": [
+        "provide context explicitly requested by the turn"
+      ]
+    },
+    {
+      "id": "model-output",
+      "data": "model output",
+      "source": "OpenAI",
+      "destinations": [
+        "host application",
+        "sandbox-local runtime state"
+      ],
+      "purposes": [
+        "return and resume the requested model turn"
+      ]
+    }
+  ],
+  "credentialHandling": {
+    "swiftExposure": false,
+    "storage": "protected backup-excluded Codex home inside the application sandbox",
+    "ciCredentials": false
+  },
+  "appleCollectedDataDeclarations": {
+    "decision": "noSdkDeclaration",
+    "reviewedCandidateDataTypes": [
+      "User ID",
+      "Other User Content"
+    ]
+  }
+}

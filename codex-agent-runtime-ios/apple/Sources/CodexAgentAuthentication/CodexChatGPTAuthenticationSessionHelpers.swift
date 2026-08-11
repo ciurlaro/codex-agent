@@ -2,6 +2,37 @@ import CodexAgent
 import AuthenticationServices
 import UIKit
 
+struct CodexAuthenticationCleanup: @unchecked Sendable {
+    let driver: CodexAuthenticationDriving
+    let cancelOwnedLogin: Bool
+    let browserSession: CodexBrowserSession?
+    let authenticationOperation: CodexOperationHandle?
+    let auxiliaryOperations: [CodexOperationHandle?]
+    let observations: [CodexCancellation?]
+
+    @MainActor
+    func perform() {
+        if cancelOwnedLogin {
+            var retainedOperation: CodexOperationHandle?
+            var completed = false
+            let operation = driver.cancelAuthentication { _ in
+                completed = true
+                retainedOperation?.detach()
+                retainedOperation = nil
+            }
+            if completed {
+                operation.detach()
+            } else {
+                retainedOperation = operation
+            }
+        }
+        browserSession?.cancel()
+        authenticationOperation?.detach()
+        auxiliaryOperations.forEach { $0?.detach() }
+        observations.forEach { $0?.close() }
+    }
+}
+
 extension CodexChatGPTAuthenticationSession {
     func update(_ state: IosCodexAuthenticationState) {
         guard record(state) else { return }
@@ -19,7 +50,7 @@ extension CodexChatGPTAuthenticationSession {
             finish(attempt: attempt.id, error: nil)
         case .signedOut:
             guard state.generation >= attemptGeneration else { return }
-            guard cancellationToken == nil, signOutToken == nil else { return }
+            guard pendingCancellation == nil, pendingSignOut == nil else { return }
             finish(
                 attempt: attempt.id,
                 error: state.terminalReason ?? "ChatGPT authentication was canceled or failed."
@@ -106,41 +137,123 @@ extension CodexChatGPTAuthenticationSession {
     }
 
     func cancelFailedPresentation(attempt: UUID, message: String) {
-        finish(attempt: attempt, error: message, cancelOperation: true)
-        cancellationOperation?.cancel()
+        guard let activeAttempt, activeAttempt.id == attempt else { return }
+        cancelAttempt(activeAttempt, message: message)
+    }
+
+    func cancelAttempt(
+        _ attempt: Attempt,
+        message: String,
+        completion: ((String?) -> Void)? = nil
+    ) {
+        guard activeAttempt?.id == attempt.id else {
+            completion?(nil)
+            return
+        }
+        guard attempt.ownsLogin else {
+            finish(attempt: attempt.id, error: message)
+            completion?(nil)
+            return
+        }
+        startCancellation(
+            afterStart: { [self] in finish(attempt: attempt.id, error: message) },
+            completion: completion
+        )
+    }
+
+    func startCancellation(
+        afterStart: () -> Void,
+        completion: ((String?) -> Void)?
+    ) {
         let token = UUID()
-        cancellationToken = token
-        var completed = false
-        let operation = driver.cancelAuthentication { [weak self] _ in
-            completed = true
-            guard self?.cancellationToken == token else { return }
-            self?.cancellationToken = nil
-            self?.cancellationOperation?.detach()
-            self?.cancellationOperation = nil
+        pendingCancellation = AuxiliaryOperation(token: token)
+        var returned = false
+        var completedSynchronously = false
+        var synchronousError: String?
+        let operation = driver.cancelAuthentication { [weak self] error in
+            guard let self, self.pendingCancellation?.token == token else { return }
+            if !returned {
+                completedSynchronously = true
+                synchronousError = error
+                return
+            }
+            self.completeCancellation(token: token, error: error, completion: completion)
         }
-        if completed {
-            cancellationToken = nil
-            operation.detach()
+        if var pending = pendingCancellation, pending.token == token {
+            pending.handle = operation
+            pendingCancellation = pending
         } else {
-            cancellationOperation = operation
+            operation.detach()
         }
+        afterStart()
+        returned = true
+        if completedSynchronously {
+            completeCancellation(token: token, error: synchronousError, completion: completion)
+        }
+    }
+
+    func completeCancellation(
+        token: UUID,
+        error: String?,
+        completion: ((String?) -> Void)?
+    ) {
+        guard pendingCancellation?.token == token else { return }
+        let operation = pendingCancellation?.handle
+        pendingCancellation = nil
+        operation?.detach()
+        completion?(error)
+    }
+
+    func startSignOut(afterStart: () -> Void, completion: @escaping (String?) -> Void) {
+        let token = UUID()
+        pendingSignOut = AuxiliaryOperation(token: token)
+        var returned = false
+        var completedSynchronously = false
+        var synchronousError: String?
+        let operation = driver.signOut { [weak self] error in
+            guard let self, self.pendingSignOut?.token == token else { return }
+            if !returned {
+                completedSynchronously = true
+                synchronousError = error
+                return
+            }
+            self.completeSignOut(token: token, error: error, completion: completion)
+        }
+        if var pending = pendingSignOut, pending.token == token {
+            pending.handle = operation
+            pendingSignOut = pending
+        } else {
+            operation.detach()
+        }
+        afterStart()
+        returned = true
+        if completedSynchronously {
+            completeSignOut(token: token, error: synchronousError, completion: completion)
+        }
+    }
+
+    func completeSignOut(
+        token: UUID,
+        error: String?,
+        completion: @escaping (String?) -> Void
+    ) {
+        guard pendingSignOut?.token == token else { return }
+        let operation = pendingSignOut?.handle
+        pendingSignOut = nil
+        operation?.detach()
+        completion(error)
     }
 
     func finish(
         attempt: UUID,
-        error: String?,
-        cancelOperation: Bool = false
+        error: String?
     ) {
         guard activeAttempt?.id == attempt else { return }
         activeAttempt = nil
         isAuthenticating = false
         browserSession?.cancel()
         browserSession = nil
-        if cancelOperation {
-            authenticationOperation?.cancel()
-        } else {
-            authenticationOperation?.detach()
-        }
+        authenticationOperation?.detach()
         authenticationOperation = nil
         let completion = self.completion
         self.completion = nil

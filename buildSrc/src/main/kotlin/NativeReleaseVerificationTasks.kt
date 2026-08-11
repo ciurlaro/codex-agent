@@ -103,9 +103,9 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val bridgeManifest: RegularFileProperty
 
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val bridgeSource: RegularFileProperty
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val bridgeSource: DirectoryProperty
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
@@ -113,15 +113,11 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
+    abstract val codexArchive: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
     abstract val sqliteArchive: RegularFileProperty
-
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val sqlitePatch: RegularFileProperty
-
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val workspaceCargoPatch: RegularFileProperty
 
     @get:Input
     abstract val revision: Property<String>
@@ -159,6 +155,18 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
     @get:Input
     abstract val releaseRustFlags: Property<String>
 
+    @get:Input
+    abstract val minimumIosVersion: Property<String>
+
+    @get:Input
+    abstract val releaseDebug: Property<String>
+
+    @get:Input
+    abstract val releaseStrip: Property<String>
+
+    @get:Input
+    abstract val sqliteCompileFlags: Property<String>
+
     @TaskAction
     fun verify() {
         val record = provenanceFile.get().asFile.readText()
@@ -170,6 +178,9 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
                 ?: error("Missing iOS provenance value: $key")
         check(value("gitRevision") == revision.get()) { "Codex iOS revision provenance mismatch" }
         check(value("sourceArchiveSha256") == archiveSha256.get()) { "Codex iOS archive provenance mismatch" }
+        check(codexArchive.get().asFile.sha256() == archiveSha256.get()) {
+            "Codex iOS source archive SHA-256 mismatch"
+        }
         check(value("cargoLockSha256") == cargoLockSha256.get()) { "Codex iOS Cargo.lock provenance mismatch" }
         check(value("preparedCargoLockSha256") == preparedCargoLockSha256.get()) {
             "Codex iOS prepared Cargo.lock provenance mismatch"
@@ -192,6 +203,14 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
             "Codex iOS release codegen-units provenance mismatch"
         }
         check(value("releaseRustFlags") == releaseRustFlags.get()) { "Codex iOS release Rust flags provenance mismatch" }
+        check(value("minimumIosVersion") == minimumIosVersion.get()) {
+            "Codex iOS deployment target provenance mismatch"
+        }
+        check(value("releaseDebug") == releaseDebug.get()) { "Codex iOS release debug provenance mismatch" }
+        check(value("releaseStrip") == releaseStrip.get()) { "Codex iOS release strip provenance mismatch" }
+        check(value("sqliteCompileFlags") == sqliteCompileFlags.get()) {
+            "Codex iOS SQLite compiler flags provenance mismatch"
+        }
         check(value("sqliteSourceArchiveSha256") == sqliteArchiveSha256.get()) {
             "Codex iOS SQLite archive provenance mismatch"
         }
@@ -204,12 +223,12 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
             "sqliteWorkspacePatchSha256" to sqliteWorkspacePatch,
             "sqliteSourcePatchSha256" to sqliteSourcePatch,
             "bridgeManifestSha256" to bridgeManifest,
-            "bridgeSourceSha256" to bridgeSource,
             "cHeaderSha256" to cHeader,
-            "sqlitePatchSha256" to sqlitePatch,
-            "workspaceCargoPatchSha256" to workspaceCargoPatch,
         ).forEach { (key, file) ->
             check(file.get().asFile.sha256() == value(key)) { "Codex iOS $key mismatch" }
+        }
+        check(bridgeSource.get().asFile.treeSha256() == value("bridgeSourceSha256")) {
+            "Codex iOS bridgeSourceSha256 mismatch"
         }
     }
 }
@@ -223,4 +242,24 @@ private fun File.sha256(): String = inputStream().use { input ->
         digest.update(buffer, 0, count)
     }
     digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+}
+
+private fun File.treeSha256(): String {
+    val root = this
+    val digest = MessageDigest.getInstance("SHA-256")
+    walkTopDown().filter(File::isFile).sortedBy { it.relativeTo(root).invariantSeparatorsPath }.forEach { file ->
+        digest.update(file.relativeTo(root).invariantSeparatorsPath.toByteArray())
+        digest.update(byteArrayOf(0))
+        digest.update(file.length().toString().toByteArray())
+        digest.update(byteArrayOf(0))
+        file.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
