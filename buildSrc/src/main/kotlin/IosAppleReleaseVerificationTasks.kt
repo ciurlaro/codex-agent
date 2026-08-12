@@ -1,5 +1,6 @@
 import java.io.File
 import org.gradle.api.Project
+import org.gradle.api.Task
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Zip
 import org.gradle.kotlin.dsl.register
@@ -10,6 +11,13 @@ data class IosAppleReleaseVerificationTasks(
     val verifyIosPrivacyManifest: TaskProvider<VerifyIosPrivacyAuditTask>,
     val verifyIosReleaseBudgets: TaskProvider<VerifyIosReleaseBudgetsTask>,
 )
+
+internal fun Task.dependsOnSwiftPackageBaselineProducers(
+    toolchain: TaskProvider<*>,
+    checksum: TaskProvider<*>,
+) {
+    dependsOn(toolchain, checksum)
+}
 
 fun Project.registerAppleToolchainVerificationTask(
     expectedXcodeVersion: String,
@@ -126,7 +134,7 @@ fun Project.registerIosAppleReleaseVerificationTasks(
     packageCodexAgentSwiftPackageBinary.configure { mustRunAfter(clean) }
     toolchain.configure { mustRunAfter(clean) }
     tasks.register<RecordSwiftPackageBaselineTask>("recordCodexAgentSwiftPackageBaseline") {
-        dependsOn(clean, toolchain, generateCodexAgentSwiftPackageChecksum)
+        dependsOnSwiftPackageBaselineProducers(toolchain, generateCodexAgentSwiftPackageChecksum)
         expectedCommit.set(providers.gradleProperty("codexAgent.commitA"))
         version.set(project.version.toString())
         expectedUrl.set(

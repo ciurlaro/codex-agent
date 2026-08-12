@@ -5,6 +5,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.gradle.api.Task
+import org.gradle.testfixtures.ProjectBuilder
 
 class SwiftPackageReproducibilityTaskTest {
     @Test
@@ -148,6 +150,38 @@ class SwiftPackageReproducibilityTaskTest {
         listOf(fixture.preflightTask(), fixture.verifyTask()).forEach { task ->
             assertTrue(task.taskDependencies.getDependencies(task).isEmpty())
         }
+    }
+
+    @Test
+    fun `direct baseline graph retains producers without root or iOS clean`() {
+        val root = ProjectBuilder.builder().withName("root").build()
+        val ios = ProjectBuilder.builder().withName("codex-agent-runtime-ios").withParent(root).build()
+        root.tasks.register("clean")
+        ios.tasks.register("clean")
+        val packageBinary = ios.tasks.register("packageCodexAgentSwiftPackageBinary")
+        val checksum = ios.tasks.register("generateCodexAgentSwiftPackageChecksum") {
+            dependsOn(packageBinary)
+        }
+        val toolchain = ios.tasks.register("verifyAppleToolchain")
+        val baseline = ios.tasks.register("recordCodexAgentSwiftPackageBaseline") {
+            dependsOnSwiftPackageBaselineProducers(toolchain, checksum)
+        }
+
+        val graph = linkedSetOf<Task>()
+        fun visit(task: Task) {
+            task.taskDependencies.getDependencies(task).forEach { if (graph.add(it)) visit(it) }
+        }
+        visit(baseline.get())
+
+        assertEquals(
+            setOf(
+                ":codex-agent-runtime-ios:packageCodexAgentSwiftPackageBinary",
+                ":codex-agent-runtime-ios:generateCodexAgentSwiftPackageChecksum",
+                ":codex-agent-runtime-ios:verifyAppleToolchain",
+            ),
+            graph.map(Task::getPath).toSet(),
+        )
+        assertFalse(graph.any { it.name == "clean" })
     }
 
     @Test
