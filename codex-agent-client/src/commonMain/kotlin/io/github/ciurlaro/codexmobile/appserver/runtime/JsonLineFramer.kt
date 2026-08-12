@@ -2,6 +2,8 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 
 import okio.Buffer
 
+const val MAX_RECEIVED_MESSAGE_BYTES = 32 * 1024 * 1024
+
 class JsonLineFramer(
     private val maxBytes: Int = MAX_RECEIVED_MESSAGE_BYTES,
 ) {

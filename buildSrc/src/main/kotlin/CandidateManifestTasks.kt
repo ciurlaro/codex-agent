@@ -25,6 +25,7 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val kmpConsumer: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val androidEvidence: RegularFileProperty
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val resourceReports: ConfigurableFileCollection
@@ -34,6 +35,9 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
     @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val privacyReviews: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val packageSwift: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopDistributionManifest: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledLicense: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledNotice: RegularFileProperty
     @get:OutputFile abstract val outputFile: RegularFileProperty
 
     @TaskAction
@@ -50,6 +54,7 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
             mavenInventory.get().asFile,
             kmpConsumer.get().asFile,
             androidEvidence.get().asFile,
+            desktopEvidence.files.sortedBy { it.name },
             privacyAudit.get().asFile,
             artifactMetrics.get().asFile,
             resourceReports.files.sortedBy { it.name },
@@ -58,6 +63,9 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
             privacyDataFlowReview.get().asFile,
             privacyReviews.orNull?.asFile,
             packageSwift.get().asFile,
+            desktopDistributionManifest.get().asFile,
+            desktopBundledLicense.get().asFile,
+            desktopBundledNotice.get().asFile,
         )))
     }
 }

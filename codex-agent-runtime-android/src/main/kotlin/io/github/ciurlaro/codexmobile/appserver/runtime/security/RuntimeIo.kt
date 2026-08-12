@@ -3,8 +3,6 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
-const val MAX_RECEIVED_MESSAGE_BYTES = 32 * 1024 * 1024
-
 internal fun Throwable.visibleMessage(): String =
     message?.take(500)?.takeIf(String::isNotBlank) ?: this::class.simpleName ?: "Codex failure"
 

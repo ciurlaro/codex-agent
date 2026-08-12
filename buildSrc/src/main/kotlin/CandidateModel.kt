@@ -17,6 +17,7 @@ internal data class CandidateInputFiles(
     val mavenInventory: File,
     val kmpConsumer: File,
     val androidEvidence: File,
+    val desktopEvidence: List<File>,
     val privacyAudit: File,
     val artifactMetrics: File,
     val resourceReports: List<File>,
@@ -25,6 +26,9 @@ internal data class CandidateInputFiles(
     val privacyDataFlowReview: File,
     val privacyRequiredReasonReviews: File?,
     val packageSwift: File,
+    val desktopDistributionManifest: File,
+    val desktopBundledLicense: File,
+    val desktopBundledNotice: File,
 )
 
 internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
@@ -42,7 +46,10 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     }
     val maven = input.mavenInventory.readReleaseObject()
     check(maven.releaseString("version") == input.version) { "Maven inventory version mismatch" }
-    check(maven.releaseInt("primaryArtifactCount") == 53) { "Maven inventory must contain 53 primary artifacts" }
+    val expectedMavenArtifactCount = expectedMavenPrimaryPaths(input.version).size
+    check(maven.releaseInt("primaryArtifactCount") == expectedMavenArtifactCount) {
+        "Maven inventory must contain $expectedMavenArtifactCount primary artifacts"
+    }
     val consumer = input.kmpConsumer.readReleaseObject()
     check(consumer.releaseString("result") == "passed") { "Clean KMP consumer did not pass" }
     check(consumer.releaseString("version") == input.version) { "Clean KMP consumer version mismatch" }
@@ -62,6 +69,20 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     check(input.androidEvidence.isFile) { "Android runtime evidence is required" }
     val androidErrors = validateAndroidEvidence(input.androidEvidence, input.commit)
     check(androidErrors.isEmpty()) { "Android runtime evidence is invalid: ${androidErrors.joinToString()}" }
+    val desktopErrors = validateDesktopRuntimeEvidence(
+        input.desktopEvidence,
+        input.commit,
+        input.version,
+        input.mavenInventory,
+        input.desktopDistributionManifest,
+    )
+    check(desktopErrors.isEmpty()) { "Desktop runtime evidence is invalid: ${desktopErrors.joinToString()}" }
+    verifyDesktopBundledGplApproval(
+        input.approvals,
+        input.desktopDistributionManifest,
+        input.desktopBundledLicense,
+        input.desktopBundledNotice,
+    )
     check(input.resourceReports.isNotEmpty()) { "At least one resource evidence report is required" }
     input.resourceReports.forEach { report ->
         check(report.readReleaseObject().releaseInt("exitCode") == 0) { "Resource phase did not pass: ${report.name}" }
@@ -72,6 +93,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         input.mavenInventory,
         input.kmpConsumer,
         input.androidEvidence,
+        *input.desktopEvidence.toTypedArray(),
         input.privacyAudit,
         input.artifactMetrics,
     ) + input.resourceReports
@@ -80,7 +102,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     }
 
     val manifest = buildJsonObject {
-        put("schemaVersion", JsonPrimitive(3))
+        put("schemaVersion", JsonPrimitive(4))
         put("version", JsonPrimitive(input.version))
         put("releaseTag", JsonPrimitive(input.releaseTag))
         put("candidateCommit", JsonPrimitive(input.commit))
@@ -99,6 +121,9 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
             put("mavenInventory", input.mavenInventory.releaseRecord())
             put("cleanKmpConsumer", input.kmpConsumer.releaseRecord())
             put("androidRuntime", input.androidEvidence.releaseRecord())
+            put("desktopRuntime", buildJsonArray {
+                input.desktopEvidence.sortedBy(File::getName).forEach { add(it.releaseRecord()) }
+            })
             put("privacyAudit", input.privacyAudit.releaseRecord())
             put("artifactMetrics", input.artifactMetrics.releaseRecord())
             put("resourceMeasurements", buildJsonArray {
@@ -113,6 +138,9 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
                 put("privacyRequiredReasonReviews", it.releaseRecord())
             }
             put("packageSwift", input.packageSwift.releaseRecord())
+            put("desktopDistributionManifest", input.desktopDistributionManifest.releaseRecord())
+            put("desktopBundledLicense", input.desktopBundledLicense.releaseRecord())
+            put("desktopBundledNotice", input.desktopBundledNotice.releaseRecord())
         })
     }
     verifyCandidateManifestStructure(manifest)
@@ -123,7 +151,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     check(manifest.keys == setOf(
         "schemaVersion", "version", "releaseTag", "candidateCommit", "protectedCandidate", "artifacts", "evidence", "policies",
     )) { "Candidate manifest has unexpected top-level fields" }
-    check(manifest.releaseInt("schemaVersion") == 3) { "Candidate manifest schema must be 3" }
+    check(manifest.releaseInt("schemaVersion") == 4) { "Candidate manifest schema must be 4" }
     val version = manifest.releaseString("version")
     check(manifest.releaseString("releaseTag") == "v$version") { "Candidate release tag/version mismatch" }
     check(manifest.releaseString("candidateCommit").matches(Regex("[0-9a-f]{40}"))) {
@@ -142,10 +170,11 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     val evidence = manifest.releaseObject("evidence")
     val expectedEvidence = setOf(
         "swiftPmProof", "centralBundleInventory", "mavenInventory", "cleanKmpConsumer", "androidRuntime",
-        "privacyAudit", "artifactMetrics", "resourceMeasurements",
+        "desktopRuntime", "privacyAudit", "artifactMetrics", "resourceMeasurements",
     )
     check(evidence.keys == expectedEvidence) { "Candidate evidence set is invalid" }
-    expectedEvidence.minus("resourceMeasurements").forEach { verifyRecordShape(evidence.releaseObject(it)) }
+    expectedEvidence.minus(setOf("desktopRuntime", "resourceMeasurements"))
+        .forEach { verifyRecordShape(evidence.releaseObject(it)) }
     check(evidence.releaseObject("swiftPmProof").releaseString("fileName") == "swiftpm-proof.json") {
         "Candidate SwiftPM proof file name is invalid"
     }
@@ -155,8 +184,14 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     val resources = evidence.releaseArray("resourceMeasurements")
     check(resources.isNotEmpty()) { "Candidate resource evidence is missing" }
     resources.forEach { verifyRecordShape(it as? JsonObject ?: error("Invalid resource record")) }
+    val desktop = evidence.releaseArray("desktopRuntime")
+    check(desktop.size == desktopRuntimeEvidenceTargets.size) { "Candidate desktop evidence set is incomplete" }
+    desktop.forEach { verifyRecordShape(it as? JsonObject ?: error("Invalid desktop runtime record")) }
     val policies = manifest.releaseObject("policies")
-    val requiredPolicies = setOf("approvals", "privacyManifest", "privacyDataFlowReview", "packageSwift")
+    val requiredPolicies = setOf(
+        "approvals", "privacyManifest", "privacyDataFlowReview", "packageSwift",
+        "desktopDistributionManifest", "desktopBundledLicense", "desktopBundledNotice",
+    )
     check(policies.keys == requiredPolicies || policies.keys == requiredPolicies + "privacyRequiredReasonReviews") {
         "Candidate policy set is invalid"
     }

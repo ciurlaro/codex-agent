@@ -57,7 +57,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -144,28 +143,26 @@ internal suspend fun CodexAgentClient.resolveElicitationAction(
     }
 }
 
-internal fun CodexAgentClient.closeAction() {
-    val closeNow = runBlocking {
-        stateLock.withLock {
-            if (closed) {
-                false
-            } else {
-                closed = true
-                pendingApprovalRequests.clear()
-                pendingBuiltInApprovals.clear()
-                pendingElicitationRequests.clear()
-                workItems.clear()
-                userShellItems.clear()
-                commentaryItems.clear()
-                knownSkillPaths.clear()
-                openedSessions.clear()
-                sessionRuntimeSettings.clear()
-                true
-            }
+internal suspend fun CodexAgentClient.closeSuspendingAction() {
+    val closeNow = stateLock.withLock {
+        if (closed) {
+            false
+        } else {
+            closed = true
+            pendingApprovalRequests.clear()
+            pendingBuiltInApprovals.clear()
+            pendingElicitationRequests.clear()
+            workItems.clear()
+            userShellItems.clear()
+            commentaryItems.clear()
+            knownSkillPaths.clear()
+            openedSessions.clear()
+            sessionRuntimeSettings.clear()
+            true
         }
     }
     if (!closeNow) return
-    runBlocking { connection.shutdown() }
+    connection.shutdown()
     scope.cancel()
     eventsChannel.close()
 }

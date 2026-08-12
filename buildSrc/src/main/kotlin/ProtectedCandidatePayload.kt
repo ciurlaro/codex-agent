@@ -98,7 +98,9 @@ internal fun stageProtectedCandidatePayload(
 private fun candidatePayloadNames(manifest: JsonObject): List<String> = buildList {
     manifest.releaseObject("artifacts").values.forEach { add((it as JsonObject).releaseString("fileName")) }
     val evidence = manifest.releaseObject("evidence")
-    evidence.filterKeys { it != "resourceMeasurements" }.values
+    evidence.filterKeys { it !in setOf("desktopRuntime", "resourceMeasurements") }.values
+        .forEach { add((it as JsonObject).releaseString("fileName")) }
+    evidence.releaseArray("desktopRuntime")
         .forEach { add((it as JsonObject).releaseString("fileName")) }
     evidence.releaseArray("resourceMeasurements")
         .forEach { add((it as JsonObject).releaseString("fileName")) }

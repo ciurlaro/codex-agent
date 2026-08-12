@@ -22,6 +22,13 @@ internal val stagedConsumerBuildTasks = listOf(
     "compileAndroidMain",
     "linkDebugFrameworkIosArm64",
     "linkDebugFrameworkIosSimulatorArm64",
+    "compileKotlinMacosArm64",
+    "compileKotlinMacosX64",
+    "compileKotlinLinuxArm64",
+    "compileKotlinLinuxX64",
+    "compileKotlinMingwX64",
+    "compileKotlinJs",
+    "compileKotlinWasmJs",
 )
 
 internal fun stagedConsumerArguments(
@@ -83,6 +90,13 @@ abstract class VerifyStagedKmpConsumerTask @Inject constructor(
             put("android", JsonPrimitive("passed"))
             put("iosArm64", JsonPrimitive("passed"))
             put("iosSimulatorArm64", JsonPrimitive("passed"))
+            put("macosArm64", JsonPrimitive("passed"))
+            put("macosX64", JsonPrimitive("passed"))
+            put("linuxArm64", JsonPrimitive("passed"))
+            put("linuxX64", JsonPrimitive("passed"))
+            put("mingwX64", JsonPrimitive("passed"))
+            put("js", JsonPrimitive("passed"))
+            put("wasmJs", JsonPrimitive("passed"))
         })
     }
 }

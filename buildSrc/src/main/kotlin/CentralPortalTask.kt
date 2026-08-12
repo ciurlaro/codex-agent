@@ -1,8 +1,7 @@
 import java.io.File
 import java.util.UUID
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
 import org.gradle.api.file.RegularFileProperty
@@ -18,20 +17,22 @@ import org.gradle.work.DisableCachingByDefault
 
 private val reusableCentralStates = setOf("PENDING", "VALIDATING", "VALIDATED", "PUBLISHING", "PUBLISHED")
 
-private data class CentralIdentity(
+internal data class CentralIdentity(
     val name: String,
     val version: String,
     val commit: String,
     val candidateSha256: String,
     val bundleSha256: String,
+    val purls: Set<String>,
 )
 
-private data class CentralDeployment(
+internal data class CentralDeployment(
     val id: String,
     val name: String,
     val state: String,
     val candidateSha256: String,
     val bundleSha256: String,
+    val remoteBundleVerifiedSha256: String?,
 )
 
 internal fun prepareCentralDeployment(
@@ -49,14 +50,28 @@ internal fun prepareCentralDeployment(
         val stored = record.readDeployment()
         stored.requireIdentity(identity)
         check(stored.state in reusableCentralStates) { "Central deployment is not reusable: ${stored.state}" }
+        if (stored.state in verifiableCentralStates && !stored.isRemoteBundleVerified(identity)) {
+            check(username.isNotBlank() && password.isNotBlank()) { "Central credentials are missing" }
+            val headers = mapOf("Authorization" to centralAuthorization(username, password))
+            val current = centralStatus(stored, identity, api, headers, sender)
+            record.writeDeployment(current.verifyRemoteBundle(bundle, identity, api, headers, sender))
+        }
+        return
+    }
+    check(username.isNotBlank() && password.isNotBlank()) { "Central credentials are missing" }
+    val headers = mapOf("Authorization" to centralAuthorization(username, password))
+    findCentralDeployment(identity, api, headers, sender)?.let { recovered ->
+        record.writeDeployment(recovered)
+        val verified = centralStatus(recovered, identity, api, headers, sender)
+        val proven = verified.verifyRemoteBundle(bundle, identity, api, headers, sender)
+        record.writeDeployment(proven)
+        check(verified.state in reusableCentralStates) { "Central deployment is not reusable: ${verified.state}" }
         return
     }
     check(allowNewUpload) { "Central deployment record is absent; refusing a duplicate-prone upload" }
-    check(username.isNotBlank() && password.isNotBlank()) { "Central credentials are missing" }
-    val headers = mapOf("Authorization" to centralAuthorization(username, password))
     val id = sender.checked(centralMultipartUpload(bundle, headers, api, identity.name)).trim()
     check(runCatching { UUID.fromString(id) }.isSuccess) { "Central upload returned an invalid deployment ID" }
-    record.writeDeployment(CentralDeployment(id, identity.name, "PENDING", identity.candidateSha256, identity.bundleSha256))
+    record.writeDeployment(CentralDeployment(id, identity.name, "PENDING", identity.candidateSha256, identity.bundleSha256, null))
 }
 
 internal fun awaitCentralValidation(
@@ -75,7 +90,8 @@ internal fun awaitCentralValidation(
     var deployment = record.readDeployment().also { it.requireIdentity(identity) }
     val headers = mapOf("Authorization" to centralAuthorization(username, password))
     repeat(attempts) {
-        deployment = centralStatus(deployment, api, headers, sender)
+        deployment = centralStatus(deployment, identity, api, headers, sender)
+            .verifyRemoteBundle(bundle, identity, api, headers, sender)
         record.writeDeployment(deployment)
         when (deployment.state) {
             "VALIDATED", "PUBLISHING", "PUBLISHED" -> return
@@ -104,12 +120,17 @@ internal fun releaseCentralDeployment(
     val headers = mapOf("Authorization" to centralAuthorization(username, password))
     var releaseRequested = deployment.state == "PUBLISHING"
     repeat(attempts) {
-        deployment = centralStatus(deployment, api, headers, sender)
+        deployment = centralStatus(deployment, identity, api, headers, sender)
+            .verifyRemoteBundle(bundle, identity, api, headers, sender)
         record.writeDeployment(deployment)
         when (deployment.state) {
-            "PUBLISHED" -> return
+            "PUBLISHED" -> {
+                check(deployment.isRemoteBundleVerified(identity)) { "Central deployment bundle is unverified" }
+                return
+            }
             "FAILED" -> error("Central deployment failed")
             "VALIDATED" -> if (!releaseRequested) {
+                check(deployment.isRemoteBundleVerified(identity)) { "Central deployment bundle is unverified" }
                 sender.checked(CentralPortalRequest("POST", "$api/deployment/${deployment.id}", headers))
                 releaseRequested = true
                 deployment = deployment.copy(state = "PUBLISHING")
@@ -135,16 +156,18 @@ private fun centralIdentity(bundle: File, candidate: File): CentralIdentity {
     verifyReleaseRecord(bundle, bundleRecord)
     val bundleSha = bundle.releaseDigest()
     return CentralIdentity(
-        "codex-agent-$version-${commit.take(12)}-${bundleSha.take(12)}",
+        "codex-agent-$version-$commit-$bundleSha",
         version,
         commit,
         candidate.releaseDigest(),
         bundleSha,
+        bundle.centralPurls(),
     )
 }
 
 private fun centralStatus(
     deployment: CentralDeployment,
+    identity: CentralIdentity,
     api: String,
     headers: Map<String, String>,
     sender: (CentralPortalRequest) -> CentralPortalResponse,
@@ -154,34 +177,14 @@ private fun centralStatus(
     ) as? JsonObject ?: error("Central status is not a JSON object")
     check(status.releaseString("deploymentId") == deployment.id) { "Central status deployment ID mismatch" }
     check(status.releaseString("deploymentName") == deployment.name) { "Central status deployment name mismatch" }
-    return deployment.copy(state = status.releaseString("deploymentState"))
-}
-
-private fun File.readDeployment(): CentralDeployment {
-    check(isFile) { "Central deployment record is required" }
-    val json = readReleaseObject()
-    return CentralDeployment(
-        json.releaseString("deploymentId"),
-        json.releaseString("deploymentName"),
-        json.releaseString("deploymentState"),
-        json.releaseString("candidateManifestSha256"),
-        json.releaseString("bundleSha256"),
-    )
-}
-
-private fun File.writeDeployment(deployment: CentralDeployment) = atomicWriteJson(buildJsonObject {
-    put("schemaVersion", JsonPrimitive(2))
-    put("deploymentId", JsonPrimitive(deployment.id))
-    put("deploymentName", JsonPrimitive(deployment.name))
-    put("deploymentState", JsonPrimitive(deployment.state))
-    put("candidateManifestSha256", JsonPrimitive(deployment.candidateSha256))
-    put("bundleSha256", JsonPrimitive(deployment.bundleSha256))
-})
-
-private fun CentralDeployment.requireIdentity(identity: CentralIdentity) {
-    check(name == identity.name) { "Central deployment name mismatch" }
-    check(candidateSha256 == identity.candidateSha256) { "Central candidate manifest SHA-256 mismatch" }
-    check(bundleSha256 == identity.bundleSha256) { "Central bundle SHA-256 mismatch" }
+    val state = status.releaseString("deploymentState")
+    if (state in verifiableCentralStates) {
+        val values = status.releaseArray("purls").map { it.jsonPrimitive.content }
+        check(values.size == values.toSet().size && values.toSet() == identity.purls) {
+            "Central status PURL set mismatch"
+        }
+    }
+    return deployment.copy(state = state)
 }
 
 @DisableCachingByDefault(because = "This task uploads one exact remote deployment")

@@ -32,24 +32,7 @@ allprojects {
     group = "io.github.ciurlaro"
     version = "0.2.0"
 }
-tasks.register("verifyRepository") {
-    group = "verification"
-    description = "Runs the portable client, Android runtime, protocol, and build-logic checks."
-    dependsOn(
-        ":codex-agent-client:jvmTest",
-        ":codex-agent-client:compileAndroidMain",
-        ":codex-agent-client:verifyProtocolSource",
-        ":codex-agent-runtime-android:testDebugUnitTest",
-        ":codex-agent-runtime-android:lint",
-        ":codex-agent-runtime-android:assembleRelease",
-        ":tooling:protocol-generator:test",
-    )
-}
-tasks.register("verifyIosRuntime") {
-    group = "verification"
-    description = "Runs the embedded iOS runtime, XCFramework, and Swift consumer gates on macOS."
-    dependsOn(":codex-agent-runtime-ios:verifyIosRuntime")
-}
+registerRepositoryVerificationTasks()
 tasks.register<VerifyReleaseMetadataTask>("verifyReleaseMetadata") {
     group = "verification"
     projectVersion.set(project.version.toString())
@@ -68,14 +51,29 @@ val privacyRequiredReasonReviewOverride =
 val generatedPrivacyRequiredReasonReview = layout.projectDirectory.file(
     "codex-agent-runtime-ios/build/reports/ios-release/privacy/privacy-required-reason-review.json")
 val privacyRequiredReasonReview = privacyRequiredReasonReviewOverride.orElse(generatedPrivacyRequiredReasonReview)
+val desktopDistributionManifestFile =
+    layout.projectDirectory.file("codex-agent-runtime-desktop/codex-app-server-distributions.json")
+val desktopBundledLicenseFile =
+    layout.projectDirectory.file("codex-agent-runtime-android/src/main/assets/openai-codex-LICENSE.txt")
+val desktopBundledNoticeFile =
+    layout.projectDirectory.file("codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt")
 tasks.register<VerifyPublicationReadinessTask>("verifyPublicationReadiness") {
     group = "verification"
     approvalsFile.set(publicationApprovals)
     privacyManifest.set(privacyManifestFile)
     privacyInventory.set(privacyDataFlowReviewFile)
+    desktopDistributionManifest.set(desktopDistributionManifestFile)
+    desktopBundledLicense.set(desktopBundledLicenseFile)
+    desktopBundledNotice.set(desktopBundledNoticeFile)
 }
 val androidEvidenceFile = layout.file(providers.gradleProperty("codexAgent.androidEvidenceFile").map(::file))
 val androidEvidenceDirectory = layout.dir(androidEvidenceFile.map { it.asFile.parentFile })
+val desktopEvidenceDirectory = providers.gradleProperty("codexAgent.desktopEvidenceDirectory")
+val desktopEvidenceFiles = objects.fileCollection().apply {
+    desktopRuntimeEvidenceTargets.keys.forEach { target ->
+        from(desktopEvidenceDirectory.map { directory -> file("$directory/${desktopRuntimeEvidenceFileName(target)}") })
+    }
+}
 val prepareProtectedCandidate = tasks.register<PrepareProtectedCandidateTask>("prepareProtectedCandidate") {
     dependsOn("verifyReleaseMetadata")
     version.set(project.version.toString())
@@ -83,15 +81,16 @@ val prepareProtectedCandidate = tasks.register<PrepareProtectedCandidateTask>("p
     candidateCommit.set(candidateCommitValue)
     parallelExecution.set(gradle.startParameter.isParallelProjectExecutionEnabled)
     androidEvidence.set(androidEvidenceFile)
+    desktopEvidence.from(desktopEvidenceFiles)
     repositoryDirectory.set(layout.projectDirectory)
     candidateDirectory.set(candidateRoot)
 }
-
 val stageCentralRepository = tasks.register("stageCentralRepository") {
     group = "publishing"
     dependsOn(
         ":codex-agent-client:publishAllPublicationsToCENTRAL_STAGINGRepository",
         ":codex-agent-runtime-android:publishAllPublicationsToCENTRAL_STAGINGRepository",
+        ":codex-agent-runtime-desktop:publishAllPublicationsToCENTRAL_STAGINGRepository",
         ":codex-agent-runtime-ios:publishAllPublicationsToCENTRAL_STAGINGRepository",
     )
 }
@@ -99,7 +98,7 @@ val stageCentralRepository = tasks.register("stageCentralRepository") {
 val mavenInventoryFile = candidateReports.map { it.file("maven-inventory.json") }
 val verifyCentralStaging = tasks.register<VerifyMavenStagingTask>("verifyCentralStaging") {
     group = "verification"
-    description = "Verifies the exact signed nine-coordinate staged KMP repository and materializes checksums."
+    description = "Verifies the exact signed 22-coordinate staged KMP repository and materializes checksums."
     dependsOn(stageCentralRepository)
     repositoryDirectory.set(centralStagingDirectory)
     groupId.set(project.group.toString())
@@ -107,7 +106,6 @@ val verifyCentralStaging = tasks.register<VerifyMavenStagingTask>("verifyCentral
     requireSignatures.set(true)
     inventoryFile.set(mavenInventoryFile)
 }
-
 val rootLocalProperties = layout.projectDirectory.file("local.properties")
 val rootAndroidSdkDirectory = providers.environmentVariable("ANDROID_HOME").orElse(
     providers.fileContents(rootLocalProperties).asText.map { contents ->
@@ -117,7 +115,7 @@ val rootAndroidSdkDirectory = providers.environmentVariable("ANDROID_HOME").orEl
 val cleanKmpConsumerResult = candidateReports.map { it.file("clean-kmp-consumer.json") }
 val verifyStagedKmpConsumer = tasks.register<VerifyStagedKmpConsumerTask>("verifyStagedKmpConsumer") {
     group = "verification"
-    description = "Builds an isolated four-target KMP consumer from CENTRAL_STAGING only."
+    description = "Builds an isolated consumer for every published KMP target from CENTRAL_STAGING only."
     dependsOn(verifyCentralStaging)
     repositoryDirectory.set(centralStagingDirectory)
     templateDirectory.set(layout.projectDirectory.dir("release/kmp-consumer-template"))
@@ -128,7 +126,6 @@ val verifyStagedKmpConsumer = tasks.register<VerifyStagedKmpConsumerTask>("verif
     consumerDirectory.set(candidateRoot.map { it.dir("clean-consumer") })
     resultFile.set(cleanKmpConsumerResult)
 }
-
 val centralBundleFile = candidateArtifacts.map { it.file("codex-agent-${project.version}-central.zip") }
 val centralBundleInventory = candidateReports.map { it.file("central-bundle.json") }
 val packageCentralBundle = tasks.register<BuildCentralBundleTask>("packageCentralBundle") {
@@ -141,7 +138,6 @@ val packageCentralBundle = tasks.register<BuildCentralBundleTask>("packageCentra
     bundleFile.set(centralBundleFile)
     inventoryFile.set(centralBundleInventory)
 }
-
 val stagedAndroidDirectory = candidateEvidence.map { it.dir("android") }
 val stagedAndroidEvidence = stagedAndroidDirectory.map { it.file("android-runtime-evidence.json") }
 val stageAndroidEvidence = tasks.register<StageAndroidEvidenceTask>("stageAndroidRuntimeEvidence") {
@@ -208,6 +204,7 @@ val generateCandidateManifest = tasks.register<GenerateCandidateManifestTask>("g
     mavenInventory.set(mavenInventoryFile)
     kmpConsumer.set(cleanKmpConsumerResult)
     androidEvidence.set(stagedAndroidEvidence)
+    desktopEvidence.from(desktopEvidenceFiles)
     privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
     resourceReports.from(resourceEvidence)
     approvalsFile.set(publicationApprovals)
@@ -215,6 +212,9 @@ val generateCandidateManifest = tasks.register<GenerateCandidateManifestTask>("g
     privacyDataFlowReview.set(privacyDataFlowReviewFile)
     privacyReviews.set(privacyRequiredReasonReview)
     packageSwift.set(layout.projectDirectory.file("Package.swift"))
+    desktopDistributionManifest.set(desktopDistributionManifestFile)
+    desktopBundledLicense.set(desktopBundledLicenseFile)
+    desktopBundledNotice.set(desktopBundledNoticeFile)
     outputFile.set(candidateManifest)
 }
 val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTask>("verifyCandidateManifest") {
@@ -231,6 +231,7 @@ val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTas
     mavenInventory.set(mavenInventoryFile)
     kmpConsumer.set(cleanKmpConsumerResult)
     androidEvidence.set(stagedAndroidEvidence)
+    desktopEvidence.from(desktopEvidenceFiles)
     privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
     resourceReports.from(resourceEvidence)
     approvalsFile.set(publicationApprovals)
@@ -238,6 +239,9 @@ val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTas
     privacyDataFlowReview.set(privacyDataFlowReviewFile)
     privacyReviews.set(privacyRequiredReasonReview)
     packageSwift.set(layout.projectDirectory.file("Package.swift"))
+    desktopDistributionManifest.set(desktopDistributionManifestFile)
+    desktopBundledLicense.set(desktopBundledLicenseFile)
+    desktopBundledNotice.set(desktopBundledNoticeFile)
 }
 
 val protectedCandidatePhases = registerProtectedCandidatePhases(prepareProtectedCandidate)
@@ -273,6 +277,9 @@ tasks.register<VerifyCandidatePayloadTask>("verifyCandidatePayload") {
     privacyReviewTemplate.set(privacyRequiredReasonReviewTemplate)
     privacyReviews.set(privacyRequiredReasonReviewOverride)
     packageSwift.set(layout.projectDirectory.file("Package.swift"))
+    desktopDistributionManifest.set(desktopDistributionManifestFile)
+    desktopBundledLicense.set(desktopBundledLicenseFile)
+    desktopBundledNotice.set(desktopBundledNoticeFile)
     outputFile.set(layout.buildDirectory.file("reports/release-candidate/payload-verification.json"))
 }
 

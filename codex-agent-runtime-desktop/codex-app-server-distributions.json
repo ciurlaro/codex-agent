@@ -1,0 +1,51 @@
+{
+  "version": "0.145.0",
+  "releaseTag": "rust-v0.145.0",
+  "distributions": [
+    {
+      "target": "macosArm64",
+      "classifier": "app-server-macos-arm64",
+      "asset": "codex-app-server-aarch64-apple-darwin.tar.gz",
+      "archiveSha256": "4a62b65e37fa2b16e0f77b11ff199f10e446ed46278c5178a86787d14c16fa2e",
+      "archiveEntry": "codex-app-server-aarch64-apple-darwin",
+      "binarySha256": "98ff0c6e896b49db54066519c15fdfc01d8efe26985c7f433d0200ee3bc1c807",
+      "executableName": "codex-app-server"
+    },
+    {
+      "target": "macosX64",
+      "classifier": "app-server-macos-x64",
+      "asset": "codex-app-server-x86_64-apple-darwin.tar.gz",
+      "archiveSha256": "ec6ebeb526601120ada65845fc64d79ae01179b1bfbb51449a0d9f06934b9606",
+      "archiveEntry": "codex-app-server-x86_64-apple-darwin",
+      "binarySha256": "4df0ee0934868973d05ca26cc195447c4a70ae45250360c04226d4104c62102f",
+      "executableName": "codex-app-server"
+    },
+    {
+      "target": "linuxArm64",
+      "classifier": "app-server-linux-arm64",
+      "asset": "codex-app-server-aarch64-unknown-linux-musl.tar.gz",
+      "archiveSha256": "3a185f6a1e2ec3ce7ebe9ea5ab23a81bfab75470337e66e235b881ca40ac8932",
+      "archiveEntry": "codex-app-server-aarch64-unknown-linux-musl",
+      "binarySha256": "9c5954b50520b68d7d181804965b554f09add95cc8fb0db6a7750111a1296b60",
+      "executableName": "codex-app-server"
+    },
+    {
+      "target": "linuxX64",
+      "classifier": "app-server-linux-x64",
+      "asset": "codex-app-server-x86_64-unknown-linux-musl.tar.gz",
+      "archiveSha256": "07e9dbfae80c47d5b48a5be4fbf26143fdb5ff647d4afa76805d3a4b81d29877",
+      "archiveEntry": "codex-app-server-x86_64-unknown-linux-musl",
+      "binarySha256": "49dae43c3be16bc6fc0adb16859244f054a6382656738f1fc280ab3b390b1e49",
+      "executableName": "codex-app-server"
+    },
+    {
+      "target": "mingwX64",
+      "classifier": "app-server-windows-x64",
+      "asset": "codex-app-server-x86_64-pc-windows-msvc.exe.zip",
+      "archiveSha256": "dfc57f87b9bc61d1d4503b7a60fbe5bae5f13a5283234c86a4c0da6c97a12961",
+      "archiveEntry": "codex-app-server-x86_64-pc-windows-msvc.exe",
+      "binarySha256": "5163c75ed88d460b35b03c8d8f4ef190b3bdd09971d7ac2bd90b48c435f1cf14",
+      "executableName": "codex-app-server.exe"
+    }
+  ]
+}

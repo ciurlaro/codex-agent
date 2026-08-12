@@ -4,8 +4,6 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
-import org.gradle.api.Project
-import org.gradle.api.Task
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -22,11 +20,8 @@ import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import org.gradle.api.tasks.TaskProvider
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
-import org.gradle.kotlin.dsl.named
-import org.gradle.kotlin.dsl.register
 
 internal data class ProtectedCandidatePreflight(
     val version: String,
@@ -38,6 +33,7 @@ internal data class ProtectedCandidatePreflight(
     val repository: File,
     val candidateDirectory: File,
     val androidEvidence: File,
+    val desktopEvidence: List<File>,
 )
 
 internal val protectedCandidateStatusArguments =
@@ -53,6 +49,8 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
     check(!input.parallel) { "assembleProtectedCandidate must be invoked with --no-parallel" }
     val evidenceErrors = validateAndroidEvidence(input.androidEvidence, input.commit)
     check(evidenceErrors.isEmpty()) { "Android runtime evidence is invalid: ${evidenceErrors.joinToString()}" }
+    val desktopErrors = validateDesktopRuntimeEvidence(input.desktopEvidence, input.commit)
+    check(desktopErrors.isEmpty()) { "Desktop runtime evidence is invalid: ${desktopErrors.joinToString()}" }
 
     val repository = input.repository.canonicalFile
     val candidate = input.candidateDirectory.canonicalFile
@@ -64,6 +62,9 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
     }
     check(!candidate.exists()) {
         "Protected candidate output already exists; refusing to clean or rebuild it: $candidate"
+    }
+    check(input.desktopEvidence.none { it.canonicalFile.toPath().startsWith(candidate.toPath()) }) {
+        "Desktop evidence must be external to protected candidate output"
     }
     listOf("artifacts", "evidence", "maven-repository", "clean-consumer", "reports")
         .forEach { candidate.resolve(it).mkdirs() }
@@ -78,6 +79,7 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
     @get:Input abstract val candidateCommit: Property<String>
     @get:Input abstract val parallelExecution: Property<Boolean>
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val androidEvidence: RegularFileProperty
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
     @get:Internal abstract val repositoryDirectory: DirectoryProperty
     @get:Internal abstract val candidateDirectory: DirectoryProperty
 
@@ -89,6 +91,7 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
         git(*protectedCandidateStatusArguments.toTypedArray()), parallelExecution.get(),
         repositoryDirectory.get().asFile, candidateDirectory.get().asFile,
         androidEvidence.get().asFile,
+        desktopEvidence.files.sortedBy(File::getName),
     ))
 
     private fun git(vararg arguments: String): String {
@@ -150,6 +153,7 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val kmpConsumer: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val androidEvidence: RegularFileProperty
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val resourceReports: ConfigurableFileCollection
@@ -159,6 +163,9 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
     @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val privacyReviews: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val packageSwift: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopDistributionManifest: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledLicense: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledNotice: RegularFileProperty
 
     init { outputs.upToDateWhen { false } }
 
@@ -171,111 +178,20 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
         swiftPmProof = swiftPmProof.get().asFile, centralBundle = centralBundle.get().asFile,
         centralInventory = centralInventory.get().asFile, mavenInventory = mavenInventory.get().asFile,
         kmpConsumer = kmpConsumer.get().asFile, androidEvidence = androidEvidence.get().asFile,
+        desktopEvidence = desktopEvidence.files.sortedBy(File::getName),
         privacyAudit = privacyAudit.get().asFile, artifactMetrics = artifactMetrics.get().asFile,
         resourceReports = resourceReports.files.sortedBy(File::getName),
         approvals = approvalsFile.get().asFile, privacyManifest = privacyManifest.get().asFile,
         privacyDataFlowReview = privacyDataFlowReview.get().asFile,
         privacyRequiredReasonReviews = privacyReviews.orNull?.asFile, packageSwift = packageSwift.get().asFile,
+        desktopDistributionManifest = desktopDistributionManifest.get().asFile,
+        desktopBundledLicense = desktopBundledLicense.get().asFile,
+        desktopBundledNotice = desktopBundledNotice.get().asFile,
     )
 }
 
 internal fun verifyProtectedCandidateManifest(manifest: File, inputs: CandidateInputFiles) {
     check(manifest.readReleaseObject() == buildCandidateManifest(inputs)) {
         "Candidate manifest does not match the exact current artifacts, evidence, and policies"
-    }
-}
-
-data class ProtectedCandidatePhases(val privacy: TaskProvider<Task>)
-
-internal val protectedCandidatePhaseGatePaths = listOf(
-    listOf(
-        ":codex-agent-runtime-ios:preparePinnedCodexIosArchive", ":codex-agent-runtime-ios:preparePinnedSqliteArchive",
-        ":codex-agent-runtime-ios:verifyCodexIosProvenance", ":codex-agent-runtime-ios:prepareCodexIosSource",
-        ":codex-agent-runtime-ios:testCodexIosBridge", ":codex-agent-runtime-ios:testCodexIosDirectToolMode",
-        ":codex-agent-runtime-ios:buildCodexIosArm64Rust", ":codex-agent-runtime-ios:buildCodexIosSimulatorArm64Rust",
-    ),
-    listOf(
-        ":codex-agent-runtime-ios:verifyAppleToolchain", ":codex-agent-runtime-ios:compileKotlinIosArm64",
-        ":codex-agent-runtime-ios:iosSimulatorArm64Test", ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackage",
-        ":codex-agent-runtime-ios:verifyCodexAgentSwiftAuthenticationTests",
-    ),
-    listOf(
-        ":codex-agent-runtime-ios:packageCodexAgentSwiftPackageBinary",
-        ":codex-agent-runtime-ios:generateCodexAgentSwiftPackageChecksum",
-        ":codex-agent-runtime-ios:verifyCodexAgentRemoteSwiftPackage",
-        ":codex-agent-runtime-ios:verifyIosDeploymentTargets", ":codex-agent-runtime-ios:verifyIosLicensePackaging",
-        ":codex-agent-runtime-ios:verifyIosReleaseBudgets", ":codex-agent-runtime-ios:recordCodexAgentSwiftPackageProof",
-        ":stageProtectedSwiftPackage", ":stageProtectedSwiftChecksum",
-    ),
-    listOf(":codex-agent-runtime-ios:verifyIosPrivacyManifest", ":stageProtectedPrivacyAudit"),
-    listOf(":stageCentralRepository", ":verifyCentralStaging", ":stageAndroidRuntimeEvidence", ":verifyAndroidRuntimeEvidence"),
-    listOf(":verifyStagedKmpConsumer"),
-    listOf(":packageCentralBundle", ":measureProtectedCandidateResources"),
-    listOf(":generateCandidateManifest", ":verifyCandidateManifest"),
-)
-
-fun Project.registerProtectedCandidatePhases(
-    prepare: TaskProvider<PrepareProtectedCandidateTask>,
-): ProtectedCandidatePhases {
-    val native = tasks.register("protectedCandidateNative")
-    val iosTests = tasks.register("protectedCandidateIosTests")
-    val swiftPackage = tasks.register("protectedCandidateSwiftPackage")
-    val privacy = tasks.register("protectedCandidatePrivacy")
-    val maven = tasks.register("protectedCandidateMaven")
-    val consumer = tasks.register("protectedCandidateConsumer")
-    val bundle = tasks.register("protectedCandidateBundle")
-    val manifest = tasks.register("protectedCandidateManifest")
-    val generatedManifest = tasks.named<GenerateCandidateManifestTask>("generateCandidateManifest")
-    val verifiedManifest = tasks.named("verifyCandidateManifest")
-    val payload = tasks.register<StageProtectedCandidatePayloadTask>("stageProtectedCandidatePayload") {
-        dependsOn(verifiedManifest)
-        manifestFile.set(generatedManifest.flatMap { it.outputFile })
-        sourceFiles.from(
-            generatedManifest.flatMap { it.swiftZip }, generatedManifest.flatMap { it.swiftPmProof },
-            generatedManifest.flatMap { it.centralBundle }, generatedManifest.flatMap { it.centralInventory },
-            generatedManifest.flatMap { it.mavenInventory }, generatedManifest.flatMap { it.kmpConsumer },
-            generatedManifest.flatMap { it.androidEvidence }, generatedManifest.flatMap { it.privacyAudit },
-            generatedManifest.flatMap { it.artifactMetrics }, generatedManifest.map { it.resourceReports },
-            generatedManifest.flatMap { it.approvalsFile },
-            generatedManifest.flatMap { it.privacyManifest }, generatedManifest.flatMap { it.privacyDataFlowReview },
-            generatedManifest.map { it.privacyReviews.orNull?.asFile }, generatedManifest.flatMap { it.packageSwift },
-        )
-        expectedVersion.set(generatedManifest.flatMap { it.candidateVersion })
-        expectedTag.set(generatedManifest.flatMap { it.releaseTag })
-        expectedCommit.set(generatedManifest.flatMap { it.candidateCommit })
-        candidateDirectory.set(prepare.flatMap { it.candidateDirectory })
-        outputDirectory.set(prepare.flatMap { it.candidateDirectory.dir("payload") })
-        verificationFile.set(prepare.flatMap { it.candidateDirectory.file("reports/payload-verification.json") })
-    }
-    tasks.register("assembleProtectedCandidate") {
-        group = "publishing"
-        description = "Assembles one fresh commit-isolated technical candidate without cleaning or rebuilding evidence."
-        dependsOn(payload)
-    }
-
-    gradle.projectsEvaluated {
-        fun task(path: String) = project(path.substringBeforeLast(':').ifBlank { ":" })
-            .tasks.named(path.substringAfterLast(':'))
-        val phases = listOf(
-            native to prepare, iosTests to native, swiftPackage to iosTests, privacy to swiftPackage,
-            maven to privacy, consumer to maven, bundle to consumer, manifest to bundle,
-        ).zip(protectedCandidatePhaseGatePaths) { (marker, previous), paths -> Triple(marker, previous, paths) }
-        phases.forEach { (marker, previous, paths) ->
-            wireProtectedCandidatePhase(marker, previous, paths.map(::task))
-        }
-        wireProtectedCandidatePhase(payload, manifest, emptyList())
-    }
-    return ProtectedCandidatePhases(privacy)
-}
-
-fun wireProtectedCandidatePhase(
-    marker: TaskProvider<out Task>,
-    previous: TaskProvider<out Task>,
-    gates: List<TaskProvider<out Task>>,
-) {
-    gates.forEach { it.configure { mustRunAfter(previous) } }
-    marker.configure {
-        dependsOn(previous)
-        dependsOn(gates)
     }
 }

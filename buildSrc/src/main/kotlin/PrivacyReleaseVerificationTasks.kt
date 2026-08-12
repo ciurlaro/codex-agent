@@ -23,16 +23,36 @@ abstract class VerifyPublicationReadinessTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val privacyInventory: RegularFileProperty
 
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    abstract val desktopDistributionManifest: RegularFileProperty
+
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    abstract val desktopBundledLicense: RegularFileProperty
+
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    abstract val desktopBundledNotice: RegularFileProperty
+
     @TaskAction
     fun verify() = verifyPublicationReadiness(
         approvalsFile.get().asFile,
         privacyManifest.get().asFile,
         privacyInventory.get().asFile,
+        desktopDistributionManifest.get().asFile,
+        desktopBundledLicense.get().asFile,
+        desktopBundledNotice.get().asFile,
     )
 }
 
-internal fun verifyPublicationReadiness(approvalsFile: File, manifest: File, inventoryFile: File) {
+internal fun verifyPublicationReadiness(
+    approvalsFile: File,
+    manifest: File,
+    inventoryFile: File,
+    desktopManifest: File,
+    desktopLicense: File,
+    desktopNotice: File,
+) {
     val approvals = approvalsFile.readReleaseObject()
+    check(approvals.releaseInt("schemaVersion") == 2) { "Publication approval schema must be 2" }
     val inventory = inventoryFile.readReleaseObject()
     val reviewStatus = inventory.releaseString("reviewStatus")
     check(reviewStatus == "pending" || reviewStatus == "approved") {
@@ -65,11 +85,33 @@ internal fun verifyPublicationReadiness(approvalsFile: File, manifest: File, inv
         }
     }
 
+    val desktopApproved = approvals.releaseBoolean("desktopBundledGplDistributionApproved")
+    if (desktopApproved) verifyDesktopBundledGplApproval(approvalsFile, desktopManifest, desktopLicense, desktopNotice)
     val blockers = buildList {
         if (!privacyApproved) add("privacyCollectedDataReviewApproved=false")
         if (!approvals.releaseBoolean("staticFrameworkGplDistributionApproved")) {
             add("staticFrameworkGplDistributionApproved=false")
         }
+        if (!desktopApproved) add("desktopBundledGplDistributionApproved=false")
     }
     check(blockers.isEmpty()) { "External approvals pending: ${blockers.joinToString()}" }
+}
+
+internal fun verifyDesktopBundledGplApproval(
+    approvalsFile: File,
+    manifest: File,
+    license: File,
+    notice: File,
+) {
+    val approvals = approvalsFile.readReleaseObject()
+    check(approvals.releaseBoolean("desktopBundledGplDistributionApproved")) {
+        "Desktop bundled GPL distribution is not approved"
+    }
+    listOf(
+        "desktopDistributionManifestSha256" to manifest,
+        "desktopBundledLicenseSha256" to license,
+        "desktopBundledNoticeSha256" to notice,
+    ).forEach { (field, file) ->
+        check(approvals.releaseString(field) == file.releaseDigest()) { "Desktop GPL approval $field mismatch" }
+    }
 }

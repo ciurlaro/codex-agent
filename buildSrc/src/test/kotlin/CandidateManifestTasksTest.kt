@@ -1,15 +1,10 @@
 import java.io.File
-import java.time.LocalDateTime
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import org.gradle.testfixtures.ProjectBuilder
 
 class CandidateManifestTasksTest {
@@ -29,7 +24,7 @@ class CandidateManifestTasksTest {
         )
 
         assertEquals("passed", result.releaseString("result"))
-        assertEquals(3, manifest.releaseInt("schemaVersion"))
+        assertEquals(4, manifest.releaseInt("schemaVersion"))
         assertTrue(manifest.releaseBoolean("protectedCandidate"))
         assertEquals(
             fixture.swiftPmProof.name,
@@ -70,6 +65,9 @@ class CandidateManifestTasksTest {
             privacyDataFlowReview.set(fixture.privacyReview)
             privacyReviews.set(fixture.requiredReasons)
             packageSwift.set(fixture.packageSwift)
+            desktopDistributionManifest.set(fixture.desktopManifest)
+            desktopBundledLicense.set(fixture.desktopLicense)
+            desktopBundledNotice.set(fixture.desktopNotice)
             outputFile.set(fixture.root.resolve("payload-result.json"))
             githubOutputFile.set(githubOutput)
         }
@@ -184,6 +182,13 @@ class CandidateManifestTasksTest {
     }
 
     @Test
+    fun `desktop evidence must match the exact runner target and classifier archive`() = withFixture { fixture ->
+        fixture.desktop.first().writeText(fixture.desktop.first().readText().replace("\"ARM64\"", "\"X64\""))
+        val failure = assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
+        assertTrue(failure.message.orEmpty().contains("Desktop runtime evidence is invalid"))
+    }
+
+    @Test
     fun `required reason review is omitted when no review was supplied`() = withFixture { fixture ->
         fixture.removeRequiredReasonReview()
         val manifest = buildCandidateManifest(fixture.inputs)
@@ -197,97 +202,9 @@ class CandidateManifestTasksTest {
         assertTrue(failure.message.orEmpty().contains("does not bind"))
     }
 
-    private fun withFixture(block: (Fixture) -> Unit) {
+    private fun withFixture(block: (CandidateManifestFixture) -> Unit) {
         val directory = createTempDirectory("candidate-manifest").toFile()
-        try { block(Fixture(directory)) } finally { directory.deleteRecursively() }
-    }
-
-    private class Fixture(val root: File) {
-        val swiftZip = root.resolve("CodexAgent-0.2.0.xcframework.zip").apply {
-            ZipOutputStream(outputStream()).use { zip ->
-                zip.putNextEntry(ZipEntry("CodexAgent.xcframework/file").apply {
-                    setTimeLocal(LocalDateTime.of(1980, 1, 1, 0, 0))
-                })
-                zip.write("swift".encodeToByteArray())
-                zip.closeEntry()
-            }
-        }
-        val swiftChecksum = root.resolve("swift.sha256").apply { writeText(swiftZip.releaseDigest()) }
-        val packageSwift = root.resolve("Package.swift").apply { writeText("package") }
-        val swiftPmProof = root.resolve("swiftpm-proof.json").also {
-            writeTestSwiftPackageProof(it, swiftZip, swiftChecksum, packageSwift, COMMIT, VERSION, root)
-        }
-        val centralBundle = root.resolve("codex-agent-0.2.0-central.zip").apply { writeText("central") }
-        val mavenInventory = root.resolve("maven-inventory.json").apply { atomicWriteJson(buildJsonObject {
-            put("version", JsonPrimitive(VERSION)); put("primaryArtifactCount", JsonPrimitive(53))
-        }) }
-        val centralInventory = root.resolve("central-bundle.json").apply { atomicWriteJson(buildJsonObject {
-            put("belowCentralPortalUploadLimit", JsonPrimitive(true))
-            put("mavenInventorySha256", JsonPrimitive(mavenInventory.releaseDigest()))
-            put("bundle", centralBundle.releaseRecord())
-        }) }
-        val consumer = root.resolve("kmp-consumer.json").apply { atomicWriteJson(buildJsonObject {
-            put("result", JsonPrimitive("passed")); put("version", JsonPrimitive(VERSION))
-            put("mavenInventorySha256", JsonPrimitive(mavenInventory.releaseDigest()))
-        }) }
-        val android = root.resolve("android-evidence.json").apply {
-            atomicWriteJson(buildAndroidRuntimeEvidence(AndroidRuntimeEvidenceValues(
-                COMMIT,
-                "arm64-v8a",
-                35,
-                "a".repeat(64),
-                "b".repeat(64),
-                ANDROID_TEST_APPLICATION_ID,
-                ANDROID_TEST_APPLICATION_ID,
-                "codex-agent-runtime-android-release.aar",
-                "c".repeat(64),
-                "d".repeat(64),
-                "d".repeat(64),
-            )))
-        }
-        val resources = root.resolve("resources.json").apply { atomicWriteJson(buildJsonObject {
-            put("exitCode", JsonPrimitive(0))
-        }) }
-        val artifactMetrics = root.resolve("artifact-metrics.json").apply { atomicWriteJson(buildJsonObject {
-            put("compressedXcframeworkBytes", JsonPrimitive(1))
-            put("deviceFrameworkBytes", JsonPrimitive(1))
-            put("sampleAppInstallBytes", JsonPrimitive(1))
-        }) }
-        val approvals = root.resolve("publication-approvals.json").apply { writeText("{}") }
-        val privacyManifest = root.resolve("PrivacyInfo.xcprivacy").apply { writeText("manifest") }
-        val privacyReview = root.resolve("privacy-data-flow-review.json").apply { writeText("{}") }
-        val requiredReasons = root.resolve("privacy-required-reason-reviews.json").apply { writeText("{}") }
-        val privacyAudit = root.resolve("privacy-audit.json").apply { writePrivacyAudit(requiredReasons.releaseDigest()) }
-        val manifest = root.resolve("candidate-manifest.json")
-        val payload = root.resolve("payload").apply { mkdirs() }
-        val inputs get() = CandidateInputFiles(
-            VERSION, "v$VERSION", COMMIT, swiftZip, swiftChecksum, swiftPmProof, centralBundle, centralInventory,
-            mavenInventory, consumer, android, privacyAudit, artifactMetrics, listOf(resources), approvals, privacyManifest,
-            privacyReview, requiredReasons.takeIf(File::isFile), packageSwift,
-        )
-        val policyFiles get() = buildMap {
-            put("approvals", approvals)
-            put("privacyManifest", privacyManifest)
-            put("privacyDataFlowReview", privacyReview)
-            requiredReasons.takeIf(File::isFile)?.let { put("privacyRequiredReasonReviews", it) }
-            put("packageSwift", packageSwift)
-        }
-        fun removeRequiredReasonReview() {
-            requiredReasons.delete()
-            privacyAudit.writePrivacyAudit(null)
-        }
-        private fun File.writePrivacyAudit(reviewHash: String?) = atomicWriteJson(buildJsonObject {
-            put("passed", JsonPrimitive(true))
-            reviewHash?.let { put("reviewSha256", JsonPrimitive(it)) }
-        })
-        fun copyPayloadFiles() {
-            listOf(
-                swiftZip, swiftPmProof, centralBundle, centralInventory, mavenInventory, consumer, android,
-                privacyAudit, artifactMetrics, resources,
-            )
-                .plus(policyFiles.values)
-                .forEach { it.copyTo(payload.resolve(it.name), overwrite = true) }
-        }
+        try { block(CandidateManifestFixture(directory, VERSION, COMMIT)) } finally { directory.deleteRecursively() }
     }
 
     companion object {

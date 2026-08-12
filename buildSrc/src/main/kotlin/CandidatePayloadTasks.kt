@@ -36,7 +36,9 @@ internal fun verifyCandidatePayload(
     val policies = manifest.releaseObject("policies")
     val records = buildList {
         artifacts.values.forEach { add(it as JsonObject) }
-        evidence.filterKeys { it != "resourceMeasurements" }.values.forEach { add(it as JsonObject) }
+        evidence.filterKeys { it !in setOf("desktopRuntime", "resourceMeasurements") }
+            .values.forEach { add(it as JsonObject) }
+        evidence.releaseArray("desktopRuntime").forEach { add(it as JsonObject) }
         evidence.releaseArray("resourceMeasurements").forEach { add(it as JsonObject) }
         policies.values.forEach { add(it as JsonObject) }
     }
@@ -108,6 +110,9 @@ abstract class VerifyCandidatePayloadTask : DefaultTask() {
     @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val privacyReviews: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val packageSwift: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopDistributionManifest: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledLicense: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledNotice: RegularFileProperty
     @get:OutputFile abstract val outputFile: RegularFileProperty
     @get:Optional @get:OutputFile abstract val githubOutputFile: RegularFileProperty
 
@@ -130,6 +135,9 @@ abstract class VerifyCandidatePayloadTask : DefaultTask() {
                 put("privacyDataFlowReview", privacyDataFlowReview.get().asFile)
                 exactReview?.let { put("privacyRequiredReasonReviews", it) }
                 put("packageSwift", packageSwift.get().asFile)
+                put("desktopDistributionManifest", desktopDistributionManifest.get().asFile)
+                put("desktopBundledLicense", desktopBundledLicense.get().asFile)
+                put("desktopBundledNotice", desktopBundledNotice.get().asFile)
             },
         )
         outputFile.get().asFile.atomicWriteJson(result)

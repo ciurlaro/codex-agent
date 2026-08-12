@@ -17,7 +17,10 @@ internal data class CentralPortalRequest(
     val suffix: ByteArray = byteArrayOf(),
 )
 
-internal data class CentralPortalResponse(val statusCode: Int, val body: String)
+internal data class CentralPortalResponse(val statusCode: Int, val bytes: ByteArray) {
+    constructor(statusCode: Int, body: String) : this(statusCode, body.toByteArray(UTF_8))
+    val body: String get() = bytes.toString(UTF_8)
+}
 
 internal class JdkCentralPortalSender {
     private val client = HttpClient.newBuilder()
@@ -37,7 +40,7 @@ internal class JdkCentralPortalSender {
         } ?: HttpRequest.BodyPublishers.ofByteArray(request.body)
         val response = client.send(
             builder.method(request.method, publisher).build(),
-            HttpResponse.BodyHandlers.ofString(),
+            HttpResponse.BodyHandlers.ofByteArray(),
         )
         return CentralPortalResponse(response.statusCode(), response.body())
     }
@@ -72,6 +75,12 @@ internal fun ((CentralPortalRequest) -> CentralPortalResponse).checked(request: 
     val response = invoke(request)
     check(response.statusCode in 200..299) { "Central Portal HTTP ${response.statusCode}: ${response.body}" }
     return response.body
+}
+
+internal fun ((CentralPortalRequest) -> CentralPortalResponse).checkedBytes(request: CentralPortalRequest): ByteArray {
+    val response = invoke(request)
+    check(response.statusCode in 200..299) { "Central Portal HTTP ${response.statusCode}: ${response.body}" }
+    return response.bytes
 }
 
 internal const val DEFAULT_CENTRAL_PORTAL_API = "https://central.sonatype.com/api/v1/publisher"

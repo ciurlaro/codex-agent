@@ -1,7 +1,11 @@
+@file:OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+
 import com.vanniktech.maven.publish.JavadocJar
 import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.vanniktech.maven.publish.SourcesJar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsEnvSpec
+import org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsEnvSpec
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -25,6 +29,13 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
+    macosArm64()
+    macosX64()
+    linuxArm64()
+    linuxX64()
+    mingwX64()
+    js { browser(); nodejs() }
+    wasmJs { browser(); nodejs() }
 
     sourceSets {
         commonMain.dependencies {
@@ -37,6 +48,11 @@ kotlin {
         }
     }
 }
+
+rootProject.extensions.configure<NodeJsEnvSpec> { download.set(false) }
+rootProject.extensions.configure<WasmNodeJsEnvSpec> { download.set(false) }
+extensions.configure<NodeJsEnvSpec> { download.set(false) }
+extensions.configure<WasmNodeJsEnvSpec> { download.set(false) }
 
 val pinnedProtocolSchema = layout.projectDirectory.file(
     "protocol/schema/codex_app_server_protocol.v2.schemas.json",

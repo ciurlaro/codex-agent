@@ -14,24 +14,29 @@ and documentation change.
    ARM64 runner executes recordAndroidRuntimeEvidence and records the exact
    commit, command, device ABI/API, instrumentation APK, tested release AAR,
    bundled runtime, test report, and hashes.
-2. From a clean checkout of the same commit, assemble the technical candidate
-   once:
+2. Run the Desktop Runtime Evidence workflow against the same commit. Its five
+   GitHub-hosted runners execute the real initialize/shutdown smoke on macOS
+   Arm64/x64, Linux Arm64/x64, and Windows x64, and bind each report to the
+   exact classifier ZIP.
+3. From a clean checkout of that commit, assemble the technical candidate once:
 
        DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
          ./gradlew assembleProtectedCandidate \
          -PcodexAgent.candidateCommit=<40-character-candidate-commit> \
          -PcodexAgent.releaseTag=v0.2.0 \
          -PcodexAgent.androidEvidenceFile=<android-evidence>/android-runtime-evidence.json \
+         -PcodexAgent.desktopEvidenceDirectory=<desktop-evidence-directory> \
          --no-parallel
 
 The release-candidate environment supplies only Maven signing material. The
 task requires a clean checkout at the supplied commit and isolated external
-Android evidence. It runs the ordered native, iOS, Swift, privacy, Maven,
-clean-consumer, Central bundle, and candidate-manifest gates once without a
-Gradle clean. The canonical `swiftpm-proof.json` binds the commit and tree,
-clean checkout, exact ZIP and checksum file, committed Package.swift metadata,
-native provenance, and pinned Apple toolchain. The manifest and payload bind
-that proof alongside the exact SwiftPM ZIP and Central bundle under:
+Android and five-target desktop evidence. It runs the ordered native, iOS,
+Swift, privacy, Maven, clean-consumer, Central bundle, and candidate-manifest
+gates once without a Gradle clean. The canonical `swiftpm-proof.json` binds the
+commit and tree, clean checkout, exact ZIP and checksum file, committed
+Package.swift metadata, native provenance, and pinned Apple toolchain. The
+manifest and payload bind that proof, the runtime evidence, the exact SwiftPM
+ZIP, and the Central bundle under:
 
     build/protected-candidate/<candidate-commit>/payload/
 
@@ -40,8 +45,9 @@ existing commit-scoped candidate directory; remove an incomplete directory only
 after diagnosing the failed run, then start one fresh assembly.
 
 The clean KMP consumer resolves this project only from CENTRAL_STAGING and
-compiles JVM and Android plus links iOS Arm64 and iOS Simulator Arm64. The typed
-Central bundle task validates the complete publication set, signatures, Maven
+compiles JVM, Android, JS, WasmJS, macOS Arm64/x64, Linux Arm64/x64, and Windows
+x64, plus links iOS Arm64 and iOS Simulator Arm64. The typed Central bundle
+task validates all 22 coordinates and 133 primary artifacts, signatures, Maven
 metadata, licence declarations, deterministic ZIP inventory, and the strict
 1,000,000,000-byte Portal limit before the canonical candidate manifest is
 generated and fully reverified.
@@ -64,6 +70,9 @@ the external Apple collected-data and static-framework GPL decisions are
 approved, the technical payload remains available but publication stays
 blocked. The decisions live in release/publication-approvals.json and are bound
 to the exact privacy manifest and release/privacy-data-flow-review.json.
+Desktop classifier GPL distribution is reviewed separately and bound to its
+exact distribution inventory, licence, and notice; it does not approve the
+static Apple framework.
 Required-reason API reviews are supplied separately only when the static audit
 finds an ambiguous API requiring a manual disposition.
 

@@ -1,13 +1,14 @@
 # Codex Agent
 
-Reusable Kotlin Multiplatform client with local Android and iOS runtimes for
-the Codex App Server.
+Reusable Kotlin Multiplatform client with local Android, iOS, macOS, Linux,
+and Windows runtimes for the Codex App Server.
 
 ## Modules
 
 - `codex-agent-client` contains the portable agent, App Server client, generated
   protocol, and `CodexRuntimeFactory` dependency-injection contract. It targets
-  Android, JVM, iOS Arm64, and iOS Simulator Arm64.
+  Android, JVM, iOS Arm64/Simulator Arm64, macOS Arm64/x64, Linux Arm64/x64,
+  Windows x64, JavaScript browser/Node, and WasmJS browser/Node.
 - `codex-agent-runtime-android` contains the verified Android App Server binary,
   process runtime, loopback proxy, certificate preparation, and SQLite privacy
   guard. Hosts construct `AndroidCodexRuntimeFactory(context)`.
@@ -15,6 +16,8 @@ the Codex App Server.
   iPhoneOS and Apple Silicon Simulator. Hosts inject
   `IosCodexRuntimeFactory(configuration)` with an explicit sandbox-local
   workspace.
+- `codex-agent-runtime-desktop` launches an explicitly supplied, hash-verified
+  Codex App Server on macOS Arm64/x64, Linux Arm64/x64, and Windows x64.
 
 The runtime boundary is dependency injection; no `expect`/`actual` runtime
 factory is used.
@@ -25,6 +28,7 @@ factory is used.
 implementation("io.github.ciurlaro:codex-agent-client:0.2.0")
 implementation("io.github.ciurlaro:codex-agent-runtime-android:0.2.0")
 implementation("io.github.ciurlaro:codex-agent-runtime-ios:0.2.0")
+implementation("io.github.ciurlaro:codex-agent-runtime-desktop:0.2.0")
 ```
 
 Android hosts must keep the bundled executable extracted so the runtime can
@@ -33,6 +37,25 @@ verify and launch it by path:
 ```kotlin
 android { packaging { jniLibs.useLegacyPackaging = true } }
 ```
+
+Desktop hosts extract the matching `app-server-macos-arm64`,
+`app-server-macos-x64`, `app-server-linux-arm64`, `app-server-linux-x64`, or
+`app-server-windows-x64` ZIP classifier and pass absolute paths explicitly:
+
+```kotlin
+val factory = DesktopCodexRuntimeFactory(
+    DesktopCodexRuntimeConfiguration(
+        appServerExecutable = executablePath.toPath(),
+        workingDirectory = workspacePath.toPath(),
+    ),
+)
+val client = CodexAgentClient(factory)
+```
+
+The desktop runtime never downloads or discovers an executable. Browser and
+Node targets are client-only because they cannot launch the native App Server.
+The desktop API accepts no arbitrary command, shell, remote transport, or
+executable-discovery configuration.
 
 An iOS host creates a sandbox-local workspace and injects the runtime without
 an `expect`/`actual` factory:
@@ -78,8 +101,11 @@ The current `0.2.0` implementation includes:
 
 - a genuinely local iOS runtime for iOS Arm64 and Apple Silicon Simulator,
   embedding the pinned Codex App Server as a static in-process Rust library;
-- one shared Kotlin client and JSON-RPC protocol implementation across Android
-  and iOS, with `AppServerConnection` remaining the sole handshake owner;
+- one shared Kotlin client and JSON-RPC protocol implementation across Android,
+  iOS, desktop, JavaScript, and WasmJS, with `AppServerConnection` remaining
+  the sole handshake owner;
+- native desktop process runtimes and deterministic licensed Codex 0.145.0
+  classifier ZIPs for macOS Arm64/x64, Linux Arm64/x64, and Windows x64;
 - sandbox-local workspace and conversation state, plus bounded in-process file
   read, directory list, text search, atomic write, and `apply_patch` tools;
 - seamless ChatGPT browser authentication through `ASWebAuthenticationSession`
@@ -122,7 +148,9 @@ exists. No consumer repository is updated by this project.
 ./gradlew -p buildSrc test
 ./gradlew verifyRepository
 ./gradlew :codex-agent-client:compileKotlinIosArm64 \
-  :codex-agent-client:compileKotlinIosSimulatorArm64
+  :codex-agent-client:compileKotlinIosSimulatorArm64 \
+  :codex-agent-client:compileKotlinJs \
+  :codex-agent-client:compileKotlinWasmJs
 ./gradlew :codex-agent-runtime-android:connectedDebugAndroidTest
 DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
   ./gradlew verifyIosRuntime
@@ -147,4 +175,5 @@ Codex Agent is licensed under GPL-3.0-or-later. The bundled Codex App Server is
 licensed separately under Apache-2.0; see [third-party notices](THIRD_PARTY_NOTICES.md).
 Distribution of the static Apple framework under the GPL remains an explicit
 external product approval and is blocked by `verifyPublicationReadiness` until
-that decision is recorded.
+that decision is recorded. Desktop classifier distribution is a separate,
+hash-bound GPL decision; approving it does not approve the Apple framework.

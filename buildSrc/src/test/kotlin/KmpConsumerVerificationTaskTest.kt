@@ -6,11 +6,11 @@ import kotlin.test.assertTrue
 
 class KmpConsumerVerificationTaskTest {
     @Test
-    fun `consumer command binds exact staged repository version and four targets`() {
+    fun `consumer command binds exact staged repository version and every target`() {
         val arguments = stagedConsumerArguments(java.io.File("/consumer"), java.io.File("/staging"), "0.2.0")
         assertTrue("-PCENTRAL_STAGING=/staging" in arguments)
         assertTrue("-PcodexAgent.version=0.2.0" in arguments)
-        assertEquals(stagedConsumerBuildTasks, arguments.takeLast(4))
+        assertEquals(stagedConsumerBuildTasks, arguments.takeLast(stagedConsumerBuildTasks.size))
         assertTrue("--no-configuration-cache" in arguments)
     }
 

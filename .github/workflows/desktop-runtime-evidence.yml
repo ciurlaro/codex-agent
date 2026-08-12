@@ -1,0 +1,77 @@
+name: Desktop Runtime Evidence
+
+on:
+  workflow_call:
+    inputs:
+      candidateCommit:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      candidateCommit:
+        description: Exact candidate commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    name: ${{ matrix.target }} runtime
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    environment: release-candidate
+    env:
+      DEVELOPER_DIR: ${{ matrix.developerDir }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macosArm64
+            runner: macos-26
+            task: recordMacosArm64DesktopRuntimeEvidence
+            developerDir: /Applications/Xcode_26.6.app/Contents/Developer
+          - target: macosX64
+            runner: macos-26-intel
+            task: recordMacosX64DesktopRuntimeEvidence
+            developerDir: /Applications/Xcode_26.6.app/Contents/Developer
+          - target: linuxArm64
+            runner: ubuntu-24.04-arm
+            task: recordLinuxArm64DesktopRuntimeEvidence
+            developerDir: ""
+          - target: linuxX64
+            runner: ubuntu-24.04
+            task: recordLinuxX64DesktopRuntimeEvidence
+            developerDir: ""
+          - target: mingwX64
+            runner: windows-2025
+            task: recordMingwX64DesktopRuntimeEvidence
+            developerDir: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidateCommit }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Print pinned Xcode version
+        if: runner.os == 'macOS'
+        run: xcodebuild -version
+      - name: Print pinned Swift version
+        if: runner.os == 'macOS'
+        run: swift --version
+      - name: Run and record the official app-server lifecycle smoke
+        run: >-
+          ./gradlew :codex-agent-runtime-desktop:${{ matrix.task }}
+          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
+          -PcodexAgent.desktopEvidenceTarget=${{ matrix.target }}
+          --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-agent-desktop-runtime-evidence-${{ matrix.target }}
+          path: codex-agent-runtime-desktop/build/reports/desktop-runtime-evidence/desktop-runtime-${{ matrix.target }}.json
+          if-no-files-found: error
+          retention-days: 30

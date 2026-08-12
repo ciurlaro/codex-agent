@@ -61,8 +61,14 @@ jobs:
     with:
       candidateCommit: ${{ needs.portable-gates.outputs.candidate_commit }}
 
+  desktop-runtime-evidence:
+    needs: portable-gates
+    uses: ./.github/workflows/desktop-runtime-evidence.yml
+    with:
+      candidateCommit: ${{ needs.portable-gates.outputs.candidate_commit }}
+
   apple-candidate:
-    needs: [portable-gates, android-runtime-evidence]
+    needs: [portable-gates, android-runtime-evidence, desktop-runtime-evidence]
     runs-on: macos-26
     timeout-minutes: 300
     environment: release-candidate
@@ -91,18 +97,25 @@ jobs:
         run: |
           {
             printf 'android=%s\n' "$RUNNER_TEMP/android-runtime-evidence"
+            printf 'desktop=%s\n' "$RUNNER_TEMP/desktop-runtime-evidence"
             printf 'payload=%s\n' "$GITHUB_WORKSPACE/build/protected-candidate/${{ needs.portable-gates.outputs.candidate_commit }}/payload"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           name: codex-agent-android-runtime-evidence
           path: ${{ steps.paths.outputs.android }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: codex-agent-desktop-runtime-evidence-*
+          path: ${{ steps.paths.outputs.desktop }}
+          merge-multiple: true
       - name: Assemble the exact protected candidate once
         run: >-
           ./gradlew assembleProtectedCandidate
           -PcodexAgent.candidateCommit=${{ needs.portable-gates.outputs.candidate_commit }}
           -PcodexAgent.releaseTag=${{ needs.portable-gates.outputs.release_tag }}
           -PcodexAgent.androidEvidenceFile=${{ steps.paths.outputs.android }}/android-runtime-evidence.json
+          -PcodexAgent.desktopEvidenceDirectory=${{ steps.paths.outputs.desktop }}
           --no-parallel --no-daemon --stacktrace
       - name: Upload the exact technical candidate
         uses: actions/upload-artifact@v4

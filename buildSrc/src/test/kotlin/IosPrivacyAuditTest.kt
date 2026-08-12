@@ -8,7 +8,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-
 class IosPrivacyAuditTest {
     @Test
     fun `maintains all five source-specific categories and blocks ambiguous symbols`() {
@@ -21,7 +20,6 @@ class IosPrivacyAuditTest {
         assertEquals(setOf("_getattrlist"), ambiguous)
         assertTrue(IosPrivacyPolicy.classify(IosPrivacySignals(emptySet(), setOf("_stat"))).first.isEmpty())
     }
-
     @Test
     fun `complete evidence verifies the reviewed manifest and archive placement`() = withFixture(
         manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1"))),
@@ -33,7 +31,6 @@ class IosPrivacyAuditTest {
         assertEquals(2, evidence.releaseArray("slices").size)
         assertEquals(2, evidence.releaseArray("frameworkManifests").size)
     }
-
     @Test
     fun `ambiguous finding requires an exact hash-bound review`() = withFixture(
         manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1"))),

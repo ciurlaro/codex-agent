@@ -1,11 +1,7 @@
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
-import java.time.Duration
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ArchiveOperations
@@ -47,7 +43,6 @@ abstract class PrepareCodexRuntimeTask @Inject constructor(
     fun prepare() {
         val version = codexVersion.get()
         val url = URI("https://github.com/openai/codex/releases/download/rust-v$version/$ASSET.tar.gz")
-        check(url.scheme == "https") { "Codex runtime download must use HTTPS" }
         requireHash(archiveSha256.get(), "archive")
         requireHash(binarySha256.get(), "binary")
 
@@ -57,7 +52,7 @@ abstract class PrepareCodexRuntimeTask @Inject constructor(
             if (localArchive.isPresent) {
                 Files.copy(localArchive.get().asFile.toPath(), archive, StandardCopyOption.REPLACE_EXISTING)
             } else {
-                download(url, archive)
+                downloadHttps(url, archive)
             }
             check(archive.toFile().sha256() == archiveSha256.get()) {
                 "Codex runtime archive SHA-256 mismatch"
@@ -77,30 +72,6 @@ abstract class PrepareCodexRuntimeTask @Inject constructor(
         } finally {
             temporary.toFile().deleteRecursively()
         }
-    }
-
-    private fun download(url: URI, target: java.nio.file.Path) {
-        val request = HttpRequest.newBuilder(url).timeout(REQUEST_TIMEOUT).GET().build()
-        val client = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .connectTimeout(CONNECT_TIMEOUT)
-            .build()
-        var failure: java.io.IOException? = null
-        repeat(DOWNLOAD_ATTEMPTS) { attempt ->
-            Files.deleteIfExists(target)
-            try {
-                val response = client.send(request, HttpResponse.BodyHandlers.ofFile(target))
-                check(response.statusCode() in 200..299) {
-                    "Codex runtime download failed with HTTP ${response.statusCode()}"
-                }
-                check(response.uri().scheme == "https") { "Codex runtime redirected outside HTTPS" }
-                return
-            } catch (error: java.io.IOException) {
-                failure = error
-                if (attempt + 1 < DOWNLOAD_ATTEMPTS) Thread.sleep(1_000L)
-            }
-        }
-        throw checkNotNull(failure)
     }
 
     private fun installAtomically(source: java.io.File) {
@@ -140,8 +111,5 @@ abstract class PrepareCodexRuntimeTask @Inject constructor(
 
     companion object {
         private const val ASSET = "codex-app-server-aarch64-unknown-linux-musl"
-        private const val DOWNLOAD_ATTEMPTS = 3
-        private val CONNECT_TIMEOUT = Duration.ofSeconds(60)
-        private val REQUEST_TIMEOUT = Duration.ofMinutes(5)
     }
 }

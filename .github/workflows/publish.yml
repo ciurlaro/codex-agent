@@ -79,9 +79,14 @@ jobs:
             else
               test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha)" = "$EXPECTED_COMMIT"
             fi
-            test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[] | select(.name == "central-deployment.json")] | length')" -eq 1
-            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern central-deployment.json --dir "$RUNNER_TEMP" --clobber
-            allow_upload=false
+            deployment_records=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[] | select(.name == "central-deployment.json")] | length')
+            test "$deployment_records" -le 1
+            if [ "$deployment_records" -eq 1 ]; then
+              gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern central-deployment.json --dir "$RUNNER_TEMP" --clobber
+              allow_upload=false
+            else
+              allow_upload=true
+            fi
           elif grep -Eqi 'HTTP 404|release not found' "$error_file"; then
             tag_error="$RUNNER_TEMP/release-tag-error.txt"
             if tag_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha 2>"$tag_error"); then

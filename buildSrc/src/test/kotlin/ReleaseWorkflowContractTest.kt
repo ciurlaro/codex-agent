@@ -63,6 +63,10 @@ class ReleaseWorkflowContractTest {
         assertTrue(prepare >= 0 && prepare < persist && persist < await)
         assertTrue(await < publicSwift && publicSwift < centralRelease)
         assertTrue("-PcodexAgent.allowCentralUpload=" in publish)
+        assertTrue("test \"\$deployment_records\" -le 1" in publish)
+        assertTrue("if [ \"\$deployment_records\" -eq 1 ]" in publish)
+        assertTrue("allow_upload=false" in publish)
+        assertTrue("allow_upload=true" in publish)
         assertFalse(Regex("""\./gradlew\s+(?:assemble|build|stage|publish)""").containsMatchIn(publish))
         assertFalse("pattern: codex-agent-*-candidate" in publish)
     }

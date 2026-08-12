@@ -1,38 +1,36 @@
-import java.io.File
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.Base64
-import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 
 class CentralPortalTaskTest {
     @Test
     fun `prepare uploads USER_MANAGED once and immediately records pending identity`() = withFixture { fixture ->
-        val portal = FakePortal(CentralPortalResponse(201, ID))
+        val portal = uploadPortal()
 
         fixture.prepare(portal, allow = true)
 
-        assertEquals(1, portal.requests.size)
-        val upload = portal.requests.single()
-        assertTrue(upload.url.startsWith("$API/upload?publishingType=USER_MANAGED&name=codex-agent-0.2.0-0123456789ab-"))
+        assertEquals(2, portal.requests.size)
+        assertEquals("GET", portal.requests.first().method)
+        val upload = portal.requests.last()
+        assertEquals("$CENTRAL_API/upload?publishingType=USER_MANAGED&name=$CENTRAL_NAME", upload.url)
         assertEquals("Bearer " + Base64.getEncoder().encodeToString("user:password".toByteArray(UTF_8)), upload.headers["Authorization"])
         assertTrue(upload.body.toString(UTF_8).contains("name=\"bundle\"; filename=\"bundle.zip\""))
-        assertEquals("bundle bytes", upload.bodyFile?.readText())
+        assertEquals(fixture.bundle, upload.bodyFile)
         assertEquals("PENDING", fixture.record.readReleaseObject().releaseString("deploymentState"))
-        assertEquals(ID, fixture.record.readReleaseObject().releaseString("deploymentId"))
+        assertEquals(CENTRAL_ID, fixture.record.readReleaseObject().releaseString("deploymentId"))
         assertFalse(fixture.record.readText().contains("password"))
     }
 
     @Test
-    fun `prepare reuses every nonfailed matching state without network or duplicate upload`() = withFixture { fixture ->
-        fixture.prepare(FakePortal(CentralPortalResponse(201, ID)), allow = true)
+    fun `prepare reuses matching states with durable proof without network or duplicate upload`() = withFixture { fixture ->
+        fixture.prepare(uploadPortal(), allow = true)
+        fixture.mutateRecord("remoteBundleVerifiedSha256", fixture.bundle.releaseDigest())
         listOf("PENDING", "VALIDATING", "VALIDATED", "PUBLISHING", "PUBLISHED").forEach { state ->
             fixture.setState(state)
             var requests = 0
@@ -43,12 +41,41 @@ class CentralPortalTaskTest {
 
     @Test
     fun `prepare without durable record fails closed unless first upload is explicit`() = withFixture { fixture ->
-        var requests = 0
+        val portal = FakePortal(deployments())
         val failure = assertFailsWith<IllegalStateException> {
-            fixture.prepare(sender = { requests++; error("network must not be reached") })
+            fixture.prepare(portal)
         }
         assertTrue(failure.message.orEmpty().contains("refusing"))
-        assertEquals(0, requests)
+        assertEquals(1, portal.requests.size)
+        assertFalse(fixture.record.exists())
+    }
+
+    @Test
+    fun `prepare recovers one exact deployment verifies it and never uploads`() = withFixture { fixture ->
+        val portal = FakePortal(deployments(deployment()), status("VALIDATED"), *downloads().toTypedArray())
+
+        fixture.prepare(portal)
+
+        assertEquals(listOf("GET", "POST", "GET", "GET"), portal.requests.map { it.method })
+        assertTrue(portal.requests.none { it.url.contains("/upload") })
+        assertEquals(CENTRAL_ID, fixture.record.readReleaseObject().releaseString("deploymentId"))
+        assertEquals("VALIDATED", fixture.record.readReleaseObject().releaseString("deploymentState"))
+    }
+
+    @Test
+    fun `prepare rejects ambiguous or mismatched recovered deployments without upload`() = withFixture { fixture ->
+        val invalid = listOf(
+            deployments(deployment(), deployment(id = "98570f16-da32-4c14-bd2e-c1acc0782365")),
+            deployments(deployment(id = "not-a-uuid")),
+            deployments(deployment(state = "MYSTERY")),
+            deployments(deployment(name = "wrong")),
+        )
+        invalid.forEach { response ->
+            val portal = FakePortal(response)
+            assertFailsWith<IllegalStateException> { fixture.prepare(portal) }
+            assertTrue(portal.requests.none { it.url.contains("/upload") })
+            assertFalse(fixture.record.exists())
+        }
     }
 
     @Test
@@ -63,7 +90,7 @@ class CentralPortalTaskTest {
 
     @Test
     fun `record and candidate mismatches fail before network`() = withFixture { fixture ->
-        fixture.prepare(FakePortal(CentralPortalResponse(201, ID)), allow = true)
+        fixture.prepare(uploadPortal(), allow = true)
         listOf("deploymentName", "candidateManifestSha256", "bundleSha256").forEach { field ->
             val original = fixture.record.readText()
             fixture.mutateRecord(field, "wrong")
@@ -79,34 +106,35 @@ class CentralPortalTaskTest {
     @Test
     fun `invalid upload deployment id is rejected without a record`() = withFixture { fixture ->
         assertFailsWith<IllegalStateException> {
-            fixture.prepare(FakePortal(CentralPortalResponse(201, "not-a-uuid")), allow = true)
+            fixture.prepare(FakePortal(deployments(), CentralPortalResponse(201, "not-a-uuid")), allow = true)
         }
         assertFalse(fixture.record.exists())
     }
 
     @Test
     fun `await validation preserves state order and verifies returned identity`() = withFixture { fixture ->
-        fixture.prepare(FakePortal(CentralPortalResponse(201, ID)), allow = true)
+        fixture.prepare(uploadPortal(), allow = true)
         var sleeps = 0
         val portal = FakePortal(
             status("PENDING"),
             status("VALIDATING"),
             status("VALIDATED"),
+            *downloads().toTypedArray(),
         )
 
         fixture.await(portal) { assertEquals(10L, it); sleeps++ }
 
-        assertEquals(3, portal.requests.size)
+        assertEquals(5, portal.requests.size)
         assertEquals(2, sleeps)
         assertEquals("VALIDATED", fixture.record.readReleaseObject().releaseString("deploymentState"))
     }
 
     @Test
     fun `status id or name mismatch is blocking and is not recorded`() = withFixture { fixture ->
-        fixture.prepare(FakePortal(CentralPortalResponse(201, ID)), allow = true)
+        fixture.prepare(uploadPortal(), allow = true)
         listOf(
             """{"deploymentId":"wrong","deploymentName":"${fixture.name}","deploymentState":"VALIDATED"}""",
-            """{"deploymentId":"$ID","deploymentName":"wrong","deploymentState":"VALIDATED"}""",
+            """{"deploymentId":"$CENTRAL_ID","deploymentName":"wrong","deploymentState":"VALIDATED"}""",
         ).forEach { body ->
             fixture.setState("PENDING")
             assertFailsWith<IllegalStateException> { fixture.await(FakePortal(CentralPortalResponse(200, body))) }
@@ -116,7 +144,7 @@ class CentralPortalTaskTest {
 
     @Test
     fun `failed and unknown states are recorded then rejected`() = withFixture { fixture ->
-        fixture.prepare(FakePortal(CentralPortalResponse(201, ID)), allow = true)
+        fixture.prepare(uploadPortal(), allow = true)
         listOf("FAILED", "MYSTERY").forEach { state ->
             fixture.setState("PENDING")
             assertFailsWith<IllegalStateException> { fixture.await(FakePortal(status(state))) }
@@ -126,7 +154,7 @@ class CentralPortalTaskTest {
 
     @Test
     fun `await timeout is bounded`() = withFixture { fixture ->
-        fixture.prepare(FakePortal(CentralPortalResponse(201, ID)), allow = true)
+        fixture.prepare(uploadPortal(), allow = true)
         var sleeps = 0
         val portal = FakePortal(status("VALIDATING"), status("VALIDATING"), status("VALIDATING"))
         val failure = assertFailsWith<IllegalStateException> {
@@ -138,9 +166,10 @@ class CentralPortalTaskTest {
 
     @Test
     fun `release validates releases exact deployment and waits for published`() = withFixture { fixture ->
-        fixture.prepare(FakePortal(CentralPortalResponse(201, ID)), allow = true)
+        fixture.prepare(uploadPortal(), allow = true)
         val portal = FakePortal(
             status("VALIDATED"),
+            *downloads().toTypedArray(),
             CentralPortalResponse(204, ""),
             status("PUBLISHED"),
         )
@@ -148,7 +177,13 @@ class CentralPortalTaskTest {
         fixture.release(portal)
 
         assertEquals(
-            listOf("$API/status?id=$ID", "$API/deployment/$ID", "$API/status?id=$ID"),
+            listOf(
+                "$CENTRAL_API/status?id=$CENTRAL_ID",
+                "$CENTRAL_API/deployment/$CENTRAL_ID/download/io/github/example/client/0.2.0/client-0.2.0.jar",
+                "$CENTRAL_API/deployment/$CENTRAL_ID/download/io/github/example/client/0.2.0/client-0.2.0.pom",
+                "$CENTRAL_API/deployment/$CENTRAL_ID",
+                "$CENTRAL_API/status?id=$CENTRAL_ID",
+            ),
             portal.requests.map { it.url },
         )
         assertEquals("PUBLISHED", fixture.record.readReleaseObject().releaseString("deploymentState"))
@@ -156,100 +191,12 @@ class CentralPortalTaskTest {
 
     @Test
     fun `already published deployment succeeds without another release request`() = withFixture { fixture ->
-        fixture.prepare(FakePortal(CentralPortalResponse(201, ID)), allow = true)
+        fixture.prepare(uploadPortal(), allow = true)
         fixture.setState("PUBLISHED")
-        val portal = FakePortal(status("PUBLISHED"))
+        val portal = FakePortal(status("PUBLISHED"), *downloads().toTypedArray())
         fixture.release(portal)
-        assertEquals(listOf("$API/status?id=$ID"), portal.requests.map { it.url })
+        assertEquals(3, portal.requests.size)
     }
 
-    private fun withFixture(block: (Fixture) -> Unit) {
-        val directory = createTempDirectory("central-portal").toFile()
-        try { block(Fixture(directory)) } finally { directory.deleteRecursively() }
-    }
-
-    private class Fixture(directory: File) {
-        val bundle = directory.resolve("bundle.zip").apply { writeText("bundle bytes") }
-        val candidate = directory.resolve("candidate.json")
-        val record = directory.resolve("state/deployment.json")
-        val name: String
-
-        init {
-            val hash = bundle.releaseDigest()
-            name = "codex-agent-0.2.0-${COMMIT.take(12)}-${hash.take(12)}"
-            fun record(fileName: String) = buildJsonObject {
-                put("fileName", JsonPrimitive(fileName))
-                put("bytes", JsonPrimitive(1))
-                put("sha256", JsonPrimitive("0".repeat(64)))
-            }
-            candidate.atomicWriteJson(buildJsonObject {
-                put("schemaVersion", JsonPrimitive(3))
-                put("version", JsonPrimitive("0.2.0"))
-                put("releaseTag", JsonPrimitive("v0.2.0"))
-                put("candidateCommit", JsonPrimitive(COMMIT))
-                put("protectedCandidate", JsonPrimitive(true))
-                put("artifacts", buildJsonObject {
-                    put("swiftPackage", buildJsonObject {
-                        record("CodexAgent-0.2.0.xcframework.zip").forEach { (key, value) -> put(key, value) }
-                        put("swiftPmChecksum", JsonPrimitive("0".repeat(64)))
-                        put("members", buildJsonArray {})
-                    })
-                    put("centralBundle", bundle.releaseRecord())
-                })
-                put("evidence", buildJsonObject {
-                    put("swiftPmProof", record("swiftpm-proof.json"))
-                    put("centralBundleInventory", record("central-bundle.json"))
-                    put("mavenInventory", record("maven-inventory.json"))
-                    put("cleanKmpConsumer", record("kmp-consumer.json"))
-                    put("androidRuntime", record("android-evidence.json"))
-                    put("privacyAudit", record("privacy-audit.json"))
-                    put("artifactMetrics", record("artifact-metrics.json"))
-                    put("resourceMeasurements", buildJsonArray { add(record("resource-measurement.json")) })
-                })
-                put("policies", buildJsonObject {
-                    put("approvals", record("publication-approvals.json"))
-                    put("privacyManifest", record("PrivacyInfo.xcprivacy"))
-                    put("privacyDataFlowReview", record("privacy-data-flow-review.json"))
-                    put("packageSwift", record("Package.swift"))
-                })
-            })
-        }
-
-        fun prepare(portal: FakePortal, allow: Boolean = false) = prepare(portal::send, allow)
-        fun prepare(sender: (CentralPortalRequest) -> CentralPortalResponse, allow: Boolean = false) =
-            prepareCentralDeployment(bundle, candidate, record, API, "user", "password", allow, sender)
-
-        fun await(portal: FakePortal, attempts: Int = 120, sleeper: (Long) -> Unit = {}) =
-            awaitCentralValidation(bundle, candidate, record, API, "user", "password", attempts, 10, portal::send, sleeper)
-
-        fun release(portal: FakePortal) =
-            releaseCentralDeployment(bundle, candidate, record, API, "user", "password", 10, 0, portal::send) {}
-
-        fun setState(state: String) = mutateRecord("deploymentState", state)
-
-        fun mutateRecord(field: String, value: String) {
-            val values = record.readReleaseObject().toMutableMap()
-            values[field] = JsonPrimitive(value)
-            record.atomicWriteJson(JsonObject(values))
-        }
-    }
-
-    private class FakePortal(vararg responses: CentralPortalResponse) {
-        private val responses = ArrayDeque(responses.toList())
-        val requests = mutableListOf<CentralPortalRequest>()
-        fun send(request: CentralPortalRequest): CentralPortalResponse {
-            requests += request
-            return responses.removeFirst()
-        }
-    }
-
-    companion object {
-        private const val API = "https://central.example/api/v1/publisher"
-        private const val ID = "28570f16-da32-4c14-bd2e-c1acc0782365"
-        private const val COMMIT = "0123456789abcdef0123456789abcdef01234567"
-        private fun status(state: String) = CentralPortalResponse(
-            200,
-            """{"deploymentId":"$ID","deploymentName":"codex-agent-0.2.0-${COMMIT.take(12)}-${"bundle bytes".encodeToByteArray().let { bytes -> java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) } }.take(12)}","deploymentState":"$state"}""",
-        )
-    }
+    private fun withFixture(block: (CentralFixture) -> Unit) = withCentralFixture(block = block)
 }
