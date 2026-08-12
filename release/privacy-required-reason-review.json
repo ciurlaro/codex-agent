@@ -9,7 +9,13 @@
             "reviewStatus": "approved",
             "disposition": "notRequired",
             "declarations": [],
-            "rationale": "Every occurrence is the activeInputModes string in generated objc2_ui_kit binding code; no undefined-symbol or runtime-use evidence exists in either framework slice."
+            "rationale": "Every occurrence is the activeInputModes string in generated objc2_ui_kit binding code; no undefined-symbol or runtime-use evidence exists in either framework slice.",
+            "reviewedApis": [
+                {
+                    "source": "string",
+                    "token": "activeInputModes"
+                }
+            ]
         },
         {
             "findingId": "category:NSPrivacyAccessedAPICategoryDiskSpace",
@@ -23,21 +29,51 @@
                     ]
                 }
             ],
-            "rationale": "The sandbox-local runtime checks available disk space so its observable behavior can change when space is insufficient, and the disk-space value is not sent off-device."
+            "rationale": "The sandbox-local runtime checks available disk space so its observable behavior can change when space is insufficient, and the disk-space value is not sent off-device.",
+            "reviewedApis": [
+                {
+                    "source": "string",
+                    "token": "attributesOfFileSystemForPath:"
+                },
+                {
+                    "source": "undefined-symbol",
+                    "token": "_fstatfs"
+                },
+                {
+                    "source": "undefined-symbol",
+                    "token": "_fstatvfs"
+                }
+            ]
         },
         {
             "findingId": "category:NSPrivacyAccessedAPICategorySystemBootTime",
             "reviewStatus": "approved",
             "disposition": "notRequired",
             "declarations": [],
-            "rationale": "Every occurrence is the systemUptime string in generated objc2_foundation binding code; no undefined-symbol or runtime-use evidence exists in either framework slice."
+            "rationale": "Every occurrence is the systemUptime string in generated objc2_foundation binding code; no undefined-symbol or runtime-use evidence exists in either framework slice.",
+            "reviewedApis": [
+                {
+                    "source": "string",
+                    "token": "systemUptime"
+                }
+            ]
         },
         {
             "findingId": "category:NSPrivacyAccessedAPICategoryUserDefaults",
             "reviewStatus": "approved",
             "disposition": "notRequired",
             "declarations": [],
-            "rationale": "Every occurrence is an NSUserDefaults or standardUserDefaults string in generated objc2_foundation binding code; no undefined-symbol or runtime-use evidence exists in either framework slice."
+            "rationale": "Every occurrence is an NSUserDefaults or standardUserDefaults string in generated objc2_foundation binding code; no undefined-symbol or runtime-use evidence exists in either framework slice.",
+            "reviewedApis": [
+                {
+                    "source": "string",
+                    "token": "NSUserDefaults"
+                },
+                {
+                    "source": "string",
+                    "token": "standardUserDefaults"
+                }
+            ]
         }
     ]
 }

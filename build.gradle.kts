@@ -45,13 +45,11 @@ tasks.register("verifyRepository") {
         ":tooling:protocol-generator:test",
     )
 }
-
 tasks.register("verifyIosRuntime") {
     group = "verification"
     description = "Runs the embedded iOS runtime, XCFramework, and Swift consumer gates on macOS."
     dependsOn(":codex-agent-runtime-ios:verifyIosRuntime")
 }
-
 tasks.register<VerifyReleaseMetadataTask>("verifyReleaseMetadata") {
     group = "verification"
     projectVersion.set(project.version.toString())
@@ -59,24 +57,23 @@ tasks.register<VerifyReleaseMetadataTask>("verifyReleaseMetadata") {
     swiftPackageManifest.set(layout.projectDirectory.file("Package.swift"))
     remoteConsumerManifest.set(layout.projectDirectory.file("codex-agent-runtime-ios/apple/RemoteConsumer/Package.swift"))
 }
-
 val publicationApprovals = layout.projectDirectory.file("release/publication-approvals.json")
 val privacyManifestFile = layout.projectDirectory.file(
     "codex-agent-runtime-ios/apple/Sources/CodexAgentAuthentication/PrivacyInfo.xcprivacy",
 )
 val privacyDataFlowReviewFile = layout.projectDirectory.file("release/privacy-data-flow-review.json")
-val privacyRequiredReasonReview = layout.projectDirectory.file(
-    providers.gradleProperty("codexAgent.privacyRequiredReasonReview").orNull
-        ?: "release/privacy-required-reason-review.json",
-)
-
+val privacyRequiredReasonReviewTemplate = layout.projectDirectory.file("release/privacy-required-reason-review.json")
+val privacyRequiredReasonReviewOverride =
+    layout.file(providers.gradleProperty("codexAgent.privacyRequiredReasonReview").map { File(it) })
+val generatedPrivacyRequiredReasonReview = layout.projectDirectory.file(
+    "codex-agent-runtime-ios/build/reports/ios-release/privacy/privacy-required-reason-review.json")
+val privacyRequiredReasonReview = privacyRequiredReasonReviewOverride.orElse(generatedPrivacyRequiredReasonReview)
 tasks.register<VerifyPublicationReadinessTask>("verifyPublicationReadiness") {
     group = "verification"
     approvalsFile.set(publicationApprovals)
     privacyManifest.set(privacyManifestFile)
     privacyInventory.set(privacyDataFlowReviewFile)
 }
-
 val androidEvidenceFile = layout.file(providers.gradleProperty("codexAgent.androidEvidenceFile").map(::file))
 val androidEvidenceDirectory = layout.dir(androidEvidenceFile.map { it.asFile.parentFile })
 val swiftBaselineProof = layout.file(providers.gradleProperty("codexAgent.swiftPmBaselineProof").map(::file))
@@ -259,6 +256,8 @@ gradle.projectsEvaluated {
     stageSwiftZip.configure { dependsOn(ios.named("verifyCodexAgentSwiftPackageAB")) }
     stageSwiftChecksum.configure { dependsOn(ios.named("verifyCodexAgentSwiftPackageAB")) }
     stagePrivacyAudit.configure { dependsOn(ios.named("verifyIosPrivacyManifest")) }
+    if (!providers.gradleProperty("codexAgent.privacyRequiredReasonReview").isPresent)
+        generateCandidateManifest.configure { dependsOn(ios.named("generateIosPrivacyRequiredReasonReview")) }
     measureCandidateResources.configure { dependsOn(packageCentralBundle) }
     subprojects {
         tasks.withType<PublishToMavenRepository>().configureEach { mustRunAfter(protectedCandidatePhases.privacy) }
@@ -277,7 +276,8 @@ tasks.register<VerifyCandidatePayloadTask>("verifyCandidatePayload") {
     approvalsFile.set(publicationApprovals)
     privacyManifest.set(privacyManifestFile)
     privacyDataFlowReview.set(privacyDataFlowReviewFile)
-    privacyReviews.set(privacyRequiredReasonReview)
+    privacyReviewTemplate.set(privacyRequiredReasonReviewTemplate)
+    privacyReviews.set(privacyRequiredReasonReviewOverride)
     packageSwift.set(layout.projectDirectory.file("Package.swift"))
     outputFile.set(layout.buildDirectory.file("reports/release-candidate/payload-verification.json"))
 }

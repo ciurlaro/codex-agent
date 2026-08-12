@@ -3,6 +3,7 @@ import java.nio.file.Files
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -71,6 +72,23 @@ internal fun candidateGithubOutputs(result: JsonObject): String = buildString {
     append("centralBundle=").append(result.releaseString("centralBundle")).append('\n')
 }
 
+internal fun resolveCandidatePrivacyReview(
+    manifest: JsonObject,
+    payload: File,
+    explicitReview: File?,
+    decisionTemplate: File?,
+): File? {
+    val payloadReview = manifest.releaseObject("policies")["privacyRequiredReasonReviews"]
+        ?.jsonObject?.releaseString("fileName")?.let { safePayloadFile(payload, it) }
+    val exactReview = explicitReview ?: payloadReview
+    decisionTemplate?.let { template ->
+        check(exactReview != null) { "Candidate required-reason review is missing" }
+        val auditName = manifest.releaseObject("evidence").releaseObject("privacyAudit").releaseString("fileName")
+        verifyBoundIosPrivacyReview(template, exactReview, safePayloadFile(payload, auditName))
+    }
+    return exactReview
+}
+
 private fun verifyPayloadRecord(payload: File, record: JsonObject) {
     verifyReleaseRecord(safePayloadFile(payload, record.releaseString("fileName")), record)
 }
@@ -86,6 +104,8 @@ abstract class VerifyCandidatePayloadTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyManifest: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyDataFlowReview: RegularFileProperty
     @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+    abstract val privacyReviewTemplate: RegularFileProperty
+    @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
     abstract val privacyReviews: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val packageSwift: RegularFileProperty
     @get:OutputFile abstract val outputFile: RegularFileProperty
@@ -93,9 +113,14 @@ abstract class VerifyCandidatePayloadTask : DefaultTask() {
 
     @TaskAction
     fun verify() {
+        val manifest = manifestFile.get().asFile.readReleaseObject()
+        val payload = payloadDirectory.get().asFile
+        val exactReview = resolveCandidatePrivacyReview(
+            manifest, payload, privacyReviews.orNull?.asFile, privacyReviewTemplate.orNull?.asFile,
+        )
         val result = verifyCandidatePayload(
             manifestFile.get().asFile,
-            payloadDirectory.get().asFile,
+            payload,
             expectedVersion.get(),
             expectedTag.get(),
             expectedCommit.get(),
@@ -103,7 +128,7 @@ abstract class VerifyCandidatePayloadTask : DefaultTask() {
                 put("approvals", approvalsFile.get().asFile)
                 put("privacyManifest", privacyManifest.get().asFile)
                 put("privacyDataFlowReview", privacyDataFlowReview.get().asFile)
-                privacyReviews.orNull?.asFile?.let { put("privacyRequiredReasonReviews", it) }
+                exactReview?.let { put("privacyRequiredReasonReviews", it) }
                 put("packageSwift", packageSwift.get().asFile)
             },
         )

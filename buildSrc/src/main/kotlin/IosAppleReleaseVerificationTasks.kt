@@ -79,13 +79,27 @@ fun Project.registerIosAppleReleaseVerificationTasks(
         evidenceFile.set(reportDirectory.map { it.file("evidence.json") })
     }
 
+    val generateIosPrivacyRequiredReasonReview =
+        tasks.register<GenerateIosPrivacyRequiredReasonReviewTask>("generateIosPrivacyRequiredReasonReview") {
+            dependsOn(collectIosPrivacyEvidence)
+            templateFile.set(rootProject.layout.projectDirectory.file("release/privacy-required-reason-review.json"))
+            policyFile.set(collectIosPrivacyEvidence.flatMap { it.policyFile })
+            evidenceFile.set(collectIosPrivacyEvidence.flatMap { it.evidenceFile })
+            outputFile.set(layout.buildDirectory.file(
+                "reports/ios-release/privacy/privacy-required-reason-review.json",
+            ))
+        }
+
     val verifyIosPrivacyManifest = tasks.register<VerifyIosPrivacyAuditTask>("verifyIosPrivacyManifest") {
         dependsOn(collectIosPrivacyEvidence)
         policyFile.set(collectIosPrivacyEvidence.flatMap { it.policyFile })
         evidenceFile.set(collectIosPrivacyEvidence.flatMap { it.evidenceFile })
-        val reviewPath = providers.gradleProperty("codexAgent.privacyRequiredReasonReview").orNull
-            ?: "release/privacy-required-reason-review.json"
-        reviewFile.set(rootProject.layout.projectDirectory.file(reviewPath))
+        providers.gradleProperty("codexAgent.privacyRequiredReasonReview").orNull?.let { reviewPath ->
+            reviewFile.set(rootProject.file(reviewPath))
+        } ?: run {
+            dependsOn(generateIosPrivacyRequiredReasonReview)
+            reviewFile.set(generateIosPrivacyRequiredReasonReview.flatMap { it.outputFile })
+        }
         auditFile.set(layout.buildDirectory.file("reports/ios-release/privacy/audit.json"))
     }
 
