@@ -192,10 +192,36 @@ internal fun verifyProtectedCandidateManifest(manifest: File, inputs: CandidateI
 
 data class ProtectedCandidatePhases(val privacy: TaskProvider<Task>)
 
+internal val protectedCandidatePhaseGatePaths = listOf(
+    listOf(
+        ":codex-agent-runtime-ios:preparePinnedCodexIosArchive", ":codex-agent-runtime-ios:preparePinnedSqliteArchive",
+        ":codex-agent-runtime-ios:verifyCodexIosProvenance", ":codex-agent-runtime-ios:prepareCodexIosSource",
+        ":codex-agent-runtime-ios:testCodexIosBridge", ":codex-agent-runtime-ios:testCodexIosDirectToolMode",
+        ":codex-agent-runtime-ios:buildCodexIosArm64Rust", ":codex-agent-runtime-ios:buildCodexIosSimulatorArm64Rust",
+    ),
+    listOf(
+        ":codex-agent-runtime-ios:verifyAppleToolchain", ":codex-agent-runtime-ios:compileKotlinIosArm64",
+        ":codex-agent-runtime-ios:iosSimulatorArm64Test", ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackage",
+        ":codex-agent-runtime-ios:verifyCodexAgentSwiftAuthenticationTests",
+    ),
+    listOf(
+        ":codex-agent-runtime-ios:packageCodexAgentSwiftPackageBinary",
+        ":codex-agent-runtime-ios:generateCodexAgentSwiftPackageChecksum",
+        ":codex-agent-runtime-ios:verifyCodexAgentRemoteSwiftPackage",
+        ":codex-agent-runtime-ios:verifyIosDeploymentTargets", ":codex-agent-runtime-ios:verifyIosLicensePackaging",
+        ":codex-agent-runtime-ios:verifyIosReleaseBudgets", ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackageAB",
+        ":stageProtectedSwiftPackage", ":stageProtectedSwiftChecksum",
+    ),
+    listOf(":codex-agent-runtime-ios:verifyIosPrivacyManifest", ":stageProtectedPrivacyAudit"),
+    listOf(":stageCentralRepository", ":verifyCentralStaging", ":stageAndroidRuntimeEvidence", ":verifyAndroidRuntimeEvidence"),
+    listOf(":verifyStagedKmpConsumer"),
+    listOf(":packageCentralBundle", ":measureProtectedCandidateResources"),
+    listOf(":generateCandidateManifest", ":verifyCandidateManifest"),
+)
+
 fun Project.registerProtectedCandidatePhases(
     prepare: TaskProvider<PrepareProtectedCandidateTask>,
 ): ProtectedCandidatePhases {
-    val clean = tasks.register("protectedCandidateClean")
     val native = tasks.register("protectedCandidateNative")
     val iosTests = tasks.register("protectedCandidateIosTests")
     val swiftPackage = tasks.register("protectedCandidateSwiftPackage")
@@ -236,40 +262,9 @@ fun Project.registerProtectedCandidatePhases(
         fun task(path: String) = project(path.substringBeforeLast(':').ifBlank { ":" })
             .tasks.named(path.substringAfterLast(':'))
         val phases = listOf(
-            Triple(clean, prepare, listOf(
-                ":clean", ":codex-agent-client:clean", ":codex-agent-runtime-android:clean",
-                ":codex-agent-runtime-ios:clean",
-            )),
-            Triple(native, clean, listOf(
-                ":codex-agent-runtime-ios:preparePinnedCodexIosArchive", ":codex-agent-runtime-ios:preparePinnedSqliteArchive",
-                ":codex-agent-runtime-ios:verifyCodexIosProvenance", ":codex-agent-runtime-ios:prepareCodexIosSource",
-                ":codex-agent-runtime-ios:testCodexIosBridge", ":codex-agent-runtime-ios:testCodexIosDirectToolMode",
-                ":codex-agent-runtime-ios:buildCodexIosArm64Rust", ":codex-agent-runtime-ios:buildCodexIosSimulatorArm64Rust",
-            )),
-            Triple(iosTests, native, listOf(
-                ":codex-agent-runtime-ios:verifyAppleToolchain", ":codex-agent-runtime-ios:compileKotlinIosArm64",
-                ":codex-agent-runtime-ios:iosSimulatorArm64Test", ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackage",
-                ":codex-agent-runtime-ios:verifyCodexAgentSwiftAuthenticationTests",
-            )),
-            Triple(swiftPackage, iosTests, listOf(
-                ":codex-agent-runtime-ios:packageCodexAgentSwiftPackageBinary",
-                ":codex-agent-runtime-ios:generateCodexAgentSwiftPackageChecksum",
-                ":codex-agent-runtime-ios:verifyCodexAgentRemoteSwiftPackage",
-                ":codex-agent-runtime-ios:verifyIosDeploymentTargets", ":codex-agent-runtime-ios:verifyIosLicensePackaging",
-                ":codex-agent-runtime-ios:verifyIosReleaseBudgets", ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackageAB",
-                ":stageProtectedSwiftPackage", ":stageProtectedSwiftChecksum",
-            )),
-            Triple(privacy, swiftPackage, listOf(
-                ":codex-agent-runtime-ios:verifyIosPrivacyManifest", ":stageProtectedPrivacyAudit",
-            )),
-            Triple(maven, privacy, listOf(
-                ":stageCentralRepository", ":verifyCentralStaging", ":stageAndroidRuntimeEvidence",
-                ":verifyAndroidRuntimeEvidence",
-            )),
-            Triple(consumer, maven, listOf(":verifyStagedKmpConsumer")),
-            Triple(bundle, consumer, listOf(":packageCentralBundle", ":measureProtectedCandidateResources")),
-            Triple(manifest, bundle, listOf(":generateCandidateManifest", ":verifyCandidateManifest")),
-        )
+            native to prepare, iosTests to native, swiftPackage to iosTests, privacy to swiftPackage,
+            maven to privacy, consumer to maven, bundle to consumer, manifest to bundle,
+        ).zip(protectedCandidatePhaseGatePaths) { (marker, previous), paths -> Triple(marker, previous, paths) }
         phases.forEach { (marker, previous, paths) ->
             wireProtectedCandidatePhase(marker, previous, paths.map(::task))
         }

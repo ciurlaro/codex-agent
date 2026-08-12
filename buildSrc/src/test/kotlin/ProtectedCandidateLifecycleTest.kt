@@ -105,6 +105,25 @@ class ProtectedCandidateLifecycleTest {
     }
 
     @Test
+    fun `protected candidate has eight complete phases and no destructive clean gate`() {
+        assertEquals(8, protectedCandidatePhaseGatePaths.size)
+        val gates = protectedCandidatePhaseGatePaths.flatten()
+        assertFalse(gates.any { it == ":clean" || it.endsWith(":clean") })
+        assertTrue(gates.containsAll(listOf(
+            ":codex-agent-runtime-ios:testCodexIosBridge",
+            ":codex-agent-runtime-ios:testCodexIosDirectToolMode",
+            ":codex-agent-runtime-ios:iosSimulatorArm64Test",
+            ":codex-agent-runtime-ios:verifyCodexAgentSwiftAuthenticationTests",
+            ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackageAB",
+            ":codex-agent-runtime-ios:verifyIosPrivacyManifest",
+            ":stageCentralRepository",
+            ":verifyStagedKmpConsumer",
+            ":packageCentralBundle",
+            ":verifyCandidateManifest",
+        )))
+    }
+
+    @Test
     fun `full verifier recomputes hashes and rejects tampering`() {
         withPayloadFixture { fixture ->
             verifyProtectedCandidateManifest(fixture.manifest, fixture.inputs)
