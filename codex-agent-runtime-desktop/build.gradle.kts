@@ -3,7 +3,9 @@ import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.vanniktech.maven.publish.SourcesJar
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
+import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeHostTest
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -121,20 +123,31 @@ desktopManifest.distributions.forEach { distribution ->
         outputFile.set(extractedExecutable)
     }
     val testTaskName = "${distribution.target}Test"
+    if (distribution.target == "linuxArm64" && tasks.findByName(testTaskName) == null) {
+        val linkTask = tasks.named<KotlinNativeLink>("linkDebugTestLinuxArm64")
+        tasks.register<KotlinNativeHostTest>(testTaskName) {
+            group = "verification"
+            description = "Runs the Linux ARM64 native tests on an ARM64 Linux runner."
+            targetName = distribution.target
+            dependsOn(linkTask)
+            executable(linkTask.flatMap { it.outputFile })
+        }
+    }
+    val testTask = tasks.named<KotlinNativeTest>(testTaskName)
     if (requestedEvidenceTarget == distribution.target) {
-        tasks.named<KotlinNativeTest>(testTaskName) {
+        testTask.configure {
             dependsOn(extractTask)
             environment("CODEX_AGENT_APP_SERVER_EXECUTABLE", extractedExecutable.get().asFile.absolutePath)
             outputs.upToDateWhen { false }
         }
     }
-    tasks.matching { it.name == testTaskName }.configureEach { mustRunAfter(validateEvidenceTarget) }
+    testTask.configure { mustRunAfter(validateEvidenceTarget) }
     tasks.register<RecordDesktopRuntimeEvidenceTask>(
         "record${distribution.target.replaceFirstChar(Char::uppercase)}DesktopRuntimeEvidence",
     ) {
         group = "verification"
         description = "Runs and records the ${distribution.target} official app-server lifecycle smoke."
-        dependsOn(validateEvidenceTarget, testTaskName)
+        dependsOn(validateEvidenceTarget, testTask)
         target.set(distribution.target)
         classifier.set(distribution.classifier)
         binarySha256.set(distribution.binarySha256)

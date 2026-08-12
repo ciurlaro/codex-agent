@@ -64,6 +64,7 @@ jobs:
         if: runner.os == 'macOS'
         run: swift --version
       - name: Run and record the official app-server lifecycle smoke
+        shell: bash
         run: >-
           ./gradlew :codex-agent-runtime-desktop:${{ matrix.task }}
           -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}

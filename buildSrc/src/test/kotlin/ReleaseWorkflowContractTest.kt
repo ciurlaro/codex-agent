@@ -7,7 +7,13 @@ import kotlin.test.assertTrue
 class ReleaseWorkflowContractTest {
     private val repository = generateSequence(File(System.getProperty("user.dir")).canonicalFile) { it.parentFile }
         .first { it.resolve(".github/workflows/release-candidate.yml").isFile }
-    private val workflows = listOf("ci.yml", "android-runtime-evidence.yml", "release-candidate.yml", "publish.yml")
+    private val workflows = listOf(
+        "ci.yml",
+        "android-runtime-evidence.yml",
+        "desktop-runtime-evidence.yml",
+        "release-candidate.yml",
+        "publish.yml",
+    )
         .associateWith { repository.resolve(".github/workflows/$it").readText() }
 
     @Test
@@ -32,6 +38,7 @@ class ReleaseWorkflowContractTest {
             "assembleProtectedCandidate",
             ":codex-agent-runtime-ios:verifyAppleToolchain",
             ":codex-agent-runtime-android:recordAndroidRuntimeEvidence",
+            ":codex-agent-runtime-desktop:",
         )
         assertTrue(calls.isNotEmpty())
         assertEquals(emptySet(), calls.toSet() - allowed)
@@ -50,6 +57,15 @@ class ReleaseWorkflowContractTest {
         assertFalse("swiftPmBaselineProof" in candidate)
         assertFalse("commit_a" in candidate || "commit_b" in candidate)
         assertTrue(candidate.indexOf("Upload the exact technical candidate") < candidate.indexOf("Require external publication approvals"))
+    }
+
+    @Test
+    fun `desktop evidence uses bash consistently on every hosted runner`() {
+        val desktop = workflows.getValue("desktop-runtime-evidence.yml")
+        val smoke = desktop.substringAfter("Run and record the official app-server lifecycle smoke")
+            .substringBefore("- uses: actions/upload-artifact")
+        assertTrue("shell: bash" in smoke)
+        assertTrue("-PcodexAgent.candidateCommit=${'$'}{{ inputs.candidateCommit }}" in smoke)
     }
 
     @Test
