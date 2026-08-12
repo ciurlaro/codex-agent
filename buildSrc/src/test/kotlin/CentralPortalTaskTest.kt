@@ -183,7 +183,7 @@ class CentralPortalTaskTest {
                 put("sha256", JsonPrimitive("0".repeat(64)))
             }
             candidate.atomicWriteJson(buildJsonObject {
-                put("schemaVersion", JsonPrimitive(2))
+                put("schemaVersion", JsonPrimitive(3))
                 put("version", JsonPrimitive("0.2.0"))
                 put("releaseTag", JsonPrimitive("v0.2.0"))
                 put("candidateCommit", JsonPrimitive(COMMIT))
@@ -197,7 +197,7 @@ class CentralPortalTaskTest {
                     put("centralBundle", bundle.releaseRecord())
                 })
                 put("evidence", buildJsonObject {
-                    put("swiftPmAbProof", record("swiftpm-ab-proof.json"))
+                    put("swiftPmProof", record("swiftpm-proof.json"))
                     put("centralBundleInventory", record("central-bundle.json"))
                     put("mavenInventory", record("maven-inventory.json"))
                     put("cleanKmpConsumer", record("kmp-consumer.json"))

@@ -19,7 +19,7 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
     @get:Input abstract val candidateCommit: Property<String>
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftZip: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftChecksum: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftPmAbProof: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftPmProof: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val centralBundle: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val centralInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
@@ -44,7 +44,7 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
             candidateCommit.get(),
             swiftZip.get().asFile,
             swiftChecksum.get().asFile,
-            swiftPmAbProof.get().asFile,
+            swiftPmProof.get().asFile,
             centralBundle.get().asFile,
             centralInventory.get().asFile,
             mavenInventory.get().asFile,

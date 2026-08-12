@@ -12,7 +12,7 @@ data class IosAppleReleaseVerificationTasks(
     val verifyIosReleaseBudgets: TaskProvider<VerifyIosReleaseBudgetsTask>,
 )
 
-internal fun Task.dependsOnSwiftPackageBaselineProducers(
+internal fun Task.dependsOnSwiftPackageProofProducers(
     toolchain: TaskProvider<*>,
     checksum: TaskProvider<*>,
 ) {
@@ -124,32 +124,11 @@ fun Project.registerIosAppleReleaseVerificationTasks(
             outputFile.set(swiftPackageChecksumFile)
         }
 
-    val clean = tasks.named("clean")
     val toolchain = tasks.named("verifyAppleToolchain")
     val candidateCommit = providers.gradleProperty("codexAgent.candidateCommit")
-    val baselineProofFile = rootProject.layout.file(
-        providers.gradleProperty("codexAgent.swiftPmBaselineProof").map(rootProject::file),
-    )
-    val preflightCodexAgentSwiftPackageB =
-        tasks.register<PreflightSwiftPackageBTask>("preflightCodexAgentSwiftPackageB") {
-            expectedCommit.set(candidateCommit)
-            version.set(project.version.toString())
-            expectedUrl.set(
-                "https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/$swiftPackageArchiveName",
-            )
-            repositoryDirectory.set(rootProject.layout.projectDirectory)
-            baselineProof.set(baselineProofFile)
-            manifestFile.set(rootProject.layout.projectDirectory.file("Package.swift"))
-        }
-    if (candidateCommit.isPresent) {
-        clean.configure { dependsOn(preflightCodexAgentSwiftPackageB) }
-        packageCodexAgentSwiftPackageBinary.configure { dependsOn(preflightCodexAgentSwiftPackageB) }
-    }
-    packageCodexAgentSwiftPackageBinary.configure { mustRunAfter(clean) }
-    toolchain.configure { mustRunAfter(clean) }
-    tasks.register<RecordSwiftPackageBaselineTask>("recordCodexAgentSwiftPackageBaseline") {
-        dependsOnSwiftPackageBaselineProducers(toolchain, generateCodexAgentSwiftPackageChecksum)
-        expectedCommit.set(providers.gradleProperty("codexAgent.commitA"))
+    tasks.register<RecordSwiftPackageProofTask>("recordCodexAgentSwiftPackageProof") {
+        dependsOnSwiftPackageProofProducers(toolchain, generateCodexAgentSwiftPackageChecksum)
+        expectedCommit.set(candidateCommit)
         version.set(project.version.toString())
         expectedUrl.set(
             "https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/$swiftPackageArchiveName",
@@ -161,30 +140,6 @@ fun Project.registerIosAppleReleaseVerificationTasks(
         provenanceFile.set(layout.projectDirectory.file("native/provenance.json"))
         xcodeVersionFile.set(layout.buildDirectory.file("reports/ios-release/toolchain/xcode.txt"))
         swiftVersionFile.set(layout.buildDirectory.file("reports/ios-release/toolchain/swift.txt"))
-        proofFile.set(
-            baselineProofFile,
-        )
-    }
-
-    tasks.register<VerifySwiftPackageABTask>("verifyCodexAgentSwiftPackageAB") {
-        expectedCommit.set(candidateCommit)
-        version.set(project.version.toString())
-        expectedUrl.set(
-            "https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/$swiftPackageArchiveName",
-        )
-        repositoryDirectory.set(rootProject.layout.projectDirectory)
-        baselineProof.set(baselineProofFile)
-        archiveFile.set(layout.buildDirectory.file("distributions/$swiftPackageArchiveName"))
-        checksumFile.set(swiftPackageChecksumFile)
-        manifestFile.set(rootProject.layout.projectDirectory.file("Package.swift"))
-        provenanceFile.set(layout.projectDirectory.file("native/provenance.json"))
-        xcodeVersionFile.set(layout.buildDirectory.file("reports/ios-release/toolchain/xcode.txt"))
-        swiftVersionFile.set(layout.buildDirectory.file("reports/ios-release/toolchain/swift.txt"))
-        proofFile.set(
-            rootProject.layout.file(
-                providers.gradleProperty("codexAgent.swiftPmABProof").map(rootProject::file),
-            ),
-        )
     }
 
     val verifyCodexAgentRemoteSwiftPackage =

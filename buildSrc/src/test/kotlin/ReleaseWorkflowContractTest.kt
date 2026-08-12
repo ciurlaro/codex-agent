@@ -31,7 +31,6 @@ class ReleaseWorkflowContractTest {
             "releaseCentralDeployment",
             "assembleProtectedCandidate",
             ":codex-agent-runtime-ios:verifyAppleToolchain",
-            ":codex-agent-runtime-ios:recordCodexAgentSwiftPackageBaseline",
             ":codex-agent-runtime-android:recordAndroidRuntimeEvidence",
         )
         assertTrue(calls.isNotEmpty())
@@ -41,13 +40,15 @@ class ReleaseWorkflowContractTest {
     }
 
     @Test
-    fun `candidate consumes exact A and Android evidence artifacts before one assembly`() {
+    fun `candidate consumes one immutable commit and Android evidence before one assembly`() {
         val candidate = workflows.getValue("release-candidate.yml")
-        assertTrue("name: codex-agent-swiftpm-commit-a" in candidate)
         assertTrue("name: codex-agent-android-runtime-evidence" in candidate)
         assertTrue("name: codex-agent-protected-candidate" in candidate)
-        assertTrue("recordCodexAgentSwiftPackageBaseline" in candidate)
+        assertTrue("candidate_commit" in candidate)
         assertTrue("recordAndroidRuntimeEvidence" in workflows.getValue("android-runtime-evidence.yml"))
+        assertFalse("swiftpm-baseline" in candidate)
+        assertFalse("swiftPmBaselineProof" in candidate)
+        assertFalse("commit_a" in candidate || "commit_b" in candidate)
         assertTrue(candidate.indexOf("Upload the exact technical candidate") < candidate.indexOf("Require external publication approvals"))
     }
 
@@ -86,12 +87,9 @@ class ReleaseWorkflowContractTest {
     fun `privacy reachable Apple jobs install pinned LLVM tools`() {
         val ciIos = workflows.getValue("ci.yml").substringAfter("\n  ios:")
         val candidate = workflows.getValue("release-candidate.yml")
-        val baseline = candidate.substringAfter("\n  swiftpm-baseline:")
-            .substringBefore("\n  android-runtime-evidence:")
         val appleCandidate = candidate.substringAfter("\n  apple-candidate:")
         val jobs = listOf(
             ciIos to "./gradlew verifyIosRuntime",
-            baseline to "recordCodexAgentSwiftPackageBaseline",
             appleCandidate to "assembleProtectedCandidate",
         )
 
@@ -101,6 +99,7 @@ class ReleaseWorkflowContractTest {
             assertTrue("targets: aarch64-apple-ios,aarch64-apple-ios-sim" in job, privacyReachableTask)
             assertTrue("components: llvm-tools-preview" in job, privacyReachableTask)
         }
+        assertEquals(1, Regex("(?m)^  apple-candidate:$").findAll(candidate).count())
         assertFalse("rustup toolchain install" in workflows.values.joinToString("\n"))
     }
 }

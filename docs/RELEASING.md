@@ -6,42 +6,38 @@ through interactive ChatGPT browser login in the Swift test app.
 
 ## Protected candidate
 
-The release candidate uses two adjacent immutable commits.
+The release candidate uses one immutable commit containing the final root
+Package.swift checksum and every implementation, build, test, workflow, policy,
+and documentation change.
 
-1. Commit A contains every implementation, build, test, workflow, policy, and
-   documentation change except the final checksum in the root Package.swift.
-2. Build Commit A once and write its proof outside the repository:
-
-       DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
-         ./gradlew :codex-agent-runtime-ios:recordCodexAgentSwiftPackageBaseline \
-         -PcodexAgent.commitA=<40-character-commit-a> \
-         -PcodexAgent.swiftPmBaselineProof=<absolute-path>/swiftpm-baseline.json
-
-3. Put Commit A's checksum in the root Package.swift and create Commit B. Commit
-   B must be the direct child of A and may change only that checksum metadata.
-   If the checksum is already correct, B is an empty commit. Any other change
-   invalidates the proof and restarts the A/B procedure.
-4. Run the Android Runtime Evidence workflow against Commit B. Its protected
+1. Run the Android Runtime Evidence workflow against that commit. Its protected
    ARM64 runner executes recordAndroidRuntimeEvidence and records the exact
    commit, command, device ABI/API, instrumentation APK, tested release AAR,
    bundled runtime, test report, and hashes.
-5. On Commit B, assemble the technical candidate once:
+2. From a clean checkout of the same commit, assemble the technical candidate
+   once:
 
        DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
          ./gradlew assembleProtectedCandidate \
-         -PcodexAgent.candidateCommit=<40-character-commit-b> \
+         -PcodexAgent.candidateCommit=<40-character-candidate-commit> \
          -PcodexAgent.releaseTag=v0.2.0 \
          -PcodexAgent.androidEvidenceFile=<android-evidence>/android-runtime-evidence.json \
-         -PcodexAgent.swiftPmBaselineProof=<absolute-path>/swiftpm-baseline.json \
          --no-parallel
 
 The release-candidate environment supplies only Maven signing material. The
-task requires a clean checkout at the supplied commit and isolated external A
-and Android evidence. It runs the ordered native, iOS, Swift, privacy, Maven,
-clean-consumer, Central bundle, and candidate-manifest gates once. It preserves
-the exact SwiftPM ZIP and Central bundle under:
+task requires a clean checkout at the supplied commit and isolated external
+Android evidence. It runs the ordered native, iOS, Swift, privacy, Maven,
+clean-consumer, Central bundle, and candidate-manifest gates once without a
+Gradle clean. The canonical `swiftpm-proof.json` binds the commit and tree,
+clean checkout, exact ZIP and checksum file, committed Package.swift metadata,
+native provenance, and pinned Apple toolchain. The manifest and payload bind
+that proof alongside the exact SwiftPM ZIP and Central bundle under:
 
-    build/protected-candidate/<commit-b>/payload/
+    build/protected-candidate/<candidate-commit>/payload/
+
+Candidate output is immutable. Assembly refuses to delete or rebuild an
+existing commit-scoped candidate directory; remove an incomplete directory only
+after diagnosing the failed run, then start one fresh assembly.
 
 The clean KMP consumer resolves this project only from CENTRAL_STAGING and
 compiles JVM and Android plus links iOS Arm64 and iOS Simulator Arm64. The typed

@@ -76,7 +76,6 @@ tasks.register<VerifyPublicationReadinessTask>("verifyPublicationReadiness") {
 }
 val androidEvidenceFile = layout.file(providers.gradleProperty("codexAgent.androidEvidenceFile").map(::file))
 val androidEvidenceDirectory = layout.dir(androidEvidenceFile.map { it.asFile.parentFile })
-val swiftBaselineProof = layout.file(providers.gradleProperty("codexAgent.swiftPmBaselineProof").map(::file))
 val prepareProtectedCandidate = tasks.register<PrepareProtectedCandidateTask>("prepareProtectedCandidate") {
     dependsOn("verifyReleaseMetadata")
     version.set(project.version.toString())
@@ -84,7 +83,6 @@ val prepareProtectedCandidate = tasks.register<PrepareProtectedCandidateTask>("p
     candidateCommit.set(candidateCommitValue)
     parallelExecution.set(gradle.startParameter.isParallelProjectExecutionEnabled)
     androidEvidence.set(androidEvidenceFile)
-    baselineProof.set(swiftBaselineProof)
     repositoryDirectory.set(layout.projectDirectory)
     candidateDirectory.set(candidateRoot)
 }
@@ -169,7 +167,7 @@ val androidEvidenceVerification = tasks.register<VerifyAndroidRuntimeEvidenceTas
 val swiftArchiveName = "CodexAgent-${project.version}.xcframework.zip"
 val stagedSwiftZip = candidateArtifacts.map { it.file(swiftArchiveName) }
 val stagedSwiftChecksum = candidateArtifacts.map { it.file("$swiftArchiveName.sha256") }
-val stagedSwiftPmAbProof = candidateEvidence.map { it.file("swiftpm-ab-proof.json") }
+val stagedSwiftPmProof = candidateEvidence.map { it.file("swiftpm-proof.json") }
 val stageSwiftZip = tasks.register<CopyCandidateFileTask>("stageProtectedSwiftPackage") {
     sourceFile.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/distributions/$swiftArchiveName"))
     outputFile.set(stagedSwiftZip)
@@ -204,7 +202,7 @@ val generateCandidateManifest = tasks.register<GenerateCandidateManifestTask>("g
     candidateCommit.set(candidateCommitValue)
     swiftZip.set(stagedSwiftZip)
     swiftChecksum.set(stagedSwiftChecksum)
-    swiftPmAbProof.set(stagedSwiftPmAbProof)
+    swiftPmProof.set(stagedSwiftPmProof)
     centralBundle.set(centralBundleFile)
     centralInventory.set(centralBundleInventory)
     mavenInventory.set(mavenInventoryFile)
@@ -227,7 +225,7 @@ val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTas
     candidateCommit.set(candidateCommitValue)
     swiftZip.set(stagedSwiftZip)
     swiftChecksum.set(stagedSwiftChecksum)
-    swiftPmAbProof.set(stagedSwiftPmAbProof)
+    swiftPmProof.set(stagedSwiftPmProof)
     centralBundle.set(centralBundleFile)
     centralInventory.set(centralBundleInventory)
     mavenInventory.set(mavenInventoryFile)
@@ -246,15 +244,11 @@ val protectedCandidatePhases = registerProtectedCandidatePhases(prepareProtected
 
 gradle.projectsEvaluated {
     val ios = project(":codex-agent-runtime-ios").tasks
-    val swiftPackageBPreflight = ios.named("preflightCodexAgentSwiftPackageB")
-    prepareProtectedCandidate.configure { dependsOn(swiftPackageBPreflight) }
-    ios.named<VerifySwiftPackageABTask>("verifyCodexAgentSwiftPackageAB") {
-        mustRunAfter("generateCodexAgentSwiftPackageChecksum", swiftPackageBPreflight)
-        baselineProof.set(swiftBaselineProof)
-        proofFile.set(stagedSwiftPmAbProof)
+    val swiftPackageProof = ios.named<RecordSwiftPackageProofTask>("recordCodexAgentSwiftPackageProof") {
+        proofFile.set(stagedSwiftPmProof)
     }
-    stageSwiftZip.configure { dependsOn(ios.named("verifyCodexAgentSwiftPackageAB")) }
-    stageSwiftChecksum.configure { dependsOn(ios.named("verifyCodexAgentSwiftPackageAB")) }
+    stageSwiftZip.configure { dependsOn(swiftPackageProof) }
+    stageSwiftChecksum.configure { dependsOn(swiftPackageProof) }
     stagePrivacyAudit.configure { dependsOn(ios.named("verifyIosPrivacyManifest")) }
     if (!providers.gradleProperty("codexAgent.privacyRequiredReasonReview").isPresent)
         generateCandidateManifest.configure { dependsOn(ios.named("generateIosPrivacyRequiredReasonReview")) }

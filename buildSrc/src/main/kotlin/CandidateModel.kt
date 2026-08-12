@@ -11,7 +11,7 @@ internal data class CandidateInputFiles(
     val commit: String,
     val swiftZip: File,
     val swiftChecksum: File,
-    val swiftPmAbProof: File,
+    val swiftPmProof: File,
     val centralBundle: File,
     val centralInventory: File,
     val mavenInventory: File,
@@ -32,10 +32,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     check(input.commit.matches(Regex("[0-9a-f]{40}"))) { "Candidate commit is not immutable" }
     val swiftHash = input.swiftZip.releaseDigest()
     check(input.swiftChecksum.readText().trim() == swiftHash) { "SwiftPM checksum does not match the candidate ZIP" }
-    check(input.swiftPmAbProof.name == "swiftpm-ab-proof.json" && input.swiftPmAbProof.isFile) {
-        "SwiftPM A/B proof is missing or has the wrong file name"
-    }
-    input.swiftPmAbProof.readReleaseObject()
+    verifySwiftPackageProof(input, swiftHash)
 
     val central = input.centralInventory.readReleaseObject()
     check(central.releaseBoolean("belowCentralPortalUploadLimit")) { "Central bundle exceeds the Portal limit" }
@@ -70,7 +67,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         check(report.readReleaseObject().releaseInt("exitCode") == 0) { "Resource phase did not pass: ${report.name}" }
     }
     val evidenceNames = listOf(
-        input.swiftPmAbProof,
+        input.swiftPmProof,
         input.centralInventory,
         input.mavenInventory,
         input.kmpConsumer,
@@ -83,7 +80,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     }
 
     val manifest = buildJsonObject {
-        put("schemaVersion", JsonPrimitive(2))
+        put("schemaVersion", JsonPrimitive(3))
         put("version", JsonPrimitive(input.version))
         put("releaseTag", JsonPrimitive(input.releaseTag))
         put("candidateCommit", JsonPrimitive(input.commit))
@@ -97,7 +94,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
             put("centralBundle", input.centralBundle.releaseRecord())
         })
         put("evidence", buildJsonObject {
-            put("swiftPmAbProof", input.swiftPmAbProof.releaseRecord())
+            put("swiftPmProof", input.swiftPmProof.releaseRecord())
             put("centralBundleInventory", input.centralInventory.releaseRecord())
             put("mavenInventory", input.mavenInventory.releaseRecord())
             put("cleanKmpConsumer", input.kmpConsumer.releaseRecord())
@@ -126,7 +123,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     check(manifest.keys == setOf(
         "schemaVersion", "version", "releaseTag", "candidateCommit", "protectedCandidate", "artifacts", "evidence", "policies",
     )) { "Candidate manifest has unexpected top-level fields" }
-    check(manifest.releaseInt("schemaVersion") == 2) { "Candidate manifest schema must be 2" }
+    check(manifest.releaseInt("schemaVersion") == 3) { "Candidate manifest schema must be 3" }
     val version = manifest.releaseString("version")
     check(manifest.releaseString("releaseTag") == "v$version") { "Candidate release tag/version mismatch" }
     check(manifest.releaseString("candidateCommit").matches(Regex("[0-9a-f]{40}"))) {
@@ -144,13 +141,13 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     verifyRecordShape(artifacts.releaseObject("centralBundle"))
     val evidence = manifest.releaseObject("evidence")
     val expectedEvidence = setOf(
-        "swiftPmAbProof", "centralBundleInventory", "mavenInventory", "cleanKmpConsumer", "androidRuntime",
+        "swiftPmProof", "centralBundleInventory", "mavenInventory", "cleanKmpConsumer", "androidRuntime",
         "privacyAudit", "artifactMetrics", "resourceMeasurements",
     )
     check(evidence.keys == expectedEvidence) { "Candidate evidence set is invalid" }
     expectedEvidence.minus("resourceMeasurements").forEach { verifyRecordShape(evidence.releaseObject(it)) }
-    check(evidence.releaseObject("swiftPmAbProof").releaseString("fileName") == "swiftpm-ab-proof.json") {
-        "Candidate SwiftPM A/B proof file name is invalid"
+    check(evidence.releaseObject("swiftPmProof").releaseString("fileName") == "swiftpm-proof.json") {
+        "Candidate SwiftPM proof file name is invalid"
     }
     check(evidence.releaseObject("artifactMetrics").releaseString("fileName") == "artifact-metrics.json") {
         "Candidate artifact metrics file name is invalid"
@@ -164,6 +161,53 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
         "Candidate policy set is invalid"
     }
     policies.values.forEach { verifyRecordShape(it as? JsonObject ?: error("Invalid candidate policy record")) }
+}
+
+private fun verifySwiftPackageProof(input: CandidateInputFiles, swiftHash: String) {
+    check(input.swiftPmProof.name == "swiftpm-proof.json" && input.swiftPmProof.isFile) {
+        "SwiftPM candidate proof is missing or has the wrong file name"
+    }
+    val proof = input.swiftPmProof.readReleaseObject()
+    check(proof.keys == setOf(
+        "schemaVersion", "protocol", "result", "version", "candidateCommit", "candidateTree", "cleanCheckout",
+        "canonicalBuildRoot", "archiveName", "archiveBytes", "swiftPmChecksum", "checksumFileSha256",
+        "packageSwiftUrl", "packageSwiftSha256", "packageSwiftChecksum", "nativeProvenanceSha256",
+        "xcodeVersionSha256", "swiftVersionSha256", "toolchainSha256",
+    )) { "SwiftPM candidate proof fields are invalid" }
+    check(proof.releaseInt("schemaVersion") == 1 && proof.releaseString("protocol") == "swiftpm-candidate-v1") {
+        "Unsupported SwiftPM candidate proof"
+    }
+    check(proof.releaseString("result") == "passed" && proof.releaseBoolean("cleanCheckout")) {
+        "SwiftPM candidate proof did not pass from a clean checkout"
+    }
+    check(proof.releaseString("version") == input.version && proof.releaseString("candidateCommit") == input.commit) {
+        "SwiftPM candidate proof identity mismatch"
+    }
+    check(proof.releaseString("candidateTree").matches(Regex("[0-9a-f]{40}"))) {
+        "SwiftPM candidate tree is not immutable"
+    }
+    check(File(proof.releaseString("canonicalBuildRoot")).isAbsolute) { "SwiftPM build root must be absolute" }
+    check(proof.releaseString("archiveName") == input.swiftZip.name &&
+        proof.releaseLong("archiveBytes") == input.swiftZip.length() &&
+        proof.releaseString("swiftPmChecksum") == swiftHash) {
+        "SwiftPM candidate proof does not bind the exact ZIP"
+    }
+    check(proof.releaseString("checksumFileSha256") == input.swiftChecksum.releaseDigest()) {
+        "SwiftPM candidate proof does not bind the checksum file"
+    }
+    val expectedUrl = "https://github.com/ciurlaro/codex-agent/releases/download/v${input.version}/${input.swiftZip.name}"
+    check(proof.releaseString("packageSwiftUrl") == expectedUrl &&
+        proof.releaseString("packageSwiftSha256") == input.packageSwift.releaseDigest() &&
+        proof.releaseString("packageSwiftChecksum") == swiftHash) {
+        "SwiftPM candidate proof does not bind committed Package.swift metadata"
+    }
+    listOf(
+        "nativeProvenanceSha256", "xcodeVersionSha256", "swiftVersionSha256", "toolchainSha256",
+    ).forEach { field ->
+        check(proof.releaseString(field).matches(Regex("[0-9a-f]{64}"))) {
+            "SwiftPM candidate proof has an invalid $field"
+        }
+    }
 }
 
 private fun verifyRecordShape(record: JsonObject) {

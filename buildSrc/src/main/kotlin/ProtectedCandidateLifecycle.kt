@@ -38,7 +38,6 @@ internal data class ProtectedCandidatePreflight(
     val repository: File,
     val candidateDirectory: File,
     val androidEvidence: File,
-    val baselineProof: File,
 )
 
 internal val protectedCandidateStatusArguments =
@@ -52,7 +51,6 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
         "Protected candidate requires a clean checkout, including non-ignored untracked files"
     }
     check(!input.parallel) { "assembleProtectedCandidate must be invoked with --no-parallel" }
-    check(input.baselineProof.isFile) { "SwiftPM Commit A baseline proof is missing: ${input.baselineProof}" }
     val evidenceErrors = validateAndroidEvidence(input.androidEvidence, input.commit)
     check(evidenceErrors.isEmpty()) { "Android runtime evidence is invalid: ${evidenceErrors.joinToString()}" }
 
@@ -64,16 +62,14 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
     check(!input.androidEvidence.canonicalFile.toPath().startsWith(candidate.toPath())) {
         "Android evidence must be external to protected candidate output"
     }
-    check(!input.baselineProof.canonicalFile.toPath().startsWith(repository.toPath())) {
-        "SwiftPM Commit A baseline proof must be outside the repository"
+    check(!candidate.exists()) {
+        "Protected candidate output already exists; refusing to clean or rebuild it: $candidate"
     }
-
-    candidate.deleteRecursively()
     listOf("artifacts", "evidence", "maven-repository", "clean-consumer", "reports")
         .forEach { candidate.resolve(it).mkdirs() }
 }
 
-@DisableCachingByDefault(because = "Preflight validates live Git state and clears only fresh proof output")
+@DisableCachingByDefault(because = "Preflight validates live Git state and reserves fresh proof output")
 abstract class PrepareProtectedCandidateTask @Inject constructor(
     private val processes: ExecOperations,
 ) : DefaultTask() {
@@ -82,7 +78,6 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
     @get:Input abstract val candidateCommit: Property<String>
     @get:Input abstract val parallelExecution: Property<Boolean>
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val androidEvidence: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val baselineProof: RegularFileProperty
     @get:Internal abstract val repositoryDirectory: DirectoryProperty
     @get:Internal abstract val candidateDirectory: DirectoryProperty
 
@@ -93,7 +88,7 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
         version.get(), releaseTag.get(), candidateCommit.get(), git("rev-parse", "HEAD^{commit}"),
         git(*protectedCandidateStatusArguments.toTypedArray()), parallelExecution.get(),
         repositoryDirectory.get().asFile, candidateDirectory.get().asFile,
-        androidEvidence.get().asFile, baselineProof.get().asFile,
+        androidEvidence.get().asFile,
     ))
 
     private fun git(vararg arguments: String): String {
@@ -149,7 +144,7 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
     @get:Input abstract val candidateCommit: Property<String>
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftZip: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftChecksum: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftPmAbProof: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftPmProof: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val centralBundle: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val centralInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
@@ -173,7 +168,7 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
     internal fun candidateInputs() = CandidateInputFiles(
         version = candidateVersion.get(), releaseTag = releaseTag.get(), commit = candidateCommit.get(),
         swiftZip = swiftZip.get().asFile, swiftChecksum = swiftChecksum.get().asFile,
-        swiftPmAbProof = swiftPmAbProof.get().asFile, centralBundle = centralBundle.get().asFile,
+        swiftPmProof = swiftPmProof.get().asFile, centralBundle = centralBundle.get().asFile,
         centralInventory = centralInventory.get().asFile, mavenInventory = mavenInventory.get().asFile,
         kmpConsumer = kmpConsumer.get().asFile, androidEvidence = androidEvidence.get().asFile,
         privacyAudit = privacyAudit.get().asFile, artifactMetrics = artifactMetrics.get().asFile,
@@ -209,7 +204,7 @@ internal val protectedCandidatePhaseGatePaths = listOf(
         ":codex-agent-runtime-ios:generateCodexAgentSwiftPackageChecksum",
         ":codex-agent-runtime-ios:verifyCodexAgentRemoteSwiftPackage",
         ":codex-agent-runtime-ios:verifyIosDeploymentTargets", ":codex-agent-runtime-ios:verifyIosLicensePackaging",
-        ":codex-agent-runtime-ios:verifyIosReleaseBudgets", ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackageAB",
+        ":codex-agent-runtime-ios:verifyIosReleaseBudgets", ":codex-agent-runtime-ios:recordCodexAgentSwiftPackageProof",
         ":stageProtectedSwiftPackage", ":stageProtectedSwiftChecksum",
     ),
     listOf(":codex-agent-runtime-ios:verifyIosPrivacyManifest", ":stageProtectedPrivacyAudit"),
@@ -236,7 +231,7 @@ fun Project.registerProtectedCandidatePhases(
         dependsOn(verifiedManifest)
         manifestFile.set(generatedManifest.flatMap { it.outputFile })
         sourceFiles.from(
-            generatedManifest.flatMap { it.swiftZip }, generatedManifest.flatMap { it.swiftPmAbProof },
+            generatedManifest.flatMap { it.swiftZip }, generatedManifest.flatMap { it.swiftPmProof },
             generatedManifest.flatMap { it.centralBundle }, generatedManifest.flatMap { it.centralInventory },
             generatedManifest.flatMap { it.mavenInventory }, generatedManifest.flatMap { it.kmpConsumer },
             generatedManifest.flatMap { it.androidEvidence }, generatedManifest.flatMap { it.privacyAudit },
@@ -254,7 +249,7 @@ fun Project.registerProtectedCandidatePhases(
     }
     tasks.register("assembleProtectedCandidate") {
         group = "publishing"
-        description = "Builds the exact commit-isolated technical candidate without external publication approvals."
+        description = "Assembles one fresh commit-isolated technical candidate without cleaning or rebuilding evidence."
         dependsOn(payload)
     }
 

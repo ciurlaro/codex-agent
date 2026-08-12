@@ -29,11 +29,11 @@ class CandidateManifestTasksTest {
         )
 
         assertEquals("passed", result.releaseString("result"))
-        assertEquals(2, manifest.releaseInt("schemaVersion"))
+        assertEquals(3, manifest.releaseInt("schemaVersion"))
         assertTrue(manifest.releaseBoolean("protectedCandidate"))
         assertEquals(
-            fixture.swiftPmAbProof.name,
-            manifest.releaseObject("evidence").releaseObject("swiftPmAbProof").releaseString("fileName"),
+            fixture.swiftPmProof.name,
+            manifest.releaseObject("evidence").releaseObject("swiftPmProof").releaseString("fileName"),
         )
         assertEquals(
             "releaseTag=v$VERSION\nswiftAsset=${fixture.swiftZip.name}\ncentralBundle=${fixture.centralBundle.name}\n",
@@ -119,30 +119,37 @@ class CandidateManifestTasksTest {
     }
 
     @Test
-    fun `missing SwiftPM AB proof fails generation`() = withFixture { fixture ->
-        fixture.swiftPmAbProof.delete()
+    fun `missing SwiftPM candidate proof fails generation`() = withFixture { fixture ->
+        fixture.swiftPmProof.delete()
         val failure = assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
-        assertTrue(failure.message.orEmpty().contains("SwiftPM A/B proof"))
+        assertTrue(failure.message.orEmpty().contains("SwiftPM candidate proof"))
     }
 
     @Test
-    fun `missing SwiftPM AB proof from transported payload is rejected`() = withFixture { fixture ->
+    fun `missing SwiftPM candidate proof from transported payload is rejected`() = withFixture { fixture ->
         fixture.manifest.atomicWriteJson(buildCandidateManifest(fixture.inputs))
         fixture.copyPayloadFiles()
-        fixture.payload.resolve(fixture.swiftPmAbProof.name).delete()
+        fixture.payload.resolve(fixture.swiftPmProof.name).delete()
         assertFailsWith<IllegalStateException> {
             verifyCandidatePayload(fixture.manifest, fixture.payload, VERSION, "v$VERSION", COMMIT, fixture.policyFiles)
         }
     }
 
     @Test
-    fun `tampered SwiftPM AB proof is rejected`() = withFixture { fixture ->
+    fun `tampered SwiftPM candidate proof is rejected`() = withFixture { fixture ->
         fixture.manifest.atomicWriteJson(buildCandidateManifest(fixture.inputs))
         fixture.copyPayloadFiles()
-        fixture.payload.resolve(fixture.swiftPmAbProof.name).appendText("tampered")
+        fixture.payload.resolve(fixture.swiftPmProof.name).appendText("tampered")
         assertFailsWith<IllegalStateException> {
             verifyCandidatePayload(fixture.manifest, fixture.payload, VERSION, "v$VERSION", COMMIT, fixture.policyFiles)
         }
+    }
+
+    @Test
+    fun `SwiftPM proof identity mismatch fails generation`() = withFixture { fixture ->
+        fixture.swiftPmProof.writeText(fixture.swiftPmProof.readText().replace(COMMIT, "f".repeat(40)))
+        val failure = assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
+        assertTrue(failure.message.orEmpty().contains("identity mismatch"))
     }
 
     @Test
@@ -206,9 +213,10 @@ class CandidateManifestTasksTest {
             }
         }
         val swiftChecksum = root.resolve("swift.sha256").apply { writeText(swiftZip.releaseDigest()) }
-        val swiftPmAbProof = root.resolve("swiftpm-ab-proof.json").apply { atomicWriteJson(buildJsonObject {
-            put("result", JsonPrimitive("passed"))
-        }) }
+        val packageSwift = root.resolve("Package.swift").apply { writeText("package") }
+        val swiftPmProof = root.resolve("swiftpm-proof.json").also {
+            writeTestSwiftPackageProof(it, swiftZip, swiftChecksum, packageSwift, COMMIT, VERSION, root)
+        }
         val centralBundle = root.resolve("codex-agent-0.2.0-central.zip").apply { writeText("central") }
         val mavenInventory = root.resolve("maven-inventory.json").apply { atomicWriteJson(buildJsonObject {
             put("version", JsonPrimitive(VERSION)); put("primaryArtifactCount", JsonPrimitive(53))
@@ -250,11 +258,10 @@ class CandidateManifestTasksTest {
         val privacyReview = root.resolve("privacy-data-flow-review.json").apply { writeText("{}") }
         val requiredReasons = root.resolve("privacy-required-reason-reviews.json").apply { writeText("{}") }
         val privacyAudit = root.resolve("privacy-audit.json").apply { writePrivacyAudit(requiredReasons.releaseDigest()) }
-        val packageSwift = root.resolve("Package.swift").apply { writeText("package") }
         val manifest = root.resolve("candidate-manifest.json")
         val payload = root.resolve("payload").apply { mkdirs() }
         val inputs get() = CandidateInputFiles(
-            VERSION, "v$VERSION", COMMIT, swiftZip, swiftChecksum, swiftPmAbProof, centralBundle, centralInventory,
+            VERSION, "v$VERSION", COMMIT, swiftZip, swiftChecksum, swiftPmProof, centralBundle, centralInventory,
             mavenInventory, consumer, android, privacyAudit, artifactMetrics, listOf(resources), approvals, privacyManifest,
             privacyReview, requiredReasons.takeIf(File::isFile), packageSwift,
         )
@@ -275,7 +282,7 @@ class CandidateManifestTasksTest {
         })
         fun copyPayloadFiles() {
             listOf(
-                swiftZip, swiftPmAbProof, centralBundle, centralInventory, mavenInventory, consumer, android,
+                swiftZip, swiftPmProof, centralBundle, centralInventory, mavenInventory, consumer, android,
                 privacyAudit, artifactMetrics, resources,
             )
                 .plus(policyFiles.values)

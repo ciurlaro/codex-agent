@@ -17,22 +17,18 @@ class ProtectedCandidateLifecycleTest {
     private val sha = "b".repeat(64)
 
     @Test
-    fun `preflight validates before deleting and creates only isolated proof directories`() {
+    fun `preflight creates only fresh isolated proof directories`() {
         val fixture = PreflightFixture(commit, sha)
         try {
-            val stale = fixture.candidate.resolve("stale").apply { parentFile.mkdirs(); writeText("keep on failure") }
             val invalid = fixture.input.copy(parallel = true)
             assertFailsWith<IllegalStateException> { prepareProtectedCandidateDirectory(invalid) }
-            assertTrue(stale.isFile)
 
             prepareProtectedCandidateDirectory(fixture.input)
-            assertFalse(stale.exists())
             assertEquals(
                 setOf("artifacts", "evidence", "maven-repository", "clean-consumer", "reports"),
                 fixture.candidate.listFiles().orEmpty().map(File::getName).toSet(),
             )
             assertTrue(fixture.evidence.isFile)
-            assertTrue(fixture.baseline.isFile)
         } finally { fixture.close() }
     }
 
@@ -48,7 +44,6 @@ class ProtectedCandidateLifecycleTest {
             val wrongEvidence = fixture.external.resolve("wrong.json").also { writeAndroidEvidence(it, "c".repeat(40), sha) }
             val nestedEvidence = fixture.candidate.resolve(ANDROID_EVIDENCE_FILE)
                 .also { it.parentFile.mkdirs(); fixture.evidence.copyTo(it, overwrite = true) }
-            val missingBaseline = fixture.external.resolve("missing-baseline.json")
             listOf(
                 fixture.input.copy(commit = "main"),
                 fixture.input.copy(releaseTag = "v0.2.1"),
@@ -59,11 +54,12 @@ class ProtectedCandidateLifecycleTest {
                 fixture.input.copy(trackedStatus = "?? native/new.patch"),
                 fixture.input.copy(androidEvidence = wrongEvidence),
                 fixture.input.copy(androidEvidence = nestedEvidence),
-                fixture.input.copy(baselineProof = missingBaseline),
             ).forEach { invalid ->
                 assertFailsWith<IllegalStateException> { prepareProtectedCandidateDirectory(invalid) }
                 assertTrue(sentinel.isFile)
             }
+            assertFailsWith<IllegalStateException> { prepareProtectedCandidateDirectory(fixture.input) }
+            assertTrue(sentinel.isFile)
         } finally { fixture.close() }
     }
 
@@ -81,7 +77,7 @@ class ProtectedCandidateLifecycleTest {
         val simulatorGate = project.tasks.register("iosSimulatorArm64Test")
         val manifestGate = project.tasks.register("manifestGate")
         project.tasks.register("verifyPublicationReadiness")
-        project.tasks.register("verifyCodexAgentSwiftPackageReproducibility")
+        project.tasks.register("recordCodexAgentSwiftPackageProof")
 
         wireProtectedCandidatePhase(native, prepare, listOf(nativeGate, sharedGate))
         wireProtectedCandidatePhase(ios, native, listOf(sharedGate, iosGate, simulatorGate))
@@ -99,7 +95,7 @@ class ProtectedCandidateLifecycleTest {
         assertEquals(1, graph.count { it.name == "sharedGate" })
         assertEquals(1, graph.count { it.name == "iosSimulatorArm64Test" })
         assertFalse(graph.any { it.name == "verifyPublicationReadiness" })
-        assertFalse(graph.any { it.name == "verifyCodexAgentSwiftPackageReproducibility" })
+        assertFalse(graph.any { it.name == "recordCodexAgentSwiftPackageProof" })
         assertFalse(dependencies(manifestGate.get()).contains(ios.get()))
         assertTrue(orderingDependencies(manifestGate.get()).contains(ios.get()))
     }
@@ -114,7 +110,7 @@ class ProtectedCandidateLifecycleTest {
             ":codex-agent-runtime-ios:testCodexIosDirectToolMode",
             ":codex-agent-runtime-ios:iosSimulatorArm64Test",
             ":codex-agent-runtime-ios:verifyCodexAgentSwiftAuthenticationTests",
-            ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackageAB",
+            ":codex-agent-runtime-ios:recordCodexAgentSwiftPackageProof",
             ":codex-agent-runtime-ios:verifyIosPrivacyManifest",
             ":stageCentralRepository",
             ":verifyStagedKmpConsumer",
@@ -128,9 +124,9 @@ class ProtectedCandidateLifecycleTest {
         withPayloadFixture { fixture ->
             verifyProtectedCandidateManifest(fixture.manifest, fixture.inputs)
             assertEquals(
-                fixture.swiftPmAbProof.releaseDigest(),
+                fixture.swiftPmProof.releaseDigest(),
                 fixture.manifest.readReleaseObject().releaseObject("evidence")
-                    .releaseObject("swiftPmAbProof").releaseString("sha256"),
+                    .releaseObject("swiftPmProof").releaseString("sha256"),
             )
             fixture.centralBundle.appendText("tampered")
             assertFailsWith<IllegalStateException> {
@@ -140,7 +136,7 @@ class ProtectedCandidateLifecycleTest {
     }
 
     @Test
-    fun `payload staging is flat byte exact binds AB proof and invokes no shell`() = withPayloadFixture { fixture ->
+    fun `payload staging is flat byte exact binds SwiftPM proof and invokes no shell`() = withPayloadFixture { fixture ->
         fixture.stage()
         val expected = (listOf(fixture.manifest) + fixture.sources).associateBy(File::getName)
         assertEquals(expected.keys, fixture.payload.listFiles().orEmpty().map(File::getName).toSet())
@@ -155,8 +151,8 @@ class ProtectedCandidateLifecycleTest {
     @Test
     fun `payload staging rejects duplicate and unsafe basenames before cleanup`() = withPayloadFixture { fixture ->
         val sentinel = fixture.payload.resolve("sentinel").apply { parentFile.mkdirs(); writeText("keep") }
-        val duplicate = fixture.root.resolve("duplicate/${fixture.swiftPmAbProof.name}").apply {
-            parentFile.mkdirs(); fixture.swiftPmAbProof.copyTo(this)
+        val duplicate = fixture.root.resolve("duplicate/${fixture.swiftPmProof.name}").apply {
+            parentFile.mkdirs(); fixture.swiftPmProof.copyTo(this)
         }
         assertFailsWith<IllegalStateException> { fixture.stage(fixture.sources + duplicate) }
         assertTrue(sentinel.isFile)
@@ -167,10 +163,10 @@ class ProtectedCandidateLifecycleTest {
 
     @Test
     fun `payload staging rejects tampered and missing canonical files`() = withPayloadFixture { fixture ->
-        val originalProof = fixture.swiftPmAbProof.readBytes()
-        fixture.swiftPmAbProof.appendText("tampered")
+        val originalProof = fixture.swiftPmProof.readBytes()
+        fixture.swiftPmProof.appendText("tampered")
         assertFailsWith<IllegalStateException> { fixture.stage() }
-        fixture.swiftPmAbProof.writeBytes(originalProof)
+        fixture.swiftPmProof.writeBytes(originalProof)
         fixture.resources.delete()
         assertFailsWith<IllegalStateException> { fixture.stage() }
     }
@@ -224,7 +220,6 @@ class ProtectedCandidateLifecycleTest {
         val root = createTempDirectory("candidate-payload").toFile()
         val swiftZip = root.resolve("CodexAgent-0.2.0.xcframework.zip").also(::writeZip)
         val swiftChecksum = root.resolve("swift.sha256").apply { writeText(swiftZip.releaseDigest()) }
-        val swiftPmAbProof = root.resolve("swiftpm-ab-proof.json").apply { writeText("{}") }
         val centralBundle = root.resolve("central.zip").apply { writeText("central") }
         val maven = root.resolve("maven.json").apply { atomicWriteJson(buildJsonObject {
             put("version", JsonPrimitive("0.2.0")); put("primaryArtifactCount", JsonPrimitive(53))
@@ -257,9 +252,12 @@ class ProtectedCandidateLifecycleTest {
         val privacyManifest = policy("PrivacyInfo.xcprivacy")
         val dataFlow = policy("data-flow.json")
         val packageSwift = policy("Package.swift")
+        val swiftPmProof = root.resolve("swiftpm-proof.json").also {
+            writeTestSwiftPackageProof(it, swiftZip, swiftChecksum, packageSwift, commit, "0.2.0", root)
+        }
         val inputs = CandidateInputFiles(
             version = "0.2.0", releaseTag = "v0.2.0", commit = commit,
-            swiftZip = swiftZip, swiftChecksum = swiftChecksum, swiftPmAbProof = swiftPmAbProof,
+            swiftZip = swiftZip, swiftChecksum = swiftChecksum, swiftPmProof = swiftPmProof,
             centralBundle = centralBundle, centralInventory = central, mavenInventory = maven,
             kmpConsumer = consumer, androidEvidence = android, privacyAudit = privacy,
             artifactMetrics = artifactMetrics, resourceReports = listOf(resources), approvals = approvals,
@@ -270,7 +268,7 @@ class ProtectedCandidateLifecycleTest {
             atomicWriteJson(buildCandidateManifest(inputs))
         }
         val sources = listOf(
-            swiftZip, swiftPmAbProof, centralBundle, central, maven, consumer, android, privacy, artifactMetrics, resources,
+            swiftZip, swiftPmProof, centralBundle, central, maven, consumer, android, privacy, artifactMetrics, resources,
             approvals, privacyManifest, dataFlow, packageSwift,
         ) + listOfNotNull(reviews)
         val payload = root.resolve("payload")
@@ -288,10 +286,9 @@ class ProtectedCandidateLifecycleTest {
         val external = createTempDirectory("candidate-inputs").toFile()
         val candidate = repository.resolve("build/protected-candidate/$candidateCommit")
         val evidence = external.resolve(ANDROID_EVIDENCE_FILE).also { writeAndroidEvidence(it, candidateCommit, hash) }
-        val baseline = external.resolve("swiftpm-baseline.json").apply { writeText("{}") }
         val input = ProtectedCandidatePreflight(
             "0.2.0", "v0.2.0", candidateCommit, candidateCommit, "", false,
-            repository, candidate, evidence, baseline,
+            repository, candidate, evidence,
         )
 
         override fun close() { repository.deleteRecursively(); external.deleteRecursively() }
