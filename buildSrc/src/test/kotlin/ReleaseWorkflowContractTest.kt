@@ -36,9 +36,12 @@ class ReleaseWorkflowContractTest {
             "awaitCentralValidation",
             "releaseCentralDeployment",
             "assembleProtectedCandidate",
+            "stageLinuxArm64DesktopEvidenceBundle",
+            "executeLinuxArm64DesktopEvidenceBundle",
             ":codex-agent-runtime-ios:verifyAppleToolchain",
             ":codex-agent-runtime-android:recordAndroidRuntimeEvidence",
             ":codex-agent-runtime-desktop:",
+            ":codex-agent-runtime-desktop:linkDebugTestLinuxArm64",
         )
         assertTrue(calls.isNotEmpty())
         assertEquals(emptySet(), calls.toSet() - allowed)
@@ -66,6 +69,33 @@ class ReleaseWorkflowContractTest {
             .substringBefore("- uses: actions/upload-artifact")
         assertTrue("shell: bash" in smoke)
         assertTrue("-PcodexAgent.candidateCommit=${'$'}{{ inputs.candidateCommit }}" in smoke)
+    }
+
+    @Test
+    fun `Linux ARM64 evidence is cross-built then executed without root KMP configuration`() {
+        val desktop = workflows.getValue("desktop-runtime-evidence.yml")
+        val crossBuild = desktop.substringAfter("\n  linux-arm64-cross-build:")
+            .substringBefore("\n  linux-arm64-runtime:")
+        val runtime = desktop.substringAfter("\n  linux-arm64-runtime:")
+        assertTrue("runs-on: ubuntu-24.04" in crossBuild)
+        assertTrue(":codex-agent-runtime-desktop:linkDebugTestLinuxArm64" in crossBuild)
+        assertTrue(":codex-agent-runtime-desktop:packageLinuxArm64AppServer" in crossBuild)
+        assertTrue("./gradlew -p buildSrc stageLinuxArm64DesktopEvidenceBundle" in crossBuild)
+        assertTrue("-PcodexAgent.linuxArm64DistributionsDirectory=" in crossBuild)
+        assertFalse("-PcodexAgent.linuxArm64ClassifierArchive=" in crossBuild)
+        assertFalse("0.2.0" in crossBuild)
+        assertTrue("name: codex-agent-linux-arm64-execution-bundle" in crossBuild)
+
+        assertTrue("needs: linux-arm64-cross-build" in runtime)
+        assertTrue("runs-on: ubuntu-24.04-arm" in runtime)
+        assertTrue("RUNNER_OS: Linux" in runtime && "RUNNER_ARCH: ARM64" in runtime)
+        assertTrue("name: codex-agent-linux-arm64-execution-bundle" in runtime)
+        assertTrue("./gradlew -p buildSrc executeLinuxArm64DesktopEvidenceBundle" in runtime)
+        assertFalse(Regex("""\./gradlew\s+:(?!test\b)""").containsMatchIn(runtime))
+        assertTrue("name: codex-agent-desktop-runtime-evidence-linuxArm64" in runtime)
+        val finalArtifact = runtime.substringAfter("name: codex-agent-desktop-runtime-evidence-linuxArm64")
+        assertTrue("path: build/reports/desktop-runtime-evidence/desktop-runtime-linuxArm64.json" in finalArtifact)
+        assertFalse(".xml" in finalArtifact)
     }
 
     @Test

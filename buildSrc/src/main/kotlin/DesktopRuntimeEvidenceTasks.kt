@@ -44,6 +44,12 @@ internal val desktopRuntimeTestMethods = sortedSetOf(
 
 fun desktopRuntimeEvidenceFileName(target: String) = "desktop-runtime-$target.json"
 
+internal fun desktopRuntimeEvidenceTestTask(target: String) = if (target == "linuxArm64") {
+    ":buildSrc:executeLinuxArm64DesktopEvidenceBundle"
+} else {
+    ":codex-agent-runtime-desktop:${target}Test"
+}
+
 internal data class DesktopRuntimeEvidenceValues(
     val candidateCommit: String,
     val target: String,
@@ -59,7 +65,7 @@ internal fun buildDesktopRuntimeEvidence(values: DesktopRuntimeEvidenceValues) =
     put("classifier", JsonPrimitive(expected.classifier))
     put("runnerOs", JsonPrimitive(expected.runnerOs))
     put("runnerArch", JsonPrimitive(expected.runnerArch))
-    put("testTask", JsonPrimitive(":codex-agent-runtime-desktop:${values.target}Test"))
+    put("testTask", JsonPrimitive(desktopRuntimeEvidenceTestTask(values.target)))
     put("testClass", JsonPrimitive(DESKTOP_RUNTIME_TEST_CLASS))
     put("testMethods", buildJsonArray { desktopRuntimeTestMethods.forEach { add(JsonPrimitive(it)) } })
     put("tests", JsonPrimitive(desktopRuntimeTestMethods.size))
@@ -170,7 +176,7 @@ internal fun validateDesktopRuntimeEvidence(
             check(report.releaseString("classifier") == expected.classifier) { "classifier mismatch" }
             check(report.releaseString("runnerOs") == expected.runnerOs) { "runner OS mismatch" }
             check(report.releaseString("runnerArch") == expected.runnerArch) { "runner architecture mismatch" }
-            check(report.releaseString("testTask") == ":codex-agent-runtime-desktop:${target}Test") {
+            check(report.releaseString("testTask") == desktopRuntimeEvidenceTestTask(target)) {
                 "test task mismatch"
             }
             check(report.releaseString("testClass") == DESKTOP_RUNTIME_TEST_CLASS) { "test class mismatch" }

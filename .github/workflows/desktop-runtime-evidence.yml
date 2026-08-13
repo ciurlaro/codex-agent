@@ -36,10 +36,6 @@ jobs:
             runner: macos-26-intel
             task: recordMacosX64DesktopRuntimeEvidence
             developerDir: /Applications/Xcode_26.6.app/Contents/Developer
-          - target: linuxArm64
-            runner: ubuntu-24.04-arm
-            task: recordLinuxArm64DesktopRuntimeEvidence
-            developerDir: ""
           - target: linuxX64
             runner: ubuntu-24.04
             task: recordLinuxX64DesktopRuntimeEvidence
@@ -74,5 +70,79 @@ jobs:
         with:
           name: codex-agent-desktop-runtime-evidence-${{ matrix.target }}
           path: codex-agent-runtime-desktop/build/reports/desktop-runtime-evidence/desktop-runtime-${{ matrix.target }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  linux-arm64-cross-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: release-candidate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidateCommit }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cross-build the exact Linux ARM64 smoke inputs
+        shell: bash
+        run: >-
+          ./gradlew
+          :codex-agent-runtime-desktop:linkDebugTestLinuxArm64
+          :codex-agent-runtime-desktop:packageLinuxArm64AppServer
+          --no-daemon --stacktrace
+      - name: Stage the hash-bound Linux ARM64 execution bundle
+        shell: bash
+        run: >-
+          ./gradlew -p buildSrc stageLinuxArm64DesktopEvidenceBundle
+          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
+          "-PcodexAgent.linuxArm64TestExecutable=$GITHUB_WORKSPACE/codex-agent-runtime-desktop/build/bin/linuxArm64/debugTest/test.kexe"
+          "-PcodexAgent.linuxArm64DistributionsDirectory=$GITHUB_WORKSPACE/codex-agent-runtime-desktop/build/distributions"
+          "-PcodexAgent.linuxArm64ExecutionBundle=$GITHUB_WORKSPACE/build/linux-arm64-split/linux-arm64-execution.zip"
+          --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-agent-linux-arm64-execution-bundle
+          path: build/linux-arm64-split/linux-arm64-execution.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  linux-arm64-runtime:
+    needs: linux-arm64-cross-build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    environment: release-candidate
+    env:
+      RUNNER_OS: Linux
+      RUNNER_ARCH: ARM64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidateCommit }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-agent-linux-arm64-execution-bundle
+          path: build/linux-arm64-evidence-input
+      - name: Execute and record the exact Linux ARM64 runtime smoke
+        shell: bash
+        run: >-
+          ./gradlew -p buildSrc executeLinuxArm64DesktopEvidenceBundle
+          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
+          "-PcodexAgent.linuxArm64ExecutionBundle=$GITHUB_WORKSPACE/build/linux-arm64-evidence-input/linux-arm64-execution.zip"
+          "-PcodexAgent.desktopEvidenceOutput=$GITHUB_WORKSPACE/build/reports/desktop-runtime-evidence/desktop-runtime-linuxArm64.json"
+          "-PcodexAgent.desktopTestReportOutput=$GITHUB_WORKSPACE/build/test-results/linuxArm64SplitTest/TEST-linuxArm64Test.io.github.ciurlaro.codexmobile.appserver.runtime.DesktopCodexRuntimeTest.xml"
+          --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-agent-desktop-runtime-evidence-linuxArm64
+          path: build/reports/desktop-runtime-evidence/desktop-runtime-linuxArm64.json
           if-no-files-found: error
           retention-days: 30
