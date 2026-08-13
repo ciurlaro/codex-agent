@@ -25,6 +25,8 @@ class NativeReleaseVerificationTasksTest {
                 .associateWith { name -> directory.resolve(name).apply { writeText(name) } }
             val bridgeSource = directory.resolve("bridge-src").apply { mkdirs() }
             val bridgeLib = bridgeSource.resolve("lib.rs").apply { writeText("lib") }
+            val rustSrcManifest = directory.resolve("rust-src/Cargo.toml")
+                .apply { parentFile.mkdirs(); writeText("[workspace]") }
             directory.resolve("provenance.json").writeText(
                 """
                 {
@@ -33,6 +35,7 @@ class NativeReleaseVerificationTasksTest {
                   "cargoLockSha256": "${"3".repeat(64)}",
                   "preparedCargoLockSha256": "${"4".repeat(64)}",
                   "rustToolchain": "1.95.0",
+                  "rustSrcComponent": "required",
                   "libsqlite3SysVersion": "0.37.0",
                   "libsqlite3SysArchiveSha256": "${inputs.getValue("sqlite.crate").sha256()}",
                   "sqliteSourceSha256": "${"6".repeat(64)}",
@@ -40,6 +43,13 @@ class NativeReleaseVerificationTasksTest {
                   "releaseLto": "fat",
                   "releaseCodegenUnits": "1",
                   "releaseRustFlags": "-Cdebuginfo=0",
+                  "releaseRustFlagsTransport": "CARGO_ENCODED_RUSTFLAGS",
+                  "releaseRustPathRemapOrder": "builderHome,cargoHome,rustSysroot,projectRoot,preparedCodexSource",
+                  "releaseRustBuilderHomePrefix": "/codex-agent/builder-home",
+                  "releaseRustCargoHomePrefix": "/codex-agent/cargo-home",
+                  "releaseRustSysrootPrefix": "/codex-agent/rust-sysroot",
+                  "releaseRustProjectRootPrefix": "/codex-agent/project",
+                  "releaseRustPreparedSourcePrefix": "/codex-agent/prepared-source",
                   "minimumIosVersion": "15.0",
                   "releaseDebug": "0",
                   "releaseStrip": "debuginfo",
@@ -71,6 +81,8 @@ class NativeReleaseVerificationTasksTest {
                 cargoLockSha256.set("3".repeat(64))
                 preparedCargoLockSha256.set("4".repeat(64))
                 rustToolchain.set("1.95.0")
+                rustSrcComponent.set("required")
+                this.rustSrcManifest.set(rustSrcManifest)
                 sqliteVersion.set("0.37.0")
                 sqliteArchiveSha256.set(inputs.getValue("sqlite.crate").sha256())
                 sqliteSourceSha256.set("6".repeat(64))
@@ -78,6 +90,17 @@ class NativeReleaseVerificationTasksTest {
                 releaseLto.set("fat")
                 releaseCodegenUnits.set("1")
                 releaseRustFlags.set("-Cdebuginfo=0")
+                releaseRustPathRemapPolicy.putAll(
+                    mapOf(
+                        "releaseRustFlagsTransport" to "CARGO_ENCODED_RUSTFLAGS",
+                        "releaseRustPathRemapOrder" to "builderHome,cargoHome,rustSysroot,projectRoot,preparedCodexSource",
+                        "releaseRustBuilderHomePrefix" to "/codex-agent/builder-home",
+                        "releaseRustCargoHomePrefix" to "/codex-agent/cargo-home",
+                        "releaseRustSysrootPrefix" to "/codex-agent/rust-sysroot",
+                        "releaseRustProjectRootPrefix" to "/codex-agent/project",
+                        "releaseRustPreparedSourcePrefix" to "/codex-agent/prepared-source",
+                    ),
+                )
                 minimumIosVersion.set("15.0")
                 releaseDebug.set("0")
                 releaseStrip.set("debuginfo")
@@ -89,6 +112,25 @@ class NativeReleaseVerificationTasksTest {
             assertFailsWith<IllegalStateException> { task.verify() }
         } finally {
             directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `release rust flags preserve arguments and ordered path remaps`() {
+        assertTrue(
+            encodeRustcArguments(
+                listOf("-Cdebuginfo=0"),
+                listOf("/Users/builder=/stable/home", "/source with spaces=/stable/source"),
+            ) == listOf(
+                "-Cdebuginfo=0",
+                "--remap-path-prefix",
+                "/Users/builder=/stable/home",
+                "--remap-path-prefix",
+                "/source with spaces=/stable/source",
+            ).joinToString("\u001f"),
+        )
+        assertFailsWith<IllegalArgumentException> {
+            encodeRustcArguments(listOf("bad\u001fflag"), emptyList())
         }
     }
 

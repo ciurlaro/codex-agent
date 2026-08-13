@@ -71,6 +71,20 @@ class AppleDistributionTasksTest {
             ),
             stripReleaseArchiveCommand(root.resolve("CodexAgent"), root.resolve("CodexAgent.stripped")),
         )
+        assertEquals(
+            listOf(
+                "/usr/bin/grep", "-a", "-F", "-q", "-e", "/builder home", "-e", "/checkout",
+                "/tmp/release args/CodexAgent",
+            ),
+            pathPrefixScanCommand(root.resolve("CodexAgent"), listOf("/builder home", "/checkout")),
+        )
+        verifyPathPrefixScan(1, root.resolve("CodexAgent"), listOf("/checkout"), "")
+        assertFailsWith<IllegalStateException> {
+            verifyPathPrefixScan(0, root.resolve("CodexAgent"), listOf("/checkout"), "")
+        }
+        assertFailsWith<IllegalStateException> {
+            verifyPathPrefixScan(2, root.resolve("CodexAgent"), listOf("/checkout"), "grep failed")
+        }
         val xcodebuild = swiftAuthenticationXcodebuildCommand("device", root.resolve("derived"), root.resolve("tests.xcresult"))
         assertEquals("xcodebuild", xcodebuild.first())
         assertTrue("platform=iOS Simulator,id=device" in xcodebuild)

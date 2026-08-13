@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
@@ -100,6 +101,19 @@ internal fun stripReleaseArchiveCommand(archive: File, stripped: File) = listOf(
     "/usr/bin/xcrun", "strip", "-S", "-x", "-o", stripped.absolutePath, archive.absolutePath,
 )
 
+internal fun pathPrefixScanCommand(archive: File, prefixes: List<String>) =
+    listOf("/usr/bin/grep", "-a", "-F", "-q") + prefixes.flatMap { listOf("-e", it) } + archive.absolutePath
+
+internal fun verifyPathPrefixScan(exitValue: Int, archive: File, prefixes: List<String>, stderr: String) {
+    check(exitValue == 1) {
+        if (exitValue == 0) {
+            "Release archive ${archive.name} contains a machine-specific path from $prefixes"
+        } else {
+            "Failed to scan ${archive.name} for machine-specific paths: $stderr"
+        }
+    }
+}
+
 internal fun verifyPrivacyPlacement(xcframework: File, privacyManifest: File) {
     listOf("ios-arm64", "ios-arm64-simulator").forEach { slice ->
         val packaged = xcframework.resolve("$slice/CodexAgent.framework/PrivacyInfo.xcprivacy")
@@ -141,6 +155,7 @@ abstract class PrepareCodexAgentReleaseXCFrameworkTask @Inject constructor(
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val assembledXCFrameworkDirectory: DirectoryProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyManifest: RegularFileProperty
+    @get:org.gradle.api.tasks.Input abstract val forbiddenAbsolutePathPrefixes: ListProperty<String>
     @get:OutputDirectory abstract val releaseXCFrameworkDirectory: DirectoryProperty
 
     @TaskAction fun prepare() {
@@ -160,6 +175,20 @@ abstract class PrepareCodexAgentReleaseXCFrameworkTask @Inject constructor(
                 processes.captureReleaseProcess(stripReleaseArchiveCommand(archive, stripped))
                 processes.captureReleaseProcess(libtoolNormalizeCommand(stripped, normalized))
                 moveReleaseFile(normalized, archive)
+                val stderr = java.io.ByteArrayOutputStream()
+                val scan = processes.exec {
+                    commandLine(pathPrefixScanCommand(archive, forbiddenAbsolutePathPrefixes.get()))
+                    environment("LC_ALL", "C")
+                    standardOutput = java.io.ByteArrayOutputStream()
+                    errorOutput = stderr
+                    isIgnoreExitValue = true
+                }
+                verifyPathPrefixScan(
+                    scan.exitValue,
+                    archive,
+                    forbiddenAbsolutePathPrefixes.get(),
+                    stderr.toString(),
+                )
             } finally {
                 Files.deleteIfExists(stripped.toPath())
                 Files.deleteIfExists(normalized.toPath())

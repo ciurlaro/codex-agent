@@ -18,7 +18,10 @@ data class IosAppleDistributionTasks(
     val verifyIosLicensePackaging: TaskProvider<VerifyIosLicensePackagingTask>,
 )
 
-fun Project.registerIosAppleDistributionTasks(expectedSwiftTestCount: Int): IosAppleDistributionTasks {
+fun Project.registerIosAppleDistributionTasks(
+    expectedSwiftTestCount: Int,
+    pinnedRustToolchain: String,
+): IosAppleDistributionTasks {
     val appleDistributionDirectory = layout.buildDirectory.dir("apple-distribution")
     val assembledXCFrameworkDirectory = layout.buildDirectory.dir("XCFrameworks/release/CodexAgent.xcframework")
     val releaseXCFrameworkDirectory = layout.buildDirectory.dir("release-xcframework/CodexAgent.xcframework")
@@ -37,6 +40,7 @@ fun Project.registerIosAppleDistributionTasks(expectedSwiftTestCount: Int): IosA
             dependsOn("assembleCodexAgentReleaseXCFramework")
             this.assembledXCFrameworkDirectory.set(assembledXCFrameworkDirectory)
             privacyManifest.set(privacyManifestFile)
+            forbiddenAbsolutePathPrefixes.set(iosReleaseAbsolutePathPrefixes(pinnedRustToolchain))
             this.releaseXCFrameworkDirectory.set(releaseXCFrameworkDirectory)
         }
 

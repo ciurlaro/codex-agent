@@ -2,6 +2,7 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.gradle.api.tasks.InputFiles
@@ -52,6 +53,11 @@ class IosNativeTaskRegistrationTest {
                 assertEquals("fat", task.provenanceValues.get().getValue("releaseLto"))
                 assertEquals("1", task.provenanceValues.get().getValue("releaseCodegenUnits"))
                 assertEquals("-Cdebuginfo=0", task.provenanceValues.get().getValue("releaseRustFlags"))
+                assertEquals("required", task.provenanceValues.get().getValue("rustSrcComponent"))
+                assertEquals(
+                    "/codex-agent/prepared-source",
+                    task.provenanceValues.get().getValue("releaseRustPreparedSourcePrefix"),
+                )
             }
 
             val getter = PinnedCargoTask::class.java.getMethod("getSourceInputs")
@@ -63,14 +69,29 @@ class IosNativeTaskRegistrationTest {
     }
 
     @Test
+    fun `iOS release requires the pinned rust-src component`() {
+        val sysroot = createTempDirectory("ios-rust-src").toFile()
+        try {
+            assertFailsWith<IllegalStateException> { requiredRustSrcManifest(sysroot.path) }
+            val manifest = sysroot.resolve("lib/rustlib/src/rust/library/Cargo.toml")
+                .apply { parentFile.mkdirs(); writeText("[workspace]") }
+            assertEquals(manifest.canonicalFile, requiredRustSrcManifest(sysroot.path).canonicalFile)
+        } finally {
+            sysroot.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `iOS builds use only the targeted SQLite compiler flags`() {
         val directory = createTempDirectory("ios-native-environment").toFile()
         try {
             val project = ProjectBuilder.builder().withProjectDir(directory).build()
             val nativeTasks = project.registerIosNativeTasks(configuration())
             listOf(nativeTasks.buildCodexIosArm64Rust, nativeTasks.buildCodexIosSimulatorArm64Rust).forEach {
-                val environment = it.get().extraEnvironment.get()
+                val task = it.get()
+                val environment = task.extraEnvironment.get()
                 assertFalse(environment.containsKey("CFLAGS"))
+                assertFalse(environment.keys.any { name -> name.startsWith("CARGO_TARGET_") })
                 assertEquals(
                     "SQLITE_ENABLE_LOCKING_STYLE=0 -DCODEX_AGENT_IOS_SQLITE_NO_FILESYSTEM_PROBES",
                     environment.getValue("LIBSQLITE3_FLAGS"),
@@ -79,6 +100,27 @@ class IosNativeTaskRegistrationTest {
                 assertEquals("debuginfo", environment.getValue("CARGO_PROFILE_RELEASE_STRIP"))
                 assertEquals("fat", environment.getValue("CARGO_PROFILE_RELEASE_LTO"))
                 assertEquals("1", environment.getValue("CARGO_PROFILE_RELEASE_CODEGEN_UNITS"))
+                assertEquals(listOf("-Cdebuginfo=0"), task.rustcArguments.get())
+                assertEquals("CARGO_ENCODED_RUSTFLAGS", task.rustFlagsEnvironmentVariable.get())
+                assertEquals("required", task.rustSrcComponent.get())
+            }
+            assertEquals(
+                listOf(
+                    "/home=/codex-agent/builder-home",
+                    "/cargo=/codex-agent/cargo-home",
+                    "/sysroot=/codex-agent/rust-sysroot",
+                    "/project=/codex-agent/project",
+                    "/source=/codex-agent/prepared-source",
+                ),
+                remapIosReleasePaths(
+                    listOf("/home", "/cargo", "/sysroot", "/project", "/source"),
+                    configuration().pinnedReleaseRustPathRemapPolicy,
+                ),
+            )
+            listOf(nativeTasks.testCodexIosBridge, nativeTasks.testCodexIosDirectToolMode).forEach {
+                assertTrue(it.get().rustcArguments.get().isEmpty())
+                assertTrue(it.get().rustPathRemappings.get().isEmpty())
+                assertEquals("not-required", it.get().rustSrcComponent.get())
             }
         } finally {
             directory.deleteRecursively()
@@ -95,6 +137,7 @@ class IosNativeTaskRegistrationTest {
         expectedSqliteSourceSha256 = "6".repeat(64),
         expectedPatchedSqliteSourceSha256 = "7".repeat(64),
         pinnedRustToolchain = "1.95.0",
+        pinnedRustSrcComponent = "required",
         rustLibrary = "libcodex_agent_ios_bridge.a",
         minimumIosVersion = "15.0",
         pinnedSqliteArchiveSha256 = "5".repeat(64),
@@ -102,5 +145,14 @@ class IosNativeTaskRegistrationTest {
         pinnedReleaseLto = "fat",
         pinnedReleaseCodegenUnits = "1",
         pinnedReleaseRustFlags = "-Cdebuginfo=0",
+        pinnedReleaseRustPathRemapPolicy = linkedMapOf(
+            "releaseRustFlagsTransport" to "CARGO_ENCODED_RUSTFLAGS",
+            "releaseRustPathRemapOrder" to "builderHome,cargoHome,rustSysroot,projectRoot,preparedCodexSource",
+            "releaseRustBuilderHomePrefix" to "/codex-agent/builder-home",
+            "releaseRustCargoHomePrefix" to "/codex-agent/cargo-home",
+            "releaseRustSysrootPrefix" to "/codex-agent/rust-sysroot",
+            "releaseRustProjectRootPrefix" to "/codex-agent/project",
+            "releaseRustPreparedSourcePrefix" to "/codex-agent/prepared-source",
+        ),
     )
 }

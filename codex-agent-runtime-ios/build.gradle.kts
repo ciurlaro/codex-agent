@@ -22,6 +22,7 @@ private val libsqlite3SysArchiveSha256 = "b1f111c8c41e7c61a49cd34e44c76194629672
 private val expectedSqliteSourceSha256 = "9512509b1bccb7461f79bea8aad6280ae4699e925fa4804381b71f59e7efb0c5"
 private val expectedPatchedSqliteSourceSha256 = "a0b50ae286c86c1890c2144641682820a42aa38021ad5fa9457d99c636f0d057"
 private val pinnedRustToolchain = "1.95.0"
+private val pinnedRustSrcComponent = "required"
 private val rustLibrary = "libcodex_agent_ios_bridge.a"
 private val minimumIosVersion = "15.0"
 private val expectedSwiftTestCount = 23
@@ -30,6 +31,15 @@ private val sqliteArchiveBytes = 5_295_554L
 private val pinnedReleaseLto = "fat"
 private val pinnedReleaseCodegenUnits = "1"
 private val pinnedReleaseRustFlags = "-Cdebuginfo=0"
+private val pinnedReleaseRustPathRemapPolicy = linkedMapOf(
+    "releaseRustFlagsTransport" to "CARGO_ENCODED_RUSTFLAGS",
+    "releaseRustPathRemapOrder" to "builderHome,cargoHome,rustSysroot,projectRoot,preparedCodexSource",
+    "releaseRustBuilderHomePrefix" to "/codex-agent/builder-home",
+    "releaseRustCargoHomePrefix" to "/codex-agent/cargo-home",
+    "releaseRustSysrootPrefix" to "/codex-agent/rust-sysroot",
+    "releaseRustProjectRootPrefix" to "/codex-agent/project",
+    "releaseRustPreparedSourcePrefix" to "/codex-agent/prepared-source",
+)
 private val expectedXcodeVersion = "26.6"
 private val expectedXcodeBuild = "17F113"
 private val expectedSwiftVersion = "6.3.3"
@@ -45,6 +55,7 @@ val nativeTasks = registerIosNativeTasks(
         expectedSqliteSourceSha256 = expectedSqliteSourceSha256,
         expectedPatchedSqliteSourceSha256 = expectedPatchedSqliteSourceSha256,
         pinnedRustToolchain = pinnedRustToolchain,
+        pinnedRustSrcComponent = pinnedRustSrcComponent,
         rustLibrary = rustLibrary,
         minimumIosVersion = minimumIosVersion,
         pinnedSqliteArchiveSha256 = pinnedSqliteArchiveSha256,
@@ -52,6 +63,7 @@ val nativeTasks = registerIosNativeTasks(
         pinnedReleaseLto = pinnedReleaseLto,
         pinnedReleaseCodegenUnits = pinnedReleaseCodegenUnits,
         pinnedReleaseRustFlags = pinnedReleaseRustFlags,
+        pinnedReleaseRustPathRemapPolicy = pinnedReleaseRustPathRemapPolicy,
     ),
 )
 
@@ -168,7 +180,7 @@ dependencyLocking {
     lockAllConfigurations()
 }
 
-val appleDistributionTasks = registerIosAppleDistributionTasks(expectedSwiftTestCount)
+val appleDistributionTasks = registerIosAppleDistributionTasks(expectedSwiftTestCount, pinnedRustToolchain)
 val appleReleaseTasks = registerIosAppleReleaseVerificationTasks(
     appleDistributionTasks,
     minimumIosVersion,

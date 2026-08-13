@@ -85,7 +85,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
-          components: llvm-tools-preview
+          components: llvm-tools-preview,rust-src
       - name: Resolve isolated candidate paths
         id: paths
         run: |

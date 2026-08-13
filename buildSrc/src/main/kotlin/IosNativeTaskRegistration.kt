@@ -1,4 +1,5 @@
 import org.gradle.api.Project
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.kotlin.dsl.register
 
@@ -12,6 +13,7 @@ data class IosNativeTaskConfiguration(
     val expectedSqliteSourceSha256: String,
     val expectedPatchedSqliteSourceSha256: String,
     val pinnedRustToolchain: String,
+    val pinnedRustSrcComponent: String,
     val rustLibrary: String,
     val minimumIosVersion: String,
     val pinnedSqliteArchiveSha256: String,
@@ -19,6 +21,7 @@ data class IosNativeTaskConfiguration(
     val pinnedReleaseLto: String,
     val pinnedReleaseCodegenUnits: String,
     val pinnedReleaseRustFlags: String,
+    val pinnedReleaseRustPathRemapPolicy: Map<String, String>,
 )
 
 data class IosNativeTasks(
@@ -29,7 +32,32 @@ data class IosNativeTasks(
 )
 
 fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): IosNativeTasks {
+    check(configuration.pinnedRustSrcComponent == "required") {
+        "iOS release builds require the pinned Rust rust-src component"
+    }
+    val requiredRemapPolicy = setOf(
+        "releaseRustFlagsTransport",
+        "releaseRustPathRemapOrder",
+        "releaseRustBuilderHomePrefix",
+        "releaseRustCargoHomePrefix",
+        "releaseRustSysrootPrefix",
+        "releaseRustProjectRootPrefix",
+        "releaseRustPreparedSourcePrefix",
+    )
+    check(configuration.pinnedReleaseRustPathRemapPolicy.keys == requiredRemapPolicy) {
+        "iOS release Rust path-remap policy must contain exactly $requiredRemapPolicy"
+    }
+    check(
+        configuration.pinnedReleaseRustPathRemapPolicy.getValue("releaseRustFlagsTransport") ==
+            "CARGO_ENCODED_RUSTFLAGS",
+    ) { "iOS release Rust flags must use CARGO_ENCODED_RUSTFLAGS" }
+    check(
+        configuration.pinnedReleaseRustPathRemapPolicy.getValue("releaseRustPathRemapOrder") ==
+            "builderHome,cargoHome,rustSysroot,projectRoot,preparedCodexSource",
+    ) { "iOS release Rust path-remap order is invalid" }
     val provenanceRecordFile = layout.projectDirectory.file("native/provenance.json")
+    val rustSysroot = iosRustSysroot(configuration.pinnedRustToolchain)
+    val rustSrcManifestFile = layout.file(rustSysroot.map(::requiredRustSrcManifest))
     val adapterPatchFile = layout.projectDirectory.file("native/patches/0001-uninitialized-in-process-host.patch")
     val lockPatchFile = layout.projectDirectory.file("native/patches/0002-locked-ios-bridge.patch")
     val sqliteWorkspacePatchFile = layout.projectDirectory.file("native/patches/0003-pinned-ios-sqlite.patch")
@@ -84,6 +112,8 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
         cargoLockSha256.set(configuration.codexCargoLockSha256)
         preparedCargoLockSha256.set(configuration.resolvedCargoLockSha256)
         rustToolchain.set(configuration.pinnedRustToolchain)
+        rustSrcComponent.set(configuration.pinnedRustSrcComponent)
+        rustSrcManifest.set(rustSrcManifestFile)
         sqliteVersion.set(configuration.libsqlite3SysVersion)
         sqliteArchiveSha256.set(configuration.libsqlite3SysArchiveSha256)
         sqliteSourceSha256.set(configuration.expectedSqliteSourceSha256)
@@ -91,6 +121,7 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
         releaseLto.set(configuration.pinnedReleaseLto)
         releaseCodegenUnits.set(configuration.pinnedReleaseCodegenUnits)
         releaseRustFlags.set(configuration.pinnedReleaseRustFlags)
+        releaseRustPathRemapPolicy.putAll(configuration.pinnedReleaseRustPathRemapPolicy)
         minimumIosVersion.set(configuration.minimumIosVersion)
         this.releaseDebug.set(releaseDebug)
         this.releaseStrip.set(releaseStrip)
@@ -116,6 +147,10 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
     }
 
     val codexRustRoot = layout.buildDirectory.dir("codex-source/codex-rs")
+    val releaseAbsolutePathPrefixes = iosReleaseAbsolutePathPrefixes(rustSysroot)
+    val releaseRustPathRemappings = releaseAbsolutePathPrefixes.map { prefixes ->
+        remapIosReleasePaths(prefixes, configuration.pinnedReleaseRustPathRemapPolicy)
+    }
 
     tasks.matching { it.name in setOf("commonizeCInterop", "compileIosMainKotlinMetadata") }.configureEach {
         notCompatibleWithConfigurationCache("Kotlin/Native commonization accesses project state at execution time")
@@ -140,6 +175,7 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
                 "cargoLockSha256" to configuration.codexCargoLockSha256,
                 "preparedCargoLockSha256" to configuration.resolvedCargoLockSha256,
                 "rustToolchain" to configuration.pinnedRustToolchain,
+                "rustSrcComponent" to configuration.pinnedRustSrcComponent,
                 "sqliteVersion" to configuration.libsqlite3SysVersion,
                 "sqliteArchiveSha256" to configuration.pinnedSqliteArchiveSha256,
                 "sqliteArchiveBytes" to configuration.sqliteArchiveBytes.toString(),
@@ -152,7 +188,7 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
                 "releaseCodegenUnits" to configuration.pinnedReleaseCodegenUnits,
                 "releaseRustFlags" to configuration.pinnedReleaseRustFlags,
                 "sqliteCompileFlags" to sqliteCompileFlags,
-            ),
+            ) + configuration.pinnedReleaseRustPathRemapPolicy,
         )
     }
 
@@ -187,6 +223,8 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
         dependsOn(prepareCodexIosSource)
         trackNativeInputs()
         toolchain.set(configuration.pinnedRustToolchain)
+        rustSrcComponent.set(configuration.pinnedRustSrcComponent)
+        rustSrcManifest.set(rustSrcManifestFile)
         workingDirectory.set(codexRustRoot)
         cargoTargetDirectory.set(layout.buildDirectory.dir("rust"))
         cargoArguments.set(
@@ -197,9 +235,10 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
         extraEnvironment.put("CARGO_PROFILE_RELEASE_LTO", configuration.pinnedReleaseLto)
         extraEnvironment.put("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", configuration.pinnedReleaseCodegenUnits)
         extraEnvironment.put("IPHONEOS_DEPLOYMENT_TARGET", configuration.minimumIosVersion)
-        extraEnvironment.put(
-            "CARGO_TARGET_${target.uppercase().replace('-', '_')}_RUSTFLAGS",
-            configuration.pinnedReleaseRustFlags,
+        rustcArguments.set(listOf(configuration.pinnedReleaseRustFlags))
+        rustPathRemappings.set(releaseRustPathRemappings)
+        rustFlagsEnvironmentVariable.set(
+            configuration.pinnedReleaseRustPathRemapPolicy.getValue("releaseRustFlagsTransport"),
         )
         extraEnvironment.put("LIBSQLITE3_FLAGS", sqliteCompileFlags)
         outputs.file(layout.buildDirectory.file("rust/$target/release/${configuration.rustLibrary}"))
@@ -212,4 +251,41 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
         buildCodexIosSimulatorArm64Rust =
             registerRustBuild("buildCodexIosSimulatorArm64Rust", "aarch64-apple-ios-sim"),
     )
+}
+
+internal fun Project.iosRustSysroot(rustToolchain: String): Provider<String> = providers.exec {
+    commandLine("rustup", "run", rustToolchain, "rustc", "--print", "sysroot")
+}.standardOutput.asText.map { java.io.File(it.trim()).canonicalPath }
+
+internal fun requiredRustSrcManifest(rustSysroot: String): java.io.File =
+    java.io.File(rustSysroot, "lib/rustlib/src/rust/library/Cargo.toml").also {
+        check(it.isFile) { "Pinned Rust rust-src component is missing: ${it.path}" }
+    }
+
+internal fun Project.iosReleaseAbsolutePathPrefixes(rustToolchain: String): Provider<List<String>> =
+    iosReleaseAbsolutePathPrefixes(iosRustSysroot(rustToolchain))
+
+private fun Project.iosReleaseAbsolutePathPrefixes(rustSysroot: Provider<String>): Provider<List<String>> {
+    val builderHome = providers.systemProperty("user.home").map { java.io.File(it).canonicalPath }
+    val cargoHome = providers.environmentVariable("CARGO_HOME")
+        .orElse(providers.systemProperty("user.home").map { "$it/.cargo" })
+        .map { java.io.File(it).canonicalPath }
+    val projectRoot = rootProject.layout.projectDirectory.asFile.canonicalPath
+    val preparedSource = layout.buildDirectory.dir("codex-source/codex-rs").map { it.asFile.canonicalPath }
+    return builderHome.zip(cargoHome) { home, cargo -> listOf(home, cargo) }
+        .zip(rustSysroot) { prefixes, sysroot -> prefixes + sysroot }
+        .map { prefixes -> prefixes + projectRoot }
+        .zip(preparedSource) { prefixes, source -> prefixes + source }
+}
+
+internal fun remapIosReleasePaths(prefixes: List<String>, policy: Map<String, String>): List<String> {
+    val virtualPrefixKeys = listOf(
+        "releaseRustBuilderHomePrefix",
+        "releaseRustCargoHomePrefix",
+        "releaseRustSysrootPrefix",
+        "releaseRustProjectRootPrefix",
+        "releaseRustPreparedSourcePrefix",
+    )
+    check(prefixes.size == virtualPrefixKeys.size) { "iOS release path-remap roots are incomplete" }
+    return prefixes.zip(virtualPrefixKeys).map { (prefix, key) -> "$prefix=${policy.getValue(key)}" }
 }

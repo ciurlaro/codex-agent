@@ -149,7 +149,7 @@ class ReleaseWorkflowContractTest {
             val setup = job.indexOf("uses: dtolnay/rust-toolchain@1.95.0")
             assertTrue(setup >= 0 && setup < job.indexOf(privacyReachableTask), privacyReachableTask)
             assertTrue("targets: aarch64-apple-ios,aarch64-apple-ios-sim" in job, privacyReachableTask)
-            assertTrue("components: llvm-tools-preview" in job, privacyReachableTask)
+            assertTrue("components: llvm-tools-preview,rust-src" in job, privacyReachableTask)
         }
         assertEquals(1, Regex("(?m)^  apple-candidate:$").findAll(candidate).count())
         assertFalse("rustup toolchain install" in workflows.values.joinToString("\n"))

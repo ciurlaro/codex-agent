@@ -1,81 +1,17 @@
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
-import javax.inject.Inject
 import org.gradle.api.DefaultTask
-import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.InputFiles
-import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import org.gradle.process.ExecOperations
-
-abstract class PinnedCargoTask @Inject constructor(
-    private val exec: ExecOperations,
-) : DefaultTask() {
-    @get:Input
-    abstract val toolchain: Property<String>
-
-    @get:Input
-    abstract val cargoArguments: ListProperty<String>
-
-    @get:Input
-    abstract val extraEnvironment: MapProperty<String, String>
-
-    @get:InputDirectory
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val workingDirectory: DirectoryProperty
-
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val sourceInputs: ConfigurableFileCollection
-
-    @get:Input
-    abstract val provenanceValues: MapProperty<String, String>
-
-    @get:Internal
-    abstract val cargoTargetDirectory: DirectoryProperty
-
-    init {
-        extraEnvironment.convention(emptyMap())
-        provenanceValues.convention(emptyMap())
-    }
-
-    @TaskAction
-    fun runCargo() {
-        val rustc = rustTool("rustc")
-        val rustdoc = rustTool("rustdoc")
-        exec.exec {
-            workingDir(workingDirectory)
-            commandLine("rustup", "run", toolchain.get(), "cargo", *cargoArguments.get().toTypedArray())
-            environment(extraEnvironment.get())
-            environment("CARGO_TARGET_DIR", cargoTargetDirectory.get().asFile.absolutePath)
-            environment("RUSTC", rustc)
-            environment("RUSTDOC", rustdoc)
-        }.assertNormalExitValue()
-    }
-
-    private fun rustTool(name: String): String {
-        val output = ByteArrayOutputStream()
-        exec.exec {
-            commandLine("rustup", "which", "--toolchain", toolchain.get(), name)
-            standardOutput = output
-        }.assertNormalExitValue()
-        return output.toString().trim().also { path ->
-            check(File(path).isFile) { "Pinned Rust tool is missing: $name" }
-        }
-    }
-}
 
 @CacheableTask
 abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
@@ -135,6 +71,13 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
     abstract val rustToolchain: Property<String>
 
     @get:Input
+    abstract val rustSrcComponent: Property<String>
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val rustSrcManifest: RegularFileProperty
+
+    @get:Input
     abstract val sqliteVersion: Property<String>
 
     @get:Input
@@ -154,6 +97,9 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
 
     @get:Input
     abstract val releaseRustFlags: Property<String>
+
+    @get:Input
+    abstract val releaseRustPathRemapPolicy: MapProperty<String, String>
 
     @get:Input
     abstract val minimumIosVersion: Property<String>
@@ -186,6 +132,8 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
             "Codex iOS prepared Cargo.lock provenance mismatch"
         }
         check(value("rustToolchain") == rustToolchain.get()) { "Codex iOS Rust toolchain provenance mismatch" }
+        check(value("rustSrcComponent") == rustSrcComponent.get()) { "Codex iOS rust-src provenance mismatch" }
+        check(rustSrcManifest.get().asFile.isFile) { "Pinned Rust rust-src component is missing" }
         check(value("libsqlite3SysVersion") == sqliteVersion.get()) {
             "Codex iOS libsqlite3-sys version provenance mismatch"
         }
@@ -203,6 +151,9 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
             "Codex iOS release codegen-units provenance mismatch"
         }
         check(value("releaseRustFlags") == releaseRustFlags.get()) { "Codex iOS release Rust flags provenance mismatch" }
+        releaseRustPathRemapPolicy.get().forEach { (key, expected) ->
+            check(value(key) == expected) { "Codex iOS $key provenance mismatch" }
+        }
         check(value("minimumIosVersion") == minimumIosVersion.get()) {
             "Codex iOS deployment target provenance mismatch"
         }
