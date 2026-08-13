@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   workflow-lint:
     runs-on: ubuntu-24.04
@@ -31,7 +35,105 @@ jobs:
       - run: ./gradlew -p buildSrc test --stacktrace
       - run: ./gradlew verifyRepository --stacktrace
 
+  ios-device-slice:
+    needs: [workflow-lint, android-jvm]
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Restore pinned Cargo downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: >-
+            ${{ runner.os }}-rust-1.95.0-ios-downloads-${{
+            hashFiles('codex-agent-runtime-ios/native/provenance.json',
+            'codex-agent-runtime-ios/native/bridge/Cargo.lock',
+            'codex-agent-runtime-ios/native/patches/**',
+            'codex-agent-runtime-ios/native/sqlite/**') }}
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-ios
+          components: llvm-tools-preview,rust-src
+      - name: Build the exact device native slice once
+        run: >-
+          ./gradlew
+          :codex-agent-runtime-ios:verifyAppleToolchain
+          :codex-agent-runtime-ios:exportCodexAgentIosArm64RustSlice
+          -PcodexAgent.candidateCommit=${{ github.sha }}
+          --no-parallel --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-agent-ci-ios-arm64-${{ github.sha }}
+          path: |
+            codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-arm64.a
+            codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-arm64-proof.json
+            codex-agent-runtime-ios/build/apple-slice-exports/native-tests-proof.json
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 30
+
+  ios-simulator-slice:
+    needs: [workflow-lint, android-jvm]
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Restore pinned Cargo downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: >-
+            ${{ runner.os }}-rust-1.95.0-ios-downloads-${{
+            hashFiles('codex-agent-runtime-ios/native/provenance.json',
+            'codex-agent-runtime-ios/native/bridge/Cargo.lock',
+            'codex-agent-runtime-ios/native/patches/**',
+            'codex-agent-runtime-ios/native/sqlite/**') }}
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-apple-ios-sim
+          components: llvm-tools-preview,rust-src
+      - name: Build the exact simulator native slice once
+        run: >-
+          ./gradlew
+          :codex-agent-runtime-ios:verifyAppleToolchain
+          :codex-agent-runtime-ios:exportCodexAgentIosSimulatorArm64RustSlice
+          -PcodexAgent.candidateCommit=${{ github.sha }}
+          --no-parallel --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-agent-ci-ios-simulator-arm64-${{ github.sha }}
+          path: |
+            codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-simulator-arm64.a
+            codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-simulator-arm64-proof.json
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 30
+
   ios:
+    needs: [ios-device-slice, ios-simulator-slice]
     runs-on: macos-26
     timeout-minutes: 240
     env:
@@ -43,13 +145,25 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :codex-agent-runtime-ios:verifyAppleToolchain --stacktrace
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
           components: llvm-tools-preview,rust-src
-      - run: ./gradlew verifyIosRuntime --stacktrace
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-agent-ci-ios-arm64-${{ github.sha }}
+          path: build/ios-native-evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-agent-ci-ios-simulator-arm64-${{ github.sha }}
+          path: build/ios-native-evidence
+      - name: Verify iOS from the exact imported native slices
+        run: >-
+          ./gradlew verifyIosRuntime
+          -PcodexAgent.candidateCommit=${{ github.sha }}
+          "-PcodexAgent.iosNativeEvidenceDirectory=$GITHUB_WORKSPACE/build/ios-native-evidence"
+          --no-parallel --no-daemon --stacktrace
       - name: Upload iOS verification evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -60,3 +174,4 @@ jobs:
             codex-agent-runtime-ios/build/reports/ios-release/**
             codex-agent-runtime-ios/build/swift-authentication-tests.xcresult
             codex-agent-runtime-ios/build/swift-authentication-tests-summary.json
+          retention-days: 30

@@ -67,6 +67,7 @@ tasks.register<VerifyPublicationReadinessTask>("verifyPublicationReadiness") {
     desktopBundledNotice.set(desktopBundledNoticeFile)
 }
 val desktopEvidenceDirectory = providers.gradleProperty("codexAgent.desktopEvidenceDirectory")
+val iosNativeEvidenceDirectoryPath = providers.gradleProperty("codexAgent.iosNativeEvidenceDirectory")
 val desktopEvidenceFiles = objects.fileCollection().apply {
     desktopRuntimeEvidenceTargets.keys.forEach { target ->
         from(desktopEvidenceDirectory.map { directory -> file("$directory/${desktopRuntimeEvidenceFileName(target)}") })
@@ -79,6 +80,7 @@ val prepareProtectedCandidate = tasks.register<PrepareProtectedCandidateTask>("p
     candidateCommit.set(candidateCommitValue)
     parallelExecution.set(gradle.startParameter.isParallelProjectExecutionEnabled)
     desktopEvidence.from(desktopEvidenceFiles)
+    iosNativeEvidenceDirectory.set(layout.dir(iosNativeEvidenceDirectoryPath.map(::file)))
     repositoryDirectory.set(layout.projectDirectory)
     candidateDirectory.set(candidateRoot)
 }
@@ -139,6 +141,14 @@ val swiftArchiveName = "CodexAgent-${project.version}.xcframework.zip"
 val stagedSwiftZip = candidateArtifacts.map { it.file(swiftArchiveName) }
 val stagedSwiftChecksum = candidateArtifacts.map { it.file("$swiftArchiveName.sha256") }
 val stagedSwiftPmProof = candidateEvidence.map { it.file("swiftpm-proof.json") }
+val stagedIosNativeEvidence = candidateEvidence.map { it.file("ios-native-evidence.json") }
+val stageIosNativeEvidence = tasks.register<CopyCandidateFileTask>("stageProtectedIosNativeEvidence") {
+    dependsOn(":codex-agent-runtime-ios:validateImportedCodexAgentIosNativeEvidence")
+    sourceFile.set(layout.projectDirectory.file(
+        "codex-agent-runtime-ios/build/imported-rust/ios-native-evidence.json",
+    ))
+    outputFile.set(stagedIosNativeEvidence)
+}
 val stageSwiftZip = tasks.register<CopyCandidateFileTask>("stageProtectedSwiftPackage") {
     sourceFile.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/distributions/$swiftArchiveName"))
     outputFile.set(stagedSwiftZip)
@@ -179,6 +189,7 @@ val generateCandidateManifest = tasks.register<GenerateCandidateManifestTask>("g
     mavenInventory.set(mavenInventoryFile)
     kmpConsumer.set(cleanKmpConsumerResult)
     desktopEvidence.from(desktopEvidenceFiles)
+    iosNativeEvidence.set(stagedIosNativeEvidence)
     privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
     resourceReports.from(resourceEvidence)
     approvalsFile.set(publicationApprovals)
@@ -205,6 +216,7 @@ val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTas
     mavenInventory.set(mavenInventoryFile)
     kmpConsumer.set(cleanKmpConsumerResult)
     desktopEvidence.from(desktopEvidenceFiles)
+    iosNativeEvidence.set(stagedIosNativeEvidence)
     privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
     resourceReports.from(resourceEvidence)
     approvalsFile.set(publicationApprovals)

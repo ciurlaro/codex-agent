@@ -8,6 +8,10 @@ on:
         required: true
         default: v0.2.0
         type: string
+      ci_run_id:
+        description: Successful exact-commit CI run ID when more than one exists
+        required: false
+        type: string
   push:
     tags:
       - candidate/v*
@@ -61,8 +65,40 @@ jobs:
     with:
       candidateCommit: ${{ needs.portable-gates.outputs.candidate_commit }}
 
+  resolve-ios-evidence:
+    needs: portable-gates
+    runs-on: ubuntu-24.04
+    outputs:
+      ci_run_id: ${{ steps.ci.outputs.ci_run_id }}
+    steps:
+      - name: Resolve one successful exact-commit CI run
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_COMMIT: ${{ needs.portable-gates.outputs.candidate_commit }}
+          INPUT_CI_RUN_ID: ${{ inputs.ci_run_id }}
+        run: |
+          if [ -n "$INPUT_CI_RUN_ID" ]; then
+            ci_run_id="$INPUT_CI_RUN_ID"
+          else
+            matches=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=ci.yml \
+              --commit="$CANDIDATE_COMMIT" --status=success --limit=2 \
+              --json databaseId --jq 'length')
+            test "$matches" -ge 1
+            if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+              test "$matches" -eq 1
+            fi
+            ci_run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=ci.yml \
+              --commit="$CANDIDATE_COMMIT" --status=success --limit=1 \
+              --json databaseId --jq '.[0].databaseId')
+          fi
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ci_run_id" --jq .path)" = .github/workflows/ci.yml
+          test "$(gh run view "$ci_run_id" --repo "$GITHUB_REPOSITORY" --json headSha --jq .headSha)" = "$CANDIDATE_COMMIT"
+          test "$(gh run view "$ci_run_id" --repo "$GITHUB_REPOSITORY" --json conclusion --jq .conclusion)" = success
+          printf 'ci_run_id=%s\n' "$ci_run_id" >> "$GITHUB_OUTPUT"
+
   apple-candidate:
-    needs: [portable-gates, desktop-runtime-evidence]
+    needs: [portable-gates, desktop-runtime-evidence, resolve-ios-evidence]
     runs-on: macos-26
     timeout-minutes: 300
     environment: release-candidate
@@ -98,12 +134,25 @@ jobs:
           pattern: codex-agent-desktop-runtime-evidence-*
           path: ${{ steps.paths.outputs.desktop }}
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.resolve-ios-evidence.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          name: codex-agent-ci-ios-arm64-${{ needs.portable-gates.outputs.candidate_commit }}
+          path: build/ios-native-evidence
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.resolve-ios-evidence.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          name: codex-agent-ci-ios-simulator-arm64-${{ needs.portable-gates.outputs.candidate_commit }}
+          path: build/ios-native-evidence
       - name: Assemble the exact protected candidate once
         run: >-
           ./gradlew assembleProtectedCandidate
           -PcodexAgent.candidateCommit=${{ needs.portable-gates.outputs.candidate_commit }}
           -PcodexAgent.releaseTag=${{ needs.portable-gates.outputs.release_tag }}
           -PcodexAgent.desktopEvidenceDirectory=${{ steps.paths.outputs.desktop }}
+          "-PcodexAgent.iosNativeEvidenceDirectory=$GITHUB_WORKSPACE/build/ios-native-evidence"
           --no-parallel --no-daemon --stacktrace
       - name: Upload the exact technical candidate
         uses: actions/upload-artifact@v4

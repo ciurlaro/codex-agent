@@ -17,6 +17,7 @@ internal data class CandidateInputFiles(
     val mavenInventory: File,
     val kmpConsumer: File,
     val desktopEvidence: List<File>,
+    val iosNativeEvidence: File,
     val privacyAudit: File,
     val artifactMetrics: File,
     val resourceReports: List<File>,
@@ -73,6 +74,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         input.desktopDistributionManifest,
     )
     check(desktopErrors.isEmpty()) { "Desktop runtime evidence is invalid: ${desktopErrors.joinToString()}" }
+    verifyCandidateIosNativeEvidence(input.iosNativeEvidence, input.commit)
     verifyDesktopBundledGplApproval(
         input.approvals,
         input.desktopDistributionManifest,
@@ -88,6 +90,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         input.centralInventory,
         input.mavenInventory,
         input.kmpConsumer,
+        input.iosNativeEvidence,
         *input.desktopEvidence.toTypedArray(),
         input.privacyAudit,
         input.artifactMetrics,
@@ -97,7 +100,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     }
 
     val manifest = buildJsonObject {
-        put("schemaVersion", JsonPrimitive(5))
+        put("schemaVersion", JsonPrimitive(6))
         put("version", JsonPrimitive(input.version))
         put("releaseTag", JsonPrimitive(input.releaseTag))
         put("candidateCommit", JsonPrimitive(input.commit))
@@ -118,6 +121,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
             put("desktopRuntime", buildJsonArray {
                 input.desktopEvidence.sortedBy(File::getName).forEach { add(it.releaseRecord()) }
             })
+            put("iosNative", input.iosNativeEvidence.releaseRecord())
             put("privacyAudit", input.privacyAudit.releaseRecord())
             put("artifactMetrics", input.artifactMetrics.releaseRecord())
             put("resourceMeasurements", buildJsonArray {
@@ -145,7 +149,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     check(manifest.keys == setOf(
         "schemaVersion", "version", "releaseTag", "candidateCommit", "protectedCandidate", "artifacts", "evidence", "policies",
     )) { "Candidate manifest has unexpected top-level fields" }
-    check(manifest.releaseInt("schemaVersion") == 5) { "Candidate manifest schema must be 5" }
+    check(manifest.releaseInt("schemaVersion") == 6) { "Candidate manifest schema must be 6" }
     val version = manifest.releaseString("version")
     check(manifest.releaseString("releaseTag") == "v$version") { "Candidate release tag/version mismatch" }
     check(manifest.releaseString("candidateCommit").matches(Regex("[0-9a-f]{40}"))) {
@@ -164,7 +168,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     val evidence = manifest.releaseObject("evidence")
     val expectedEvidence = setOf(
         "swiftPmProof", "centralBundleInventory", "mavenInventory", "cleanKmpConsumer",
-        "desktopRuntime", "privacyAudit", "artifactMetrics", "resourceMeasurements",
+        "desktopRuntime", "iosNative", "privacyAudit", "artifactMetrics", "resourceMeasurements",
     )
     check(evidence.keys == expectedEvidence) { "Candidate evidence set is invalid" }
     expectedEvidence.minus(setOf("desktopRuntime", "resourceMeasurements"))
@@ -174,6 +178,9 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     }
     check(evidence.releaseObject("artifactMetrics").releaseString("fileName") == "artifact-metrics.json") {
         "Candidate artifact metrics file name is invalid"
+    }
+    check(evidence.releaseObject("iosNative").releaseString("fileName") == "ios-native-evidence.json") {
+        "Candidate iOS native evidence file name is invalid"
     }
     val resources = evidence.releaseArray("resourceMeasurements")
     check(resources.isNotEmpty()) { "Candidate resource evidence is missing" }

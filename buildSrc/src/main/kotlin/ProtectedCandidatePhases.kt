@@ -8,13 +8,14 @@ data class ProtectedCandidatePhases(val privacy: TaskProvider<Task>)
 
 internal val protectedCandidatePhaseGatePaths = listOf(
     listOf(
-        ":codex-agent-runtime-ios:preparePinnedCodexIosArchive", ":codex-agent-runtime-ios:preparePinnedSqliteArchive",
-        ":codex-agent-runtime-ios:verifyCodexIosProvenance", ":codex-agent-runtime-ios:prepareCodexIosSource",
-        ":codex-agent-runtime-ios:testCodexIosBridge", ":codex-agent-runtime-ios:testCodexIosDirectToolMode",
-        ":codex-agent-runtime-ios:buildCodexIosArm64Rust", ":codex-agent-runtime-ios:buildCodexIosSimulatorArm64Rust",
+        ":codex-agent-runtime-ios:verifyAppleToolchain",
+        ":codex-agent-runtime-ios:validateImportedCodexAgentIosNativeEvidence",
+        ":codex-agent-runtime-ios:prepareCodexAgentIosArm64RustSlice",
+        ":codex-agent-runtime-ios:prepareCodexAgentIosSimulatorArm64RustSlice",
+        ":stageProtectedIosNativeEvidence",
     ),
     listOf(
-        ":codex-agent-runtime-ios:verifyAppleToolchain", ":codex-agent-runtime-ios:compileKotlinIosArm64",
+        ":codex-agent-runtime-ios:compileKotlinIosArm64",
         ":codex-agent-runtime-ios:iosSimulatorArm64Test", ":codex-agent-runtime-ios:verifyCodexAgentSwiftPackage",
         ":codex-agent-runtime-ios:verifyCodexAgentSwiftAuthenticationTests",
     ),
@@ -55,6 +56,7 @@ fun Project.registerProtectedCandidatePhases(
             generated.flatMap { it.centralBundle }, generated.flatMap { it.centralInventory },
             generated.flatMap { it.mavenInventory }, generated.flatMap { it.kmpConsumer },
             generated.map { it.desktopEvidence.files },
+            generated.flatMap { it.iosNativeEvidence },
             generated.flatMap { it.privacyAudit }, generated.flatMap { it.artifactMetrics },
             generated.map { it.resourceReports }, generated.flatMap { it.approvalsFile },
             generated.flatMap { it.privacyManifest }, generated.flatMap { it.privacyDataFlowReview },
@@ -75,10 +77,14 @@ fun Project.registerProtectedCandidatePhases(
         dependsOn(payload)
     }
     gradle.projectsEvaluated {
-        fun task(path: String) = project(path.substringBeforeLast(':').ifBlank { ":" })
-            .tasks.named(path.substringAfterLast(':'))
         markers.zip(listOf(prepare) + markers.dropLast(1)).zip(protectedCandidatePhaseGatePaths)
-            .forEach { (phase, paths) -> wireProtectedCandidatePhase(phase.first, phase.second, paths.map(::task)) }
+            .forEach { (phase, paths) ->
+                phase.first.configure { dependsOn(phase.second); dependsOn(paths) }
+                paths.forEach { path ->
+                    val owner = project(path.substringBeforeLast(':').ifBlank { ":" })
+                    owner.tasks.findByName(path.substringAfterLast(':'))?.mustRunAfter(phase.second)
+                }
+            }
         wireProtectedCandidatePhase(payload, markers.last(), emptyList())
     }
     return ProtectedCandidatePhases(markers[3])

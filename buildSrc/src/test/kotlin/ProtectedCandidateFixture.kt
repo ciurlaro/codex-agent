@@ -21,6 +21,7 @@ internal class ProtectedCandidatePayloadFixture(
     val swiftChecksum = root.resolve("swift.sha256").apply { writeText(swiftZip.releaseDigest()) }
     val centralBundle = root.resolve("central.zip").apply { writeText("central") }
     val desktop = writeDesktopEvidence(root, commit, sha)
+    val iosNative = root.resolve("ios-native-evidence.json").also { writeTestCandidateIosNativeEvidence(it, commit) }
     val maven = root.resolve("maven.json").apply { atomicWriteJson(buildJsonObject {
         put("version", JsonPrimitive("0.2.0"))
         put("primaryArtifactCount", JsonPrimitive(expectedMavenPrimaryPaths("0.2.0").size))
@@ -70,7 +71,7 @@ internal class ProtectedCandidatePayloadFixture(
         version = "0.2.0", releaseTag = "v0.2.0", commit = commit,
         swiftZip = swiftZip, swiftChecksum = swiftChecksum, swiftPmProof = swiftPmProof,
         centralBundle = centralBundle, centralInventory = central, mavenInventory = maven,
-        kmpConsumer = consumer, desktopEvidence = desktop, privacyAudit = privacy,
+        kmpConsumer = consumer, desktopEvidence = desktop, iosNativeEvidence = iosNative, privacyAudit = privacy,
         artifactMetrics = artifactMetrics, resourceReports = listOf(resources), approvals = approvals,
         privacyManifest = privacyManifest, privacyDataFlowReview = dataFlow,
         privacyRequiredReasonReviews = reviews, packageSwift = packageSwift,
@@ -79,7 +80,7 @@ internal class ProtectedCandidatePayloadFixture(
     )
     val manifest = root.resolve("candidate-manifest.json").apply { atomicWriteJson(buildCandidateManifest(inputs)) }
     val sources = listOf(
-        swiftZip, swiftPmProof, centralBundle, central, maven, consumer, *desktop.toTypedArray(),
+        swiftZip, swiftPmProof, centralBundle, central, maven, consumer, *desktop.toTypedArray(), iosNative,
         privacy, artifactMetrics, resources, approvals, privacyManifest, dataFlow, packageSwift,
         desktopManifest, desktopLicense, desktopNotice,
     ) + listOfNotNull(reviews)
@@ -98,9 +99,10 @@ internal class PreflightFixture(candidateCommit: String, hash: String) : AutoClo
     val external = createTempDirectory("candidate-inputs").toFile()
     val candidate = repository.resolve("build/protected-candidate/$candidateCommit")
     val desktop = writeDesktopEvidence(external, candidateCommit, hash)
+    val iosNative = external.resolve("ios-native").apply { mkdirs() }
     val input = ProtectedCandidatePreflight(
         "0.2.0", "v0.2.0", candidateCommit, candidateCommit, "", false,
-        repository, candidate, desktop,
+        repository, candidate, desktop, iosNative,
     )
 
     override fun close() { repository.deleteRecursively(); external.deleteRecursively() }

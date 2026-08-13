@@ -39,6 +39,8 @@ class ReleaseWorkflowContractTest {
             "stageLinuxArm64DesktopEvidenceBundle",
             "executeLinuxArm64DesktopEvidenceBundle",
             ":codex-agent-runtime-ios:verifyAppleToolchain",
+            ":codex-agent-runtime-ios:exportCodexAgentIosArm64RustSlice",
+            ":codex-agent-runtime-ios:exportCodexAgentIosSimulatorArm64RustSlice",
             ":codex-agent-runtime-android:recordAndroidRuntimeEvidence",
             ":codex-agent-runtime-desktop:",
             ":codex-agent-runtime-desktop:linkDebugTestLinuxArm64",
@@ -60,7 +62,84 @@ class ReleaseWorkflowContractTest {
         assertFalse("swiftpm-baseline" in candidate)
         assertFalse("swiftPmBaselineProof" in candidate)
         assertFalse("commit_a" in candidate || "commit_b" in candidate)
+        assertTrue("-PcodexAgent.iosNativeEvidenceDirectory=" in candidate)
         assertTrue(candidate.indexOf("Upload the exact technical candidate") < candidate.indexOf("Require external publication approvals"))
+    }
+
+    @Test
+    fun `iOS native slices run independently before one imported aggregate`() {
+        val ci = workflows.getValue("ci.yml")
+        val candidate = workflows.getValue("release-candidate.yml")
+        assertTrue("group: ci-${'$'}{{ github.workflow }}-${'$'}{{ github.event.pull_request.number || github.ref }}" in ci)
+        assertTrue("cancel-in-progress: true" in ci)
+        assertTrue("cancel-in-progress: false" in candidate)
+
+        fun section(workflow: String, job: String, next: String) =
+            workflow.substringAfter("\n  $job:").substringBefore("\n  $next:")
+        val ciDevice = section(ci, "ios-device-slice", "ios-simulator-slice")
+        val ciSimulator = section(ci, "ios-simulator-slice", "ios")
+        val ciAggregate = ci.substringAfter("\n  ios:")
+        val candidateAggregate = candidate.substringAfter("\n  apple-candidate:")
+
+        listOf(ciDevice, ciSimulator).forEach {
+            assertTrue("needs: [workflow-lint, android-jvm]" in it)
+            assertTrue("uses: actions/cache@v4" in it)
+            assertTrue("~/.cargo/registry" in it && "~/.cargo/git" in it)
+            assertTrue("native/provenance.json" in it && "native/patches/**" in it)
+            assertFalse("build/rust" in it.substringAfter("Restore pinned Cargo downloads").substringBefore("Install pinned Rust toolchain"))
+        }
+        assertTrue("needs: [ios-device-slice, ios-simulator-slice]" in ciAggregate)
+        assertTrue("resolve-ios-evidence" in candidateAggregate)
+
+        listOf(ciDevice).forEach {
+            assertTrue("exportCodexAgentIosArm64RustSlice" in it)
+            assertTrue("build/apple-slice-exports/" in it)
+            assertTrue("codex-agent-ios-arm64.a" in it)
+            assertTrue("codex-agent-ios-arm64-proof.json" in it)
+            assertTrue("native-tests-proof.json" in it)
+        }
+        listOf(ciSimulator).forEach {
+            assertTrue("exportCodexAgentIosSimulatorArm64RustSlice" in it)
+            assertTrue("build/apple-slice-exports/" in it)
+            assertTrue("codex-agent-ios-simulator-arm64.a" in it)
+            assertTrue("codex-agent-ios-simulator-arm64-proof.json" in it)
+            assertFalse("native-tests-proof.json" in it)
+        }
+        listOf(ciDevice, ciSimulator).forEach {
+            assertTrue("if-no-files-found: error" in it)
+            assertTrue("compression-level: 0" in it)
+            assertTrue("retention-days: 30" in it)
+        }
+        listOf(ciAggregate, candidateAggregate).forEach {
+            assertTrue("-PcodexAgent.iosNativeEvidenceDirectory=" in it)
+            assertFalse("exportCodexAgentIosArm64RustSlice" in it)
+            assertFalse("exportCodexAgentIosSimulatorArm64RustSlice" in it)
+            assertFalse("./gradlew clean" in it)
+        }
+        assertTrue("./gradlew verifyIosRuntime" in ciAggregate)
+        assertTrue("./gradlew assembleProtectedCandidate" in candidateAggregate)
+        assertEquals(1, Regex("exportCodexAgentIosArm64RustSlice").findAll(ci + candidate).count())
+        assertEquals(1, Regex("exportCodexAgentIosSimulatorArm64RustSlice").findAll(ci + candidate).count())
+        assertFalse("exportCodexAgentIosArm64RustSlice" in candidate)
+        assertFalse("exportCodexAgentIosSimulatorArm64RustSlice" in candidate)
+        assertTrue("run-id: ${'$'}{{ needs.resolve-ios-evidence.outputs.ci_run_id }}" in candidateAggregate)
+        assertTrue("name: codex-agent-ci-ios-arm64-${'$'}{{ needs.portable-gates.outputs.candidate_commit }}" in candidateAggregate)
+        assertTrue("name: codex-agent-ci-ios-simulator-arm64-${'$'}{{ needs.portable-gates.outputs.candidate_commit }}" in candidateAggregate)
+    }
+
+    @Test
+    fun `candidate resolves a successful exact-commit CI run without rebuilding native slices`() {
+        val candidate = workflows.getValue("release-candidate.yml")
+        val resolver = candidate.substringAfter("\n  resolve-ios-evidence:").substringBefore("\n  apple-candidate:")
+        assertTrue("ci_run_id:" in candidate.substringBefore("\npermissions:"))
+        assertTrue("gh run list" in resolver && "--workflow=ci.yml" in resolver)
+        assertTrue("--commit=\"\$CANDIDATE_COMMIT\"" in resolver)
+        assertTrue("--status=success" in resolver)
+        assertTrue("test \"\$matches\" -ge 1" in resolver)
+        assertTrue("test \"\$matches\" -eq 1" in resolver)
+        assertTrue("actions/runs/\$ci_run_id" in resolver && "--jq .path" in resolver)
+        assertTrue(".github/workflows/ci.yml" in resolver && "headSha" in resolver && "conclusion" in resolver)
+        assertTrue("ci_run_id=%s" in resolver)
     }
 
     @Test
@@ -136,11 +215,16 @@ class ReleaseWorkflowContractTest {
 
     @Test
     fun `privacy reachable Apple jobs install pinned LLVM tools`() {
-        val ciIos = workflows.getValue("ci.yml").substringAfter("\n  ios:")
+        val ci = workflows.getValue("ci.yml")
+        val ciIos = ci.substringAfter("\n  ios:")
         assertTrue("timeout-minutes: 240" in ciIos)
         val candidate = workflows.getValue("release-candidate.yml")
         val appleCandidate = candidate.substringAfter("\n  apple-candidate:")
         val jobs = listOf(
+            ci.substringAfter("\n  ios-device-slice:").substringBefore("\n  ios-simulator-slice:") to
+                "exportCodexAgentIosArm64RustSlice",
+            ci.substringAfter("\n  ios-simulator-slice:").substringBefore("\n  ios:") to
+                "exportCodexAgentIosSimulatorArm64RustSlice",
             ciIos to "./gradlew verifyIosRuntime",
             appleCandidate to "assembleProtectedCandidate",
         )
@@ -148,7 +232,7 @@ class ReleaseWorkflowContractTest {
         jobs.forEach { (job, privacyReachableTask) ->
             val setup = job.indexOf("uses: dtolnay/rust-toolchain@1.95.0")
             assertTrue(setup >= 0 && setup < job.indexOf(privacyReachableTask), privacyReachableTask)
-            assertTrue("targets: aarch64-apple-ios,aarch64-apple-ios-sim" in job, privacyReachableTask)
+            assertTrue("targets: aarch64-apple-ios" in job, privacyReachableTask)
             assertTrue("components: llvm-tools-preview,rust-src" in job, privacyReachableTask)
         }
         assertEquals(1, Regex("(?m)^  apple-candidate:$").findAll(candidate).count())

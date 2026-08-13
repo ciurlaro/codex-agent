@@ -87,7 +87,7 @@ internal class CentralFixture(directory: File, bundleBytes: ByteArray) {
             put("fileName", JsonPrimitive(fileName)); put("bytes", JsonPrimitive(1)); put("sha256", JsonPrimitive("0".repeat(64)))
         }
         candidate.atomicWriteJson(buildJsonObject {
-            put("schemaVersion", JsonPrimitive(5)); put("version", JsonPrimitive("0.2.0"))
+            put("schemaVersion", JsonPrimitive(6)); put("version", JsonPrimitive("0.2.0"))
             put("releaseTag", JsonPrimitive("v0.2.0")); put("candidateCommit", JsonPrimitive(CENTRAL_COMMIT))
             put("protectedCandidate", JsonPrimitive(true))
             put("artifacts", buildJsonObject {
@@ -103,6 +103,7 @@ internal class CentralFixture(directory: File, bundleBytes: ByteArray) {
                 put("desktopRuntime", buildJsonArray {
                     desktopRuntimeEvidenceTargets.keys.forEach { add(record(desktopRuntimeEvidenceFileName(it))) }
                 })
+                put("iosNative", record("ios-native-evidence.json"))
                 put("privacyAudit", record("privacy-audit.json")); put("artifactMetrics", record("artifact-metrics.json"))
                 put("resourceMeasurements", buildJsonArray { add(record("resource-measurement.json")) })
             })

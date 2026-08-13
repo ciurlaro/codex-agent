@@ -97,8 +97,10 @@ class ProtectedCandidateLifecycleTest {
         assertFalse(gates.any { it == ":clean" || it.endsWith(":clean") })
         assertFalse(gates.any { "AndroidRuntimeEvidence" in it })
         assertTrue(gates.containsAll(listOf(
-            ":codex-agent-runtime-ios:testCodexIosBridge",
-            ":codex-agent-runtime-ios:testCodexIosDirectToolMode",
+            ":codex-agent-runtime-ios:validateImportedCodexAgentIosNativeEvidence",
+            ":codex-agent-runtime-ios:prepareCodexAgentIosArm64RustSlice",
+            ":codex-agent-runtime-ios:prepareCodexAgentIosSimulatorArm64RustSlice",
+            ":stageProtectedIosNativeEvidence",
             ":codex-agent-runtime-ios:iosSimulatorArm64Test",
             ":codex-agent-runtime-ios:verifyCodexAgentSwiftAuthenticationTests",
             ":codex-agent-runtime-ios:recordCodexAgentSwiftPackageProof",
@@ -108,6 +110,9 @@ class ProtectedCandidateLifecycleTest {
             ":packageCentralBundle",
             ":verifyCandidateManifest",
         )))
+        assertFalse(gates.any { gate -> listOf(
+            "preparePinned", "prepareCodexIosSource", "testCodexIos", "buildCodexIos",
+        ).any(gate::contains) })
     }
 
     @Test

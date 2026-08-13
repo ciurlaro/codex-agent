@@ -34,6 +34,9 @@ internal class CandidateManifestFixture(
             )))
         }
     }
+    val iosNative = root.resolve("ios-native-evidence.json").apply {
+        writeTestCandidateIosNativeEvidence(this, commit)
+    }
     val mavenInventory = root.resolve("maven-inventory.json").apply { atomicWriteJson(buildJsonObject {
         put("version", JsonPrimitive(version))
         put("primaryArtifactCount", JsonPrimitive(expectedMavenPrimaryPaths(version).size))
@@ -79,7 +82,7 @@ internal class CandidateManifestFixture(
     val payload = root.resolve("payload").apply { mkdirs() }
     val inputs get() = CandidateInputFiles(
         version, "v$version", commit, swiftZip, swiftChecksum, swiftPmProof, centralBundle, centralInventory,
-        mavenInventory, consumer, desktop, privacyAudit, artifactMetrics, listOf(resources), approvals,
+        mavenInventory, consumer, desktop, iosNative, privacyAudit, artifactMetrics, listOf(resources), approvals,
         privacyManifest, privacyReview, requiredReasons.takeIf(File::isFile), packageSwift,
         desktopManifest, desktopLicense, desktopNotice,
     )
@@ -99,11 +102,30 @@ internal class CandidateManifestFixture(
     fun copyPayloadFiles() {
         listOf(
             swiftZip, swiftPmProof, centralBundle, centralInventory, mavenInventory, consumer,
-            *desktop.toTypedArray(), privacyAudit, artifactMetrics, resources,
+            *desktop.toTypedArray(), iosNative, privacyAudit, artifactMetrics, resources,
         ).plus(policyFiles.values).forEach { it.copyTo(payload.resolve(it.name), overwrite = true) }
     }
 
     private fun File.writePrivacyAudit(reviewHash: String?) = atomicWriteJson(buildJsonObject {
         put("passed", JsonPrimitive(true)); reviewHash?.let { put("reviewSha256", JsonPrimitive(it)) }
+    })
+}
+
+internal fun writeTestCandidateIosNativeEvidence(file: File, commit: String) {
+    file.atomicWriteJson(buildJsonObject {
+        put("schemaVersion", JsonPrimitive(1)); put("protocol", JsonPrimitive("codex-agent-ios-native-evidence-v1"))
+        put("result", JsonPrimitive("passed")); put("candidateCommit", JsonPrimitive(commit))
+        put("candidateTree", JsonPrimitive("d".repeat(40))); put("cleanCheckout", JsonPrimitive(true))
+        listOf(
+            "nativeInputsSha256", "nativeProvenanceSha256", "compilerSettingsSha256", "xcodeVersionSha256",
+            "swiftVersionSha256", "nativeTestsProofSha256",
+        ).forEach { put(it, JsonPrimitive("c".repeat(64))) }
+        put("rustToolchain", JsonPrimitive("1.95.0")); put("rustSrcComponent", JsonPrimitive("required"))
+        put("slices", buildJsonArray { appleRustSliceSpecs.forEach { spec -> add(buildJsonObject {
+            put("target", JsonPrimitive(spec.target)); put("archive", buildJsonObject {
+                put("fileName", JsonPrimitive(spec.archiveName)); put("bytes", JsonPrimitive(9))
+                put("sha256", JsonPrimitive("e".repeat(64)))
+            }); put("proofSha256", JsonPrimitive("f".repeat(64)))
+        }) } })
     })
 }

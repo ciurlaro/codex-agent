@@ -1,35 +1,6 @@
 import org.gradle.api.Project
 import org.gradle.api.provider.Provider
-import org.gradle.api.tasks.TaskProvider
 import org.gradle.kotlin.dsl.register
-
-data class IosNativeTaskConfiguration(
-    val codexRevision: String,
-    val codexArchiveSha256: String,
-    val codexCargoLockSha256: String,
-    val resolvedCargoLockSha256: String,
-    val libsqlite3SysVersion: String,
-    val libsqlite3SysArchiveSha256: String,
-    val expectedSqliteSourceSha256: String,
-    val expectedPatchedSqliteSourceSha256: String,
-    val pinnedRustToolchain: String,
-    val pinnedRustSrcComponent: String,
-    val rustLibrary: String,
-    val minimumIosVersion: String,
-    val pinnedSqliteArchiveSha256: String,
-    val sqliteArchiveBytes: Long,
-    val pinnedReleaseLto: String,
-    val pinnedReleaseCodegenUnits: String,
-    val pinnedReleaseRustFlags: String,
-    val pinnedReleaseRustPathRemapPolicy: Map<String, String>,
-)
-
-data class IosNativeTasks(
-    val testCodexIosBridge: TaskProvider<PinnedCargoTask>,
-    val testCodexIosDirectToolMode: TaskProvider<PinnedCargoTask>,
-    val buildCodexIosArm64Rust: TaskProvider<PinnedCargoTask>,
-    val buildCodexIosSimulatorArm64Rust: TaskProvider<PinnedCargoTask>,
-)
 
 fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): IosNativeTasks {
     check(configuration.pinnedRustSrcComponent == "required") {
@@ -244,12 +215,47 @@ fun Project.registerIosNativeTasks(configuration: IosNativeTaskConfiguration): I
         outputs.file(layout.buildDirectory.file("rust/$target/release/${configuration.rustLibrary}"))
     }
 
+    val buildCodexIosArm64Rust = registerRustBuild("buildCodexIosArm64Rust", IOS_DEVICE_RUST_TARGET)
+    val buildCodexIosSimulatorArm64Rust =
+        registerRustBuild("buildCodexIosSimulatorArm64Rust", IOS_SIMULATOR_RUST_TARGET)
+    val iosArm64RustArchive = layout.buildDirectory.file(
+        "rust/$IOS_DEVICE_RUST_TARGET/release/${configuration.rustLibrary}",
+    )
+    val iosSimulatorArm64RustArchive = layout.buildDirectory.file(
+        "rust/$IOS_SIMULATOR_RUST_TARGET/release/${configuration.rustLibrary}",
+    )
+    val importedEvidence = providers.gradleProperty("codexAgent.iosNativeEvidenceDirectory")
+        .map { rootProject.file(it) }.let(layout::dir).takeIf { it.isPresent }
+    val nativeEvidenceInputs = files(
+        adapterPatchFile, lockPatchFile, sqliteWorkspacePatchFile, sqliteSourcePatchFile,
+        bridgeDirectory, cHeaderFile, provenanceRecordFile,
+    )
+    val selected = registerAppleRustSliceReuse(AppleRustSliceRegistrationInputs(
+        providers.gradleProperty("codexAgent.candidateCommit"), importedEvidence, nativeEvidenceInputs,
+        providers.provider { provenanceRecordFile },
+        mapOf(
+            "rustToolchain" to configuration.pinnedRustToolchain,
+            "rustSrcComponent" to configuration.pinnedRustSrcComponent,
+            "minimumIosVersion" to configuration.minimumIosVersion,
+            "releaseLto" to configuration.pinnedReleaseLto,
+            "releaseCodegenUnits" to configuration.pinnedReleaseCodegenUnits,
+            "releaseRustFlags" to configuration.pinnedReleaseRustFlags,
+            "releaseDebug" to releaseDebug,
+            "releaseStrip" to releaseStrip,
+            "sqliteCompileFlags" to sqliteCompileFlags,
+        ) + configuration.pinnedReleaseRustPathRemapPolicy,
+        buildCodexIosArm64Rust, buildCodexIosSimulatorArm64Rust, testCodexIosBridge, testCodexIosDirectToolMode,
+        iosArm64RustArchive, iosSimulatorArm64RustArchive,
+    ))
     return IosNativeTasks(
         testCodexIosBridge = testCodexIosBridge,
         testCodexIosDirectToolMode = testCodexIosDirectToolMode,
-        buildCodexIosArm64Rust = registerRustBuild("buildCodexIosArm64Rust", "aarch64-apple-ios"),
-        buildCodexIosSimulatorArm64Rust =
-            registerRustBuild("buildCodexIosSimulatorArm64Rust", "aarch64-apple-ios-sim"),
+        buildCodexIosArm64Rust = buildCodexIosArm64Rust,
+        buildCodexIosSimulatorArm64Rust = buildCodexIosSimulatorArm64Rust,
+        iosArm64RustArchive = selected.deviceArchive,
+        iosSimulatorArm64RustArchive = selected.simulatorArchive,
+        prepareCodexAgentIosArm64RustSlice = selected.prepareDevice,
+        prepareCodexAgentIosSimulatorArm64RustSlice = selected.prepareSimulator,
     )
 }
 

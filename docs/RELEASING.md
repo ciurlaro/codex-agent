@@ -14,18 +14,27 @@ and documentation change.
    GitHub-hosted runners execute the real initialize/shutdown smoke on macOS
    Arm64/x64, Linux Arm64/x64, and Windows x64, and bind each report to the
    exact classifier ZIP.
-2. From a clean checkout of that commit, assemble the technical candidate once:
+2. The successful exact-commit CI run builds the device and simulator Rust
+   slices once in parallel after its fast gates. Each successful slice is
+   retained independently for retry. The release-candidate workflow resolves
+   that CI run, downloads its exact two artifacts, and rejects commit, status,
+   workflow, or evidence mismatches.
+3. From a clean checkout of the same commit, the Apple aggregate imports and
+   hash-verifies the exact five root files without rebuilding either slice, then
+   assembles the technical candidate once:
 
        DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
          ./gradlew assembleProtectedCandidate \
          -PcodexAgent.candidateCommit=<40-character-candidate-commit> \
          -PcodexAgent.releaseTag=v0.2.0 \
          -PcodexAgent.desktopEvidenceDirectory=<desktop-evidence-directory> \
+         -PcodexAgent.iosNativeEvidenceDirectory=<merged-native-evidence-directory> \
          --no-parallel
 
 The release-candidate environment supplies only Maven signing material. The
-task requires a clean checkout at the supplied commit and isolated external
-five-target desktop evidence. It runs the ordered native, iOS,
+task requires a clean checkout at the supplied commit, isolated external
+five-target desktop evidence, and the exact imported device/simulator native
+evidence. It runs the ordered native-import verification, iOS,
 Swift, privacy, Maven, clean-consumer, Central bundle, and candidate-manifest
 gates once without a Gradle clean. The canonical `swiftpm-proof.json` binds the
 commit and tree, clean checkout, exact ZIP and checksum file, committed

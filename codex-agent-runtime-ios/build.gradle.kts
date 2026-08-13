@@ -74,15 +74,16 @@ kotlin {
     val simulator = iosSimulatorArm64()
 
     listOf(device, simulator).forEach { target ->
-        val rustTarget = if (target == device) "aarch64-apple-ios" else "aarch64-apple-ios-sim"
-        val rustTask = if (target == device) nativeTasks.buildCodexIosArm64Rust else nativeTasks.buildCodexIosSimulatorArm64Rust
-        val rustArchive = layout.buildDirectory.file("rust/$rustTarget/release/$rustLibrary")
+        val rustTask = if (target == device) nativeTasks.prepareCodexAgentIosArm64RustSlice
+            else nativeTasks.prepareCodexAgentIosSimulatorArm64RustSlice
+        val rustArchive = if (target == device) nativeTasks.iosArm64RustArchive
+            else nativeTasks.iosSimulatorArm64RustArchive
         target.compilations.getByName("main").cinterops.create("codexAgentIos") {
             defFile(layout.projectDirectory.file("src/nativeInterop/cinterop/codex_agent_ios.def"))
             includeDirs(layout.projectDirectory.dir("native/include"))
             extraOpts(
                 "-libraryPath",
-                layout.buildDirectory.dir("rust/$rustTarget/release").get().asFile.absolutePath,
+                rustArchive.get().asFile.parentFile.absolutePath,
                 "-staticLibrary",
                 rustLibrary,
             )
@@ -190,10 +191,11 @@ val appleReleaseTasks = registerIosAppleReleaseVerificationTasks(
 tasks.register("verifyIosRuntime") {
     group = "verification"
     description = "Builds and tests the embedded iOS runtime and clean Swift Package consumer."
+    if (!providers.gradleProperty("codexAgent.iosNativeEvidenceDirectory").isPresent) {
+        dependsOn(nativeTasks.testCodexIosBridge, nativeTasks.testCodexIosDirectToolMode)
+    }
     dependsOn(
         verifyAppleToolchain,
-        nativeTasks.testCodexIosBridge,
-        nativeTasks.testCodexIosDirectToolMode,
         "compileKotlinIosArm64",
         "iosSimulatorArm64Test",
         appleDistributionTasks.packageCodexAgentAppleDistribution,

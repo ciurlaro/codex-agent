@@ -24,7 +24,7 @@ class CandidateManifestTasksTest {
         )
 
         assertEquals("passed", result.releaseString("result"))
-        assertEquals(5, manifest.releaseInt("schemaVersion"))
+        assertEquals(6, manifest.releaseInt("schemaVersion"))
         assertTrue(manifest.releaseBoolean("protectedCandidate"))
         assertEquals(
             fixture.swiftPmProof.name,
@@ -155,6 +155,19 @@ class CandidateManifestTasksTest {
         fixture.artifactMetrics.delete()
         val failure = assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
         assertTrue(failure.message.orEmpty().contains("Artifact metrics"))
+    }
+
+    @Test
+    fun `missing tampered and unsupported iOS native evidence fails generation`() = withFixture { fixture ->
+        val original = fixture.iosNative.readBytes()
+        fixture.iosNative.delete()
+        assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
+        fixture.iosNative.writeBytes(original)
+        fixture.iosNative.writeText(fixture.iosNative.readText().replace(COMMIT, "f".repeat(40)))
+        assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
+        fixture.iosNative.writeBytes(original)
+        fixture.iosNative.writeText(fixture.iosNative.readText().replace("\"schemaVersion\": 1", "\"schemaVersion\": 2"))
+        assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
     }
 
     @Test

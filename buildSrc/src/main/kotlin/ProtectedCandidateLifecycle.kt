@@ -31,6 +31,7 @@ internal data class ProtectedCandidatePreflight(
     val repository: File,
     val candidateDirectory: File,
     val desktopEvidence: List<File>,
+    val iosNativeEvidenceDirectory: File,
 )
 
 internal val protectedCandidateStatusArguments =
@@ -46,6 +47,7 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
     check(!input.parallel) { "assembleProtectedCandidate must be invoked with --no-parallel" }
     val desktopErrors = validateDesktopRuntimeEvidence(input.desktopEvidence, input.commit)
     check(desktopErrors.isEmpty()) { "Desktop runtime evidence is invalid: ${desktopErrors.joinToString()}" }
+    check(input.iosNativeEvidenceDirectory.isDirectory) { "iOS native evidence directory is required" }
 
     val repository = input.repository.canonicalFile
     val candidate = input.candidateDirectory.canonicalFile
@@ -57,6 +59,9 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
     }
     check(input.desktopEvidence.none { it.canonicalFile.toPath().startsWith(candidate.toPath()) }) {
         "Desktop evidence must be external to protected candidate output"
+    }
+    check(!input.iosNativeEvidenceDirectory.canonicalFile.toPath().startsWith(candidate.toPath())) {
+        "iOS native evidence must be external to protected candidate output"
     }
     listOf("artifacts", "evidence", "maven-repository", "clean-consumer", "reports")
         .forEach { candidate.resolve(it).mkdirs() }
@@ -71,6 +76,8 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
     @get:Input abstract val candidateCommit: Property<String>
     @get:Input abstract val parallelExecution: Property<Boolean>
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
+    @get:org.gradle.api.tasks.InputDirectory @get:PathSensitive(PathSensitivity.NONE)
+    abstract val iosNativeEvidenceDirectory: DirectoryProperty
     @get:Internal abstract val repositoryDirectory: DirectoryProperty
     @get:Internal abstract val candidateDirectory: DirectoryProperty
 
@@ -81,7 +88,7 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
         version.get(), releaseTag.get(), candidateCommit.get(), git("rev-parse", "HEAD^{commit}"),
         git(*protectedCandidateStatusArguments.toTypedArray()), parallelExecution.get(),
         repositoryDirectory.get().asFile, candidateDirectory.get().asFile,
-        desktopEvidence.files.sortedBy(File::getName),
+        desktopEvidence.files.sortedBy(File::getName), iosNativeEvidenceDirectory.get().asFile,
     ))
 
     private fun git(vararg arguments: String): String {
@@ -122,6 +129,7 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val kmpConsumer: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val iosNativeEvidence: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val resourceReports: ConfigurableFileCollection
@@ -147,6 +155,7 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
         centralInventory = centralInventory.get().asFile, mavenInventory = mavenInventory.get().asFile,
         kmpConsumer = kmpConsumer.get().asFile,
         desktopEvidence = desktopEvidence.files.sortedBy(File::getName),
+        iosNativeEvidence = iosNativeEvidence.get().asFile,
         privacyAudit = privacyAudit.get().asFile, artifactMetrics = artifactMetrics.get().asFile,
         resourceReports = resourceReports.files.sortedBy(File::getName),
         approvals = approvalsFile.get().asFile, privacyManifest = privacyManifest.get().asFile,

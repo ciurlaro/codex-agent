@@ -25,6 +25,7 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val kmpConsumer: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val iosNativeEvidence: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val resourceReports: ConfigurableFileCollection
@@ -53,6 +54,7 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
             mavenInventory.get().asFile,
             kmpConsumer.get().asFile,
             desktopEvidence.files.sortedBy { it.name },
+            iosNativeEvidence.get().asFile,
             privacyAudit.get().asFile,
             artifactMetrics.get().asFile,
             resourceReports.files.sortedBy { it.name },
