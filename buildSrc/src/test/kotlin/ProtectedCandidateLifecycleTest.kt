@@ -23,7 +23,7 @@ class ProtectedCandidateLifecycleTest {
                 setOf("artifacts", "evidence", "maven-repository", "clean-consumer", "reports"),
                 fixture.candidate.listFiles().orEmpty().map(File::getName).toSet(),
             )
-            assertTrue(fixture.evidence.isFile)
+            assertEquals(desktopRuntimeEvidenceTargets.size, fixture.desktop.size)
         } finally { fixture.close() }
     }
 
@@ -36,9 +36,6 @@ class ProtectedCandidateLifecycleTest {
                 protectedCandidateStatusArguments,
             )
             val sentinel = fixture.candidate.resolve("sentinel").apply { parentFile.mkdirs(); writeText("present") }
-            val wrongEvidence = fixture.external.resolve("wrong.json").also { writeAndroidEvidence(it, "c".repeat(40), sha) }
-            val nestedEvidence = fixture.candidate.resolve(ANDROID_EVIDENCE_FILE)
-                .also { it.parentFile.mkdirs(); fixture.evidence.copyTo(it, overwrite = true) }
             listOf(
                 fixture.input.copy(commit = "main"),
                 fixture.input.copy(releaseTag = "v0.2.1"),
@@ -47,8 +44,6 @@ class ProtectedCandidateLifecycleTest {
                 fixture.input.copy(trackedStatus = "?? src/new-source.kt"),
                 fixture.input.copy(trackedStatus = "?? release/new-config.json"),
                 fixture.input.copy(trackedStatus = "?? native/new.patch"),
-                fixture.input.copy(androidEvidence = wrongEvidence),
-                fixture.input.copy(androidEvidence = nestedEvidence),
             ).forEach { invalid ->
                 assertFailsWith<IllegalStateException> { prepareProtectedCandidateDirectory(invalid) }
                 assertTrue(sentinel.isFile)
@@ -100,6 +95,7 @@ class ProtectedCandidateLifecycleTest {
         assertEquals(8, protectedCandidatePhaseGatePaths.size)
         val gates = protectedCandidatePhaseGatePaths.flatten()
         assertFalse(gates.any { it == ":clean" || it.endsWith(":clean") })
+        assertFalse(gates.any { "AndroidRuntimeEvidence" in it })
         assertTrue(gates.containsAll(listOf(
             ":codex-agent-runtime-ios:testCodexIosBridge",
             ":codex-agent-runtime-ios:testCodexIosDirectToolMode",

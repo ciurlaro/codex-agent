@@ -24,7 +24,7 @@ class CandidateManifestTasksTest {
         )
 
         assertEquals("passed", result.releaseString("result"))
-        assertEquals(4, manifest.releaseInt("schemaVersion"))
+        assertEquals(5, manifest.releaseInt("schemaVersion"))
         assertTrue(manifest.releaseBoolean("protectedCandidate"))
         assertEquals(
             fixture.swiftPmProof.name,
@@ -172,13 +172,6 @@ class CandidateManifestTasksTest {
         fixture.swiftChecksum.writeText("0".repeat(64))
         val failure = assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
         assertTrue(failure.message.orEmpty().contains("SwiftPM checksum"))
-    }
-
-    @Test
-    fun `missing generated Android evidence fails generation`() = withFixture { fixture ->
-        fixture.android.delete()
-        val failure = assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
-        assertTrue(failure.message.orEmpty().contains("Android runtime evidence is required"))
     }
 
     @Test

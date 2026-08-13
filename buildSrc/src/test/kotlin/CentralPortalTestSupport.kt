@@ -87,7 +87,7 @@ internal class CentralFixture(directory: File, bundleBytes: ByteArray) {
             put("fileName", JsonPrimitive(fileName)); put("bytes", JsonPrimitive(1)); put("sha256", JsonPrimitive("0".repeat(64)))
         }
         candidate.atomicWriteJson(buildJsonObject {
-            put("schemaVersion", JsonPrimitive(4)); put("version", JsonPrimitive("0.2.0"))
+            put("schemaVersion", JsonPrimitive(5)); put("version", JsonPrimitive("0.2.0"))
             put("releaseTag", JsonPrimitive("v0.2.0")); put("candidateCommit", JsonPrimitive(CENTRAL_COMMIT))
             put("protectedCandidate", JsonPrimitive(true))
             put("artifacts", buildJsonObject {
@@ -100,7 +100,7 @@ internal class CentralFixture(directory: File, bundleBytes: ByteArray) {
             put("evidence", buildJsonObject {
                 put("swiftPmProof", record("swiftpm-proof.json")); put("centralBundleInventory", record("central-bundle.json"))
                 put("mavenInventory", record("maven-inventory.json")); put("cleanKmpConsumer", record("kmp-consumer.json"))
-                put("androidRuntime", record("android-evidence.json")); put("desktopRuntime", buildJsonArray {
+                put("desktopRuntime", buildJsonArray {
                     desktopRuntimeEvidenceTargets.keys.forEach { add(record(desktopRuntimeEvidenceFileName(it))) }
                 })
                 put("privacyAudit", record("privacy-audit.json")); put("artifactMetrics", record("artifact-metrics.json"))

@@ -10,32 +10,27 @@ The release candidate uses one immutable commit containing the final root
 Package.swift checksum and every implementation, build, test, workflow, policy,
 and documentation change.
 
-1. Run the Android Runtime Evidence workflow against that commit. Its protected
-   ARM64 runner executes recordAndroidRuntimeEvidence and records the exact
-   commit, command, device ABI/API, instrumentation APK, tested release AAR,
-   bundled runtime, test report, and hashes.
-2. Run the Desktop Runtime Evidence workflow against the same commit. Its five
+1. Run the Desktop Runtime Evidence workflow against that commit. Its five
    GitHub-hosted runners execute the real initialize/shutdown smoke on macOS
    Arm64/x64, Linux Arm64/x64, and Windows x64, and bind each report to the
    exact classifier ZIP.
-3. From a clean checkout of that commit, assemble the technical candidate once:
+2. From a clean checkout of that commit, assemble the technical candidate once:
 
        DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
          ./gradlew assembleProtectedCandidate \
          -PcodexAgent.candidateCommit=<40-character-candidate-commit> \
          -PcodexAgent.releaseTag=v0.2.0 \
-         -PcodexAgent.androidEvidenceFile=<android-evidence>/android-runtime-evidence.json \
          -PcodexAgent.desktopEvidenceDirectory=<desktop-evidence-directory> \
          --no-parallel
 
 The release-candidate environment supplies only Maven signing material. The
 task requires a clean checkout at the supplied commit and isolated external
-Android and five-target desktop evidence. It runs the ordered native, iOS,
+five-target desktop evidence. It runs the ordered native, iOS,
 Swift, privacy, Maven, clean-consumer, Central bundle, and candidate-manifest
 gates once without a Gradle clean. The canonical `swiftpm-proof.json` binds the
 commit and tree, clean checkout, exact ZIP and checksum file, committed
 Package.swift metadata, native provenance, and pinned Apple toolchain. The
-manifest and payload bind that proof, the runtime evidence, the exact SwiftPM
+manifest and payload bind that proof, the desktop runtime evidence, the exact SwiftPM
 ZIP, and the Central bundle under:
 
     build/protected-candidate/<candidate-commit>/payload/
@@ -51,6 +46,11 @@ task validates all 22 coordinates and 133 primary artifacts, signatures, Maven
 metadata, licence declarations, deterministic ZIP inventory, and the strict
 1,000,000,000-byte Portal limit before the canonical candidate manifest is
 generated and fully reverified.
+
+The standalone Android Runtime Evidence workflow remains available as an
+optional real-device diagnostic. It is not a protected-candidate or publication
+requirement. Android compilation, tests, lint, AAR publication, and clean KMP
+consumer verification remain mandatory and require no connected phone.
 
 Run the repository gates separately when developing the candidate:
 

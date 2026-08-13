@@ -16,7 +16,6 @@ internal data class CandidateInputFiles(
     val centralInventory: File,
     val mavenInventory: File,
     val kmpConsumer: File,
-    val androidEvidence: File,
     val desktopEvidence: List<File>,
     val privacyAudit: File,
     val artifactMetrics: File,
@@ -66,9 +65,6 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         "Artifact metrics are required"
     }
     input.artifactMetrics.readReleaseObject()
-    check(input.androidEvidence.isFile) { "Android runtime evidence is required" }
-    val androidErrors = validateAndroidEvidence(input.androidEvidence, input.commit)
-    check(androidErrors.isEmpty()) { "Android runtime evidence is invalid: ${androidErrors.joinToString()}" }
     val desktopErrors = validateDesktopRuntimeEvidence(
         input.desktopEvidence,
         input.commit,
@@ -92,7 +88,6 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         input.centralInventory,
         input.mavenInventory,
         input.kmpConsumer,
-        input.androidEvidence,
         *input.desktopEvidence.toTypedArray(),
         input.privacyAudit,
         input.artifactMetrics,
@@ -102,7 +97,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     }
 
     val manifest = buildJsonObject {
-        put("schemaVersion", JsonPrimitive(4))
+        put("schemaVersion", JsonPrimitive(5))
         put("version", JsonPrimitive(input.version))
         put("releaseTag", JsonPrimitive(input.releaseTag))
         put("candidateCommit", JsonPrimitive(input.commit))
@@ -120,7 +115,6 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
             put("centralBundleInventory", input.centralInventory.releaseRecord())
             put("mavenInventory", input.mavenInventory.releaseRecord())
             put("cleanKmpConsumer", input.kmpConsumer.releaseRecord())
-            put("androidRuntime", input.androidEvidence.releaseRecord())
             put("desktopRuntime", buildJsonArray {
                 input.desktopEvidence.sortedBy(File::getName).forEach { add(it.releaseRecord()) }
             })
@@ -151,7 +145,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     check(manifest.keys == setOf(
         "schemaVersion", "version", "releaseTag", "candidateCommit", "protectedCandidate", "artifacts", "evidence", "policies",
     )) { "Candidate manifest has unexpected top-level fields" }
-    check(manifest.releaseInt("schemaVersion") == 4) { "Candidate manifest schema must be 4" }
+    check(manifest.releaseInt("schemaVersion") == 5) { "Candidate manifest schema must be 5" }
     val version = manifest.releaseString("version")
     check(manifest.releaseString("releaseTag") == "v$version") { "Candidate release tag/version mismatch" }
     check(manifest.releaseString("candidateCommit").matches(Regex("[0-9a-f]{40}"))) {
@@ -169,7 +163,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
     verifyRecordShape(artifacts.releaseObject("centralBundle"))
     val evidence = manifest.releaseObject("evidence")
     val expectedEvidence = setOf(
-        "swiftPmProof", "centralBundleInventory", "mavenInventory", "cleanKmpConsumer", "androidRuntime",
+        "swiftPmProof", "centralBundleInventory", "mavenInventory", "cleanKmpConsumer",
         "desktopRuntime", "privacyAudit", "artifactMetrics", "resourceMeasurements",
     )
     check(evidence.keys == expectedEvidence) { "Candidate evidence set is invalid" }

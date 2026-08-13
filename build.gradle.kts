@@ -66,8 +66,6 @@ tasks.register<VerifyPublicationReadinessTask>("verifyPublicationReadiness") {
     desktopBundledLicense.set(desktopBundledLicenseFile)
     desktopBundledNotice.set(desktopBundledNoticeFile)
 }
-val androidEvidenceFile = layout.file(providers.gradleProperty("codexAgent.androidEvidenceFile").map(::file))
-val androidEvidenceDirectory = layout.dir(androidEvidenceFile.map { it.asFile.parentFile })
 val desktopEvidenceDirectory = providers.gradleProperty("codexAgent.desktopEvidenceDirectory")
 val desktopEvidenceFiles = objects.fileCollection().apply {
     desktopRuntimeEvidenceTargets.keys.forEach { target ->
@@ -80,7 +78,6 @@ val prepareProtectedCandidate = tasks.register<PrepareProtectedCandidateTask>("p
     releaseTag.set(candidateReleaseTag)
     candidateCommit.set(candidateCommitValue)
     parallelExecution.set(gradle.startParameter.isParallelProjectExecutionEnabled)
-    androidEvidence.set(androidEvidenceFile)
     desktopEvidence.from(desktopEvidenceFiles)
     repositoryDirectory.set(layout.projectDirectory)
     candidateDirectory.set(candidateRoot)
@@ -138,28 +135,6 @@ val packageCentralBundle = tasks.register<BuildCentralBundleTask>("packageCentra
     bundleFile.set(centralBundleFile)
     inventoryFile.set(centralBundleInventory)
 }
-val stagedAndroidDirectory = candidateEvidence.map { it.dir("android") }
-val stagedAndroidEvidence = stagedAndroidDirectory.map { it.file("android-runtime-evidence.json") }
-val stageAndroidEvidence = tasks.register<StageAndroidEvidenceTask>("stageAndroidRuntimeEvidence") {
-    evidenceFile.set(androidEvidenceFile)
-    evidenceDirectory.set(androidEvidenceDirectory)
-    outputDirectory.set(stagedAndroidDirectory)
-}
-val stagedAndroidAar = centralStagingDirectory.map {
-    it.file("io/github/ciurlaro/codex-agent-runtime-android/${project.version}/" +
-        "codex-agent-runtime-android-${project.version}.aar")
-}
-val androidEvidenceVerification = tasks.register<VerifyAndroidRuntimeEvidenceTask>("verifyAndroidRuntimeEvidence") {
-    dependsOn(verifyCentralStaging, stageAndroidEvidence)
-    expectedCommit.set(candidateCommitValue)
-    pinnedRuntimeSha256.set(providers.gradleProperty("codexAgent.codexBinarySha256"))
-    evidenceFile.set(stagedAndroidEvidence)
-    evidenceDirectory.set(stagedAndroidDirectory)
-    stagedAar.set(stagedAndroidAar)
-    apkanalyzerExecutable.set(layout.file(rootAndroidSdkDirectory.map { File(it, "cmdline-tools/latest/bin/apkanalyzer") }))
-    verificationFile.set(candidateReports.map { it.file("android-runtime-verification.json") })
-}
-
 val swiftArchiveName = "CodexAgent-${project.version}.xcframework.zip"
 val stagedSwiftZip = candidateArtifacts.map { it.file(swiftArchiveName) }
 val stagedSwiftChecksum = candidateArtifacts.map { it.file("$swiftArchiveName.sha256") }
@@ -203,7 +178,6 @@ val generateCandidateManifest = tasks.register<GenerateCandidateManifestTask>("g
     centralInventory.set(centralBundleInventory)
     mavenInventory.set(mavenInventoryFile)
     kmpConsumer.set(cleanKmpConsumerResult)
-    androidEvidence.set(stagedAndroidEvidence)
     desktopEvidence.from(desktopEvidenceFiles)
     privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
     resourceReports.from(resourceEvidence)
@@ -230,7 +204,6 @@ val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTas
     centralInventory.set(centralBundleInventory)
     mavenInventory.set(mavenInventoryFile)
     kmpConsumer.set(cleanKmpConsumerResult)
-    androidEvidence.set(stagedAndroidEvidence)
     desktopEvidence.from(desktopEvidenceFiles)
     privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
     resourceReports.from(resourceEvidence)

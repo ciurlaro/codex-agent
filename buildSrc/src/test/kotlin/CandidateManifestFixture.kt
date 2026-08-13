@@ -56,13 +56,6 @@ internal class CandidateManifestFixture(
         put("result", JsonPrimitive("passed")); put("version", JsonPrimitive(version))
         put("mavenInventorySha256", JsonPrimitive(mavenInventory.releaseDigest()))
     }) }
-    val android = root.resolve("android-evidence.json").apply {
-        atomicWriteJson(buildAndroidRuntimeEvidence(AndroidRuntimeEvidenceValues(
-            commit, "arm64-v8a", 35, "a".repeat(64), "b".repeat(64),
-            ANDROID_TEST_APPLICATION_ID, ANDROID_TEST_APPLICATION_ID,
-            "codex-agent-runtime-android-release.aar", "c".repeat(64), "d".repeat(64), "d".repeat(64),
-        )))
-    }
     val resources = root.resolve("resources.json").apply {
         atomicWriteJson(buildJsonObject { put("exitCode", JsonPrimitive(0)) })
     }
@@ -86,7 +79,7 @@ internal class CandidateManifestFixture(
     val payload = root.resolve("payload").apply { mkdirs() }
     val inputs get() = CandidateInputFiles(
         version, "v$version", commit, swiftZip, swiftChecksum, swiftPmProof, centralBundle, centralInventory,
-        mavenInventory, consumer, android, desktop, privacyAudit, artifactMetrics, listOf(resources), approvals,
+        mavenInventory, consumer, desktop, privacyAudit, artifactMetrics, listOf(resources), approvals,
         privacyManifest, privacyReview, requiredReasons.takeIf(File::isFile), packageSwift,
         desktopManifest, desktopLicense, desktopNotice,
     )
@@ -105,7 +98,7 @@ internal class CandidateManifestFixture(
 
     fun copyPayloadFiles() {
         listOf(
-            swiftZip, swiftPmProof, centralBundle, centralInventory, mavenInventory, consumer, android,
+            swiftZip, swiftPmProof, centralBundle, centralInventory, mavenInventory, consumer,
             *desktop.toTypedArray(), privacyAudit, artifactMetrics, resources,
         ).plus(policyFiles.values).forEach { it.copyTo(payload.resolve(it.name), overwrite = true) }
     }

@@ -42,7 +42,6 @@ internal class ProtectedCandidatePayloadFixture(
         put("result", JsonPrimitive("passed")); put("version", JsonPrimitive("0.2.0"))
         put("mavenInventorySha256", JsonPrimitive(maven.releaseDigest()))
     }) }
-    val android = root.resolve("android.json").also { writeAndroidEvidence(it, commit, sha) }
     val reviews = root.resolve("reviews.json").takeIf { includeReview }?.apply { writeText("reviews.json") }
     val privacy = root.resolve("privacy.json").apply { atomicWriteJson(buildJsonObject {
         put("passed", JsonPrimitive(true)); reviews?.let { put("reviewSha256", JsonPrimitive(it.releaseDigest())) }
@@ -71,7 +70,7 @@ internal class ProtectedCandidatePayloadFixture(
         version = "0.2.0", releaseTag = "v0.2.0", commit = commit,
         swiftZip = swiftZip, swiftChecksum = swiftChecksum, swiftPmProof = swiftPmProof,
         centralBundle = centralBundle, centralInventory = central, mavenInventory = maven,
-        kmpConsumer = consumer, androidEvidence = android, desktopEvidence = desktop, privacyAudit = privacy,
+        kmpConsumer = consumer, desktopEvidence = desktop, privacyAudit = privacy,
         artifactMetrics = artifactMetrics, resourceReports = listOf(resources), approvals = approvals,
         privacyManifest = privacyManifest, privacyDataFlowReview = dataFlow,
         privacyRequiredReasonReviews = reviews, packageSwift = packageSwift,
@@ -80,7 +79,7 @@ internal class ProtectedCandidatePayloadFixture(
     )
     val manifest = root.resolve("candidate-manifest.json").apply { atomicWriteJson(buildCandidateManifest(inputs)) }
     val sources = listOf(
-        swiftZip, swiftPmProof, centralBundle, central, maven, consumer, android, *desktop.toTypedArray(),
+        swiftZip, swiftPmProof, centralBundle, central, maven, consumer, *desktop.toTypedArray(),
         privacy, artifactMetrics, resources, approvals, privacyManifest, dataFlow, packageSwift,
         desktopManifest, desktopLicense, desktopNotice,
     ) + listOfNotNull(reviews)
@@ -98,11 +97,10 @@ internal class PreflightFixture(candidateCommit: String, hash: String) : AutoClo
     val repository = createTempDirectory("candidate-repository").toFile()
     val external = createTempDirectory("candidate-inputs").toFile()
     val candidate = repository.resolve("build/protected-candidate/$candidateCommit")
-    val evidence = external.resolve(ANDROID_EVIDENCE_FILE).also { writeAndroidEvidence(it, candidateCommit, hash) }
     val desktop = writeDesktopEvidence(external, candidateCommit, hash)
     val input = ProtectedCandidatePreflight(
         "0.2.0", "v0.2.0", candidateCommit, candidateCommit, "", false,
-        repository, candidate, evidence, desktop,
+        repository, candidate, desktop,
     )
 
     override fun close() { repository.deleteRecursively(); external.deleteRecursively() }
@@ -110,13 +108,6 @@ internal class PreflightFixture(candidateCommit: String, hash: String) : AutoClo
 
 private fun writeZip(file: File) = ZipOutputStream(file.outputStream()).use {
     it.putNextEntry(ZipEntry("member")); it.write("contents".encodeToByteArray()); it.closeEntry()
-}
-
-internal fun writeAndroidEvidence(file: File, candidate: String, hash: String) {
-    file.atomicWriteJson(buildAndroidRuntimeEvidence(AndroidRuntimeEvidenceValues(
-        candidate, "arm64-v8a", 35, hash, hash, ANDROID_TEST_APPLICATION_ID, ANDROID_TEST_APPLICATION_ID,
-        "codex-agent-runtime-android-release.aar", hash, hash, hash,
-    )))
 }
 
 private fun writeDesktopEvidence(directory: File, candidate: String, hash: String): List<File> =

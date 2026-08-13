@@ -50,12 +50,13 @@ class ReleaseWorkflowContractTest {
     }
 
     @Test
-    fun `candidate consumes one immutable commit and Android evidence before one assembly`() {
+    fun `candidate consumes one immutable commit and desktop evidence before one assembly`() {
         val candidate = workflows.getValue("release-candidate.yml")
-        assertTrue("name: codex-agent-android-runtime-evidence" in candidate)
         assertTrue("name: codex-agent-protected-candidate" in candidate)
         assertTrue("candidate_commit" in candidate)
         assertTrue("recordAndroidRuntimeEvidence" in workflows.getValue("android-runtime-evidence.yml"))
+        assertFalse("android-runtime-evidence" in candidate)
+        assertFalse("androidEvidenceFile" in candidate)
         assertFalse("swiftpm-baseline" in candidate)
         assertFalse("swiftPmBaselineProof" in candidate)
         assertFalse("commit_a" in candidate || "commit_b" in candidate)

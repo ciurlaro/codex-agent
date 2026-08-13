@@ -10,11 +10,9 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.PathSensitive
@@ -32,7 +30,6 @@ internal data class ProtectedCandidatePreflight(
     val parallel: Boolean,
     val repository: File,
     val candidateDirectory: File,
-    val androidEvidence: File,
     val desktopEvidence: List<File>,
 )
 
@@ -47,8 +44,6 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
         "Protected candidate requires a clean checkout, including non-ignored untracked files"
     }
     check(!input.parallel) { "assembleProtectedCandidate must be invoked with --no-parallel" }
-    val evidenceErrors = validateAndroidEvidence(input.androidEvidence, input.commit)
-    check(evidenceErrors.isEmpty()) { "Android runtime evidence is invalid: ${evidenceErrors.joinToString()}" }
     val desktopErrors = validateDesktopRuntimeEvidence(input.desktopEvidence, input.commit)
     check(desktopErrors.isEmpty()) { "Desktop runtime evidence is invalid: ${desktopErrors.joinToString()}" }
 
@@ -56,9 +51,6 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
     val candidate = input.candidateDirectory.canonicalFile
     check(candidate == repository.resolve("build/protected-candidate/${input.commit}").canonicalFile) {
         "Protected candidate output must use the commit-isolated build directory"
-    }
-    check(!input.androidEvidence.canonicalFile.toPath().startsWith(candidate.toPath())) {
-        "Android evidence must be external to protected candidate output"
     }
     check(!candidate.exists()) {
         "Protected candidate output already exists; refusing to clean or rebuild it: $candidate"
@@ -78,7 +70,6 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
     @get:Input abstract val releaseTag: Property<String>
     @get:Input abstract val candidateCommit: Property<String>
     @get:Input abstract val parallelExecution: Property<Boolean>
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val androidEvidence: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
     @get:Internal abstract val repositoryDirectory: DirectoryProperty
     @get:Internal abstract val candidateDirectory: DirectoryProperty
@@ -90,7 +81,6 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
         version.get(), releaseTag.get(), candidateCommit.get(), git("rev-parse", "HEAD^{commit}"),
         git(*protectedCandidateStatusArguments.toTypedArray()), parallelExecution.get(),
         repositoryDirectory.get().asFile, candidateDirectory.get().asFile,
-        androidEvidence.get().asFile,
         desktopEvidence.files.sortedBy(File::getName),
     ))
 
@@ -102,27 +92,6 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
             standardOutput = output
         }.assertNormalExitValue()
         return output.toString(Charsets.UTF_8).trim()
-    }
-}
-
-@CacheableTask
-abstract class StageAndroidEvidenceTask : DefaultTask() {
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val evidenceFile: RegularFileProperty
-    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val evidenceDirectory: DirectoryProperty
-    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
-
-    @TaskAction
-    fun stage() {
-        val source = evidenceDirectory.get().asFile
-        val output = outputDirectory.get().asFile.apply { deleteRecursively(); mkdirs() }
-        listOf(ANDROID_EVIDENCE_FILE, ANDROID_EVIDENCE_APK, ANDROID_EVIDENCE_REPORT).forEach { name ->
-            val file = safePayloadFile(source, name)
-            check(file.isFile) { "Android evidence payload is missing: $name" }
-            Files.copy(file.toPath(), output.resolve(name).toPath(), REPLACE_EXISTING)
-        }
-        check(evidenceFile.get().asFile.canonicalFile == source.resolve(ANDROID_EVIDENCE_FILE).canonicalFile) {
-            "Android evidence file must be the canonical schema-v2 payload"
-        }
     }
 }
 
@@ -152,7 +121,6 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val centralInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val kmpConsumer: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val androidEvidence: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
@@ -177,7 +145,7 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
         swiftZip = swiftZip.get().asFile, swiftChecksum = swiftChecksum.get().asFile,
         swiftPmProof = swiftPmProof.get().asFile, centralBundle = centralBundle.get().asFile,
         centralInventory = centralInventory.get().asFile, mavenInventory = mavenInventory.get().asFile,
-        kmpConsumer = kmpConsumer.get().asFile, androidEvidence = androidEvidence.get().asFile,
+        kmpConsumer = kmpConsumer.get().asFile,
         desktopEvidence = desktopEvidence.files.sortedBy(File::getName),
         privacyAudit = privacyAudit.get().asFile, artifactMetrics = artifactMetrics.get().asFile,
         resourceReports = resourceReports.files.sortedBy(File::getName),
