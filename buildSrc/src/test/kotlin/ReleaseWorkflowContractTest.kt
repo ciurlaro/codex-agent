@@ -136,6 +136,7 @@ class ReleaseWorkflowContractTest {
     @Test
     fun `privacy reachable Apple jobs install pinned LLVM tools`() {
         val ciIos = workflows.getValue("ci.yml").substringAfter("\n  ios:")
+        assertTrue("timeout-minutes: 240" in ciIos)
         val candidate = workflows.getValue("release-candidate.yml")
         val appleCandidate = candidate.substringAfter("\n  apple-candidate:")
         val jobs = listOf(

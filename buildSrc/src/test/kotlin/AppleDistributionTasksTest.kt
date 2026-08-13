@@ -1,7 +1,9 @@
 import java.io.File
 import kotlin.io.path.createTempDirectory
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
@@ -15,6 +17,23 @@ class AppleDistributionTasksTest {
             "iphone-17",
         )
         assertEquals(SimulatorSelection("runtime-1", "device-1", "Shutdown"), selection)
+        assertEquals(
+            SimulatorStatus(true, "Shutdown"),
+            simulatorStatus(
+                """{"devices":{"runtime-1":[{"isAvailable":true,"udid":"device-1","state":"Shutdown"}]}}""",
+                "runtime-1",
+                "device-1",
+            ),
+        )
+        assertEquals(
+            null,
+            simulatorStatus("""{"devices":{"runtime-1":[]}}""", "runtime-1", "device-1"),
+        )
+        val missing = """{"devices":{"runtime-1":[]}}"""
+        assertTrue(shouldRetryDisappearedSimulator(missing, "runtime-1", "device-1", 0))
+        assertTrue(shouldRetryDisappearedSimulator("""{"devices":{}}""", "runtime-1", "device-1", 0))
+        assertFalse(shouldRetryDisappearedSimulator(missing, "runtime-1", "device-1", 1))
+        assertFalse(shouldRetryDisappearedSimulator("invalid", "runtime-1", "device-1", 0))
         assertFailsWith<IllegalStateException> {
             selectSimulator(
                 """{"runtimes":[]}""",
@@ -45,6 +64,13 @@ class AppleDistributionTasksTest {
             ),
             libtoolNormalizeCommand(root.resolve("CodexAgent"), root.resolve("CodexAgent.normalized")),
         )
+        assertEquals(
+            listOf(
+                "/usr/bin/xcrun", "strip", "-S", "-x", "-o",
+                "/tmp/release args/CodexAgent.stripped", "/tmp/release args/CodexAgent",
+            ),
+            stripReleaseArchiveCommand(root.resolve("CodexAgent"), root.resolve("CodexAgent.stripped")),
+        )
         val xcodebuild = swiftAuthenticationXcodebuildCommand("device", root.resolve("derived"), root.resolve("tests.xcresult"))
         assertEquals("xcodebuild", xcodebuild.first())
         assertTrue("platform=iOS Simulator,id=device" in xcodebuild)
@@ -52,6 +78,39 @@ class AppleDistributionTasksTest {
             requireSuccessfulReleaseProcess(listOf("xcodebuild", "test"), 65, "", "tests failed")
         }
         assertTrue(failure.message.orEmpty().contains("tests failed"))
+    }
+
+    @Test
+    fun `release archive normalization removes checkout roots and preserves exported symbols`() = withRoot { root ->
+        if (!File("/usr/bin/xcrun").canExecute()) return@withRoot
+        fun run(command: List<String>) {
+            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            check(process.waitFor() == 0) { "${command.joinToString(" ")} failed: $output" }
+        }
+        fun normalized(name: String): File {
+            val directory = root.resolve(name).apply { mkdirs() }
+            val source = directory.resolve("source.c").apply {
+                writeText("int codex_export(void) { return 7; }")
+            }
+            val objectFile = directory.resolve("source.o")
+            val archive = directory.resolve("CodexAgent")
+            val stripped = directory.resolve("CodexAgent.stripped")
+            val normalized = directory.resolve("CodexAgent.normalized")
+            run(listOf("/usr/bin/xcrun", "clang", "-g", "-c", source.absolutePath, "-o", objectFile.absolutePath))
+            run(listOf("/usr/bin/xcrun", "libtool", "-static", "-D", objectFile.absolutePath, "-o", archive.absolutePath))
+            run(stripReleaseArchiveCommand(archive, stripped))
+            run(libtoolNormalizeCommand(stripped, normalized))
+            return normalized
+        }
+        val first = normalized("one")
+        val second = normalized("two")
+        assertTrue(Files.mismatch(first.toPath(), second.toPath()) == -1L)
+        val strings = ProcessBuilder("/usr/bin/strings", first.absolutePath).start().inputStream.bufferedReader().readText()
+        assertFalse(root.absolutePath in strings)
+        val symbols = ProcessBuilder("/usr/bin/xcrun", "nm", "-gU", first.absolutePath)
+            .start().inputStream.bufferedReader().readText()
+        assertTrue("_codex_export" in symbols)
     }
 
     @Test

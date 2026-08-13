@@ -96,6 +96,10 @@ internal fun libtoolNormalizeCommand(archive: File, normalized: File) = listOf(
     archive.absolutePath, "-o", normalized.absolutePath,
 )
 
+internal fun stripReleaseArchiveCommand(archive: File, stripped: File) = listOf(
+    "/usr/bin/xcrun", "strip", "-S", "-x", "-o", stripped.absolutePath, archive.absolutePath,
+)
+
 internal fun verifyPrivacyPlacement(xcframework: File, privacyManifest: File) {
     listOf("ios-arm64", "ios-arm64-simulator").forEach { slice ->
         val packaged = xcframework.resolve("$slice/CodexAgent.framework/PrivacyInfo.xcprivacy")
@@ -148,10 +152,18 @@ abstract class PrepareCodexAgentReleaseXCFrameworkTask @Inject constructor(
             val framework = release.resolve("$slice/CodexAgent.framework")
             copyReleaseFile(privacyManifest.get().asFile, framework.resolve("PrivacyInfo.xcprivacy"))
             val archive = framework.resolve("CodexAgent")
+            val stripped = framework.resolve("CodexAgent.stripped")
             val normalized = framework.resolve("CodexAgent.normalized")
+            Files.deleteIfExists(stripped.toPath())
             Files.deleteIfExists(normalized.toPath())
-            processes.captureReleaseProcess(libtoolNormalizeCommand(archive, normalized))
-            moveReleaseFile(normalized, archive)
+            try {
+                processes.captureReleaseProcess(stripReleaseArchiveCommand(archive, stripped))
+                processes.captureReleaseProcess(libtoolNormalizeCommand(stripped, normalized))
+                moveReleaseFile(normalized, archive)
+            } finally {
+                Files.deleteIfExists(stripped.toPath())
+                Files.deleteIfExists(normalized.toPath())
+            }
         }
         verifyPrivacyPlacement(release, privacyManifest.get().asFile)
         val infoPlist = release.resolve("Info.plist")
