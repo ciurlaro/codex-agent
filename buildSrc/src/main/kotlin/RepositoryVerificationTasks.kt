@@ -19,11 +19,14 @@ fun Project.registerRepositoryVerificationTasks() {
             ":codex-agent-runtime-android:testDebugUnitTest",
             ":codex-agent-runtime-android:lint",
             ":codex-agent-runtime-android:assembleRelease",
+            ":codex-agent-runtime-desktop:jvmTest",
             ":codex-agent-runtime-desktop:macosArm64Test",
             ":codex-agent-runtime-desktop:compileKotlinMacosX64",
             ":codex-agent-runtime-desktop:compileKotlinLinuxArm64",
             ":codex-agent-runtime-desktop:compileKotlinLinuxX64",
             ":codex-agent-runtime-desktop:compileKotlinMingwX64",
+            ":codex-agent-runtime-node:jsNodeTest",
+            ":codex-agent-runtime-node:wasmJsNodeTest",
             ":tooling:protocol-generator:test",
         )
     }

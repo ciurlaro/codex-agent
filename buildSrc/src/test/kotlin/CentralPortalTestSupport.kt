@@ -10,7 +10,11 @@ import kotlinx.serialization.json.buildJsonObject
 internal const val CENTRAL_API = "https://central.example/api/v1/publisher"
 internal const val CENTRAL_ID = "28570f16-da32-4c14-bd2e-c1acc0782365"
 internal const val CENTRAL_COMMIT = "0123456789abcdef0123456789abcdef01234567"
+internal const val CENTRAL_ANDROID_AAR_ENTRY =
+    "io/github/ciurlaro/codex-agent-runtime-android/0.2.0/codex-agent-runtime-android-0.2.0.aar"
+internal val CENTRAL_ANDROID_AAR_BYTES = centralZip(listOf(AAR_RUNTIME_ENTRY to FIXTURE_ANDROID_RUNTIME_BYTES))
 internal val CENTRAL_ENTRIES = linkedMapOf(
+    CENTRAL_ANDROID_AAR_ENTRY to CENTRAL_ANDROID_AAR_BYTES,
     "io/github/example/client/0.2.0/client-0.2.0.jar" to byteArrayOf(0, 1, 2, -1),
     "io/github/example/client/0.2.0/client-0.2.0.pom" to "<project/>".encodeToByteArray(),
 )
@@ -30,6 +34,7 @@ internal fun centralZip(entries: List<Pair<String, ByteArray>>): ByteArray = Byt
 }
 
 internal fun duplicateCentralZip(): ByteArray = centralZip(listOf(
+    CENTRAL_ANDROID_AAR_ENTRY to CENTRAL_ANDROID_AAR_BYTES,
     "a.txt" to "one".encodeToByteArray(), "b.txt" to "two".encodeToByteArray(),
 )).also { bytes ->
     val from = "b.txt".encodeToByteArray()

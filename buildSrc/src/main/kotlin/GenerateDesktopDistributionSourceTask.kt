@@ -29,15 +29,9 @@ abstract class GenerateDesktopDistributionSourceTask : DefaultTask() {
             val entry = value.jsonObject
             entry.getValue("target").jsonPrimitive.content to entry
         }
-        val expectedTargets = linkedMapOf(
-            "macosArm64" to "OsFamily.MACOSX to CpuArchitecture.ARM64",
-            "macosX64" to "OsFamily.MACOSX to CpuArchitecture.X64",
-            "linuxArm64" to "OsFamily.LINUX to CpuArchitecture.ARM64",
-            "linuxX64" to "OsFamily.LINUX to CpuArchitecture.X64",
-            "mingwX64" to "OsFamily.WINDOWS to CpuArchitecture.X64",
-        )
-        check(distributions.keys == expectedTargets.keys) {
-            "Desktop distribution targets must be exactly ${expectedTargets.keys}"
+        val expectedTargets = linkedSetOf("macosArm64", "macosX64", "linuxArm64", "linuxX64", "mingwX64")
+        check(distributions.keys == expectedTargets) {
+            "Desktop distribution targets must be exactly $expectedTargets"
         }
         fun value(target: String, key: String): String =
             distributions.getValue(target).getValue(key).jsonPrimitive.content.also {
@@ -47,31 +41,25 @@ abstract class GenerateDesktopDistributionSourceTask : DefaultTask() {
             }
 
         val source = buildString {
-            appendLine("@file:OptIn(kotlin.experimental.ExperimentalNativeApi::class)")
-            appendLine()
             appendLine("package io.github.ciurlaro.codexmobile.appserver.runtime")
-            appendLine()
-            appendLine("import kotlin.native.CpuArchitecture")
-            appendLine("import kotlin.native.OsFamily")
-            appendLine("import kotlin.native.Platform")
             appendLine()
             appendLine("internal data class DesktopCodexDistribution(")
             appendLine("    val target: String,")
             appendLine("    val binarySha256: String,")
             appendLine("    val executableName: String,")
+            appendLine("    val supervisorExecutableName: String,")
             appendLine(")")
             appendLine()
-            appendLine("internal fun currentDesktopCodexDistribution(): DesktopCodexDistribution = when (")
-            appendLine("    Platform.osFamily to Platform.cpuArchitecture")
-            appendLine(") {")
-            expectedTargets.forEach { (target, condition) ->
-                appendLine("    $condition -> DesktopCodexDistribution(")
+            appendLine("internal fun desktopCodexDistribution(target: String): DesktopCodexDistribution = when (target) {")
+            expectedTargets.forEach { target ->
+                appendLine("    \"$target\" -> DesktopCodexDistribution(")
                 appendLine("        target = \"$target\",")
                 appendLine("        binarySha256 = \"${value(target, "binarySha256")}\",")
                 appendLine("        executableName = \"${value(target, "executableName")}\",")
+                appendLine("        supervisorExecutableName = \"${value(target, "supervisorExecutableName")}\",")
                 appendLine("    )")
             }
-            appendLine("    else -> error(\"Unsupported desktop target: ${'$'}{Platform.osFamily}/${'$'}{Platform.cpuArchitecture}\")")
+            appendLine("    else -> error(\"Unsupported desktop target: ${'$'}target\")")
             appendLine("}")
         }
         val output = outputDirectory.file(

@@ -54,12 +54,13 @@ internal data class DesktopRuntimeEvidenceValues(
     val candidateCommit: String,
     val target: String,
     val binarySha256: String,
+    val supervisorSha256: String,
     val classifierArchiveSha256: String,
 )
 
 internal fun buildDesktopRuntimeEvidence(values: DesktopRuntimeEvidenceValues) = buildJsonObject {
     val expected = desktopRuntimeEvidenceTargets.getValue(values.target)
-    put("schemaVersion", JsonPrimitive(2))
+    put("schemaVersion", JsonPrimitive(3))
     put("candidateCommit", JsonPrimitive(values.candidateCommit))
     put("target", JsonPrimitive(values.target))
     put("classifier", JsonPrimitive(expected.classifier))
@@ -73,6 +74,7 @@ internal fun buildDesktopRuntimeEvidence(values: DesktopRuntimeEvidenceValues) =
     put("failures", JsonPrimitive(0))
     put("errors", JsonPrimitive(0))
     put("binarySha256", JsonPrimitive(values.binarySha256))
+    put("supervisorSha256", JsonPrimitive(values.supervisorSha256))
     put("classifierArchiveSha256", JsonPrimitive(values.classifierArchiveSha256))
     put("result", JsonPrimitive("passed"))
 }
@@ -82,27 +84,35 @@ abstract class ExtractDesktopAppServerTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val archiveFile: RegularFileProperty
     @get:Input abstract val executableName: Property<String>
     @get:Input abstract val binarySha256: Property<String>
+    @get:Input abstract val supervisorExecutableName: Property<String>
     @get:OutputFile abstract val outputFile: RegularFileProperty
+    @get:OutputFile abstract val supervisorOutputFile: RegularFileProperty
 
     @TaskAction
     fun extract() {
         val executable = executableName.get()
         val output = outputFile.get().asFile
+        val supervisor = supervisorExecutableName.get()
+        val supervisorOutput = supervisorOutputFile.get().asFile
         ZipFile(archiveFile.get().asFile).use { archive ->
             val entries = archive.entries().asSequence().filterNot { it.isDirectory }.toList()
             check(entries.map { it.name }.toSet() == setOf(
                 executable,
+                supervisor,
                 "openai-codex-LICENSE.txt",
                 "openai-codex-NOTICE.txt",
             )) { "Desktop app-server classifier has an unexpected member set" }
-            output.parentFile.mkdirs()
-            archive.getInputStream(archive.getEntry(executable)).use { input ->
-                Files.copy(input, output.toPath(), REPLACE_EXISTING)
+            listOf(executable to output, supervisor to supervisorOutput).forEach { (name, destination) ->
+                destination.parentFile.mkdirs()
+                archive.getInputStream(archive.getEntry(name)).use { input ->
+                    Files.copy(input, destination.toPath(), REPLACE_EXISTING)
+                }
             }
         }
         check(output.releaseDigest() == binarySha256.get()) { "Extracted desktop app-server SHA-256 mismatch" }
         if (!System.getProperty("os.name").startsWith("Windows")) {
             check(output.setExecutable(true, false)) { "Could not make desktop app server executable" }
+            check(supervisorOutput.setExecutable(true, false)) { "Could not make process supervisor executable" }
         }
     }
 }
@@ -116,6 +126,7 @@ abstract class RecordDesktopRuntimeEvidenceTask : DefaultTask() {
     @get:Input abstract val runnerOs: Property<String>
     @get:Input abstract val runnerArch: Property<String>
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val classifierArchive: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val distributionManifest: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val testReport: RegularFileProperty
     @get:OutputFile abstract val evidenceFile: RegularFileProperty
 
@@ -132,11 +143,18 @@ abstract class RecordDesktopRuntimeEvidenceTask : DefaultTask() {
         check(runnerOs.get() == expected.runnerOs && runnerArch.get() == expected.runnerArch) {
             "Desktop evidence runner does not match $targetName"
         }
+        val proof = inspectDesktopClassifier(
+            targetName,
+            readDesktopCodexManifest(distributionManifest.get().asFile),
+            classifierArchive.get().asFile,
+        )
+        check(binarySha256.get() == proof.binarySha256) { "Desktop evidence App Server hash mismatch" }
         evidenceFile.get().asFile.atomicWriteJson(buildDesktopRuntimeEvidence(DesktopRuntimeEvidenceValues(
             commit,
             targetName,
-            binarySha256.get(),
-            classifierArchive.get().asFile.releaseDigest(),
+            proof.binarySha256,
+            proof.supervisorSha256,
+            proof.archiveSha256,
         )))
     }
 }
@@ -147,6 +165,7 @@ internal fun validateDesktopRuntimeEvidence(
     version: String? = null,
     mavenInventory: File? = null,
     distributionManifest: File? = null,
+    classifierArchives: List<File> = emptyList(),
 ): List<String> = buildList {
     val byName = files.associateBy(File::getName)
     val expectedNames = desktopRuntimeEvidenceTargets.keys.map(::desktopRuntimeEvidenceFileName).toSet()
@@ -161,6 +180,18 @@ internal fun validateDesktopRuntimeEvidence(
     if (distributionManifest != null && distributions.keys != desktopRuntimeEvidenceTargets.keys) {
         add("distribution target set mismatch")
     }
+    val classifierProofs = if (distributionManifest == null) emptyMap() else {
+        val manifest = readDesktopCodexManifest(distributionManifest)
+        desktopRuntimeEvidenceTargets.keys.mapNotNull { target ->
+            val matches = classifierArchives.mapNotNull { archive ->
+                runCatching { inspectDesktopClassifier(target, manifest, archive) }.getOrNull()
+            }
+            if (classifierArchives.isNotEmpty() && matches.size != 1) {
+                add("$target: expected exactly one matching classifier archive")
+                null
+            } else matches.singleOrNull()
+        }.associateBy(DesktopClassifierProof::target)
+    }
     desktopRuntimeEvidenceTargets.forEach { (target, expected) ->
         val file = byName[desktopRuntimeEvidenceFileName(target)] ?: return@forEach
         runCatching {
@@ -168,9 +199,9 @@ internal fun validateDesktopRuntimeEvidence(
             check(report.keys == setOf(
                 "schemaVersion", "candidateCommit", "target", "classifier", "runnerOs", "runnerArch",
                 "testTask", "testClass", "testMethods", "tests", "skipped", "failures", "errors", "binarySha256",
-                "classifierArchiveSha256", "result",
+                "supervisorSha256", "classifierArchiveSha256", "result",
             )) { "schema fields mismatch" }
-            check(report.releaseInt("schemaVersion") == 2) { "schema version mismatch" }
+            check(report.releaseInt("schemaVersion") == 3) { "schema version mismatch" }
             check(report.releaseString("candidateCommit") == expectedCommit) { "commit mismatch" }
             check(report.releaseString("target") == target) { "target mismatch" }
             check(report.releaseString("classifier") == expected.classifier) { "classifier mismatch" }
@@ -196,6 +227,13 @@ internal fun validateDesktopRuntimeEvidence(
             }
             val archiveHash = report.releaseString("classifierArchiveSha256")
             check(archiveHash.matches(Regex("[0-9a-f]{64}"))) { "classifier hash invalid" }
+            val supervisorHash = report.releaseString("supervisorSha256")
+            check(supervisorHash.matches(Regex("[0-9a-f]{64}"))) { "supervisor hash invalid" }
+            classifierProofs[target]?.let { proof ->
+                check(proof.binarySha256 == binaryHash) { "classifier App Server hash mismatch" }
+                check(proof.supervisorSha256 == supervisorHash) { "classifier supervisor hash mismatch" }
+                check(proof.archiveSha256 == archiveHash) { "classifier archive hash mismatch" }
+            }
             if (version != null && mavenInventory != null) {
                 val path = "io/github/ciurlaro/codex-agent-runtime-desktop/$version/" +
                     "codex-agent-runtime-desktop-$version-${expected.classifier}.zip"

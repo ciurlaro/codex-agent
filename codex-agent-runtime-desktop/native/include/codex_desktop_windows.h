@@ -24,6 +24,7 @@ static inline wchar_t *codex_utf8_to_wide(const char *value) {
 
 static inline int codex_process_start(
     const char *executable,
+    const char *argument,
     const char *working_directory,
     codex_process *output,
     char *error,
@@ -33,8 +34,7 @@ static inline int codex_process_start(
     HANDLE stdin_read = NULL, stdin_write = NULL;
     HANDLE stdout_read = NULL, stdout_write = NULL;
     HANDLE stderr_read = NULL, stderr_write = NULL;
-    HANDLE job = NULL;
-    wchar_t *wide_executable = NULL, *wide_directory = NULL, *command = NULL;
+    wchar_t *wide_executable = NULL, *wide_argument = NULL, *wide_directory = NULL, *command = NULL;
     PROCESS_INFORMATION process_info;
     STARTUPINFOW startup_info;
     ZeroMemory(&process_info, sizeof(process_info));
@@ -42,18 +42,19 @@ static inline int codex_process_start(
     startup_info.cb = sizeof(startup_info);
 
     wide_executable = codex_utf8_to_wide(executable);
+    wide_argument = codex_utf8_to_wide(argument);
     wide_directory = codex_utf8_to_wide(working_directory);
-    if (wide_executable == NULL || wide_directory == NULL) {
+    if (wide_executable == NULL || wide_argument == NULL || wide_directory == NULL) {
         codex_set_error(error, error_capacity, "Desktop runtime paths must be valid UTF-8");
         goto fail;
     }
-    size_t command_length = wcslen(wide_executable) + 3;
+    size_t command_length = wcslen(wide_executable) + wcslen(wide_argument) + 6;
     command = (wchar_t *)malloc(command_length * sizeof(wchar_t));
     if (command == NULL) {
         codex_set_error(error, error_capacity, "Unable to allocate the app-server command line");
         goto fail;
     }
-    swprintf(command, command_length, L"\"%ls\"", wide_executable);
+    swprintf(command, command_length, L"\"%ls\" \"%ls\"", wide_executable, wide_argument);
 
     if (!CreatePipe(&stdin_read, &stdin_write, &security, 0) ||
         !CreatePipe(&stdout_read, &stdout_write, &security, 0) ||
@@ -72,25 +73,13 @@ static inline int codex_process_start(
     startup_info.hStdInput = stdin_read;
     startup_info.hStdOutput = stdout_write;
     startup_info.hStdError = stderr_write;
-    job = CreateJobObjectW(NULL, NULL);
-    if (job == NULL) {
-        codex_set_windows_error(error, error_capacity, "CreateJobObjectW");
-        goto fail;
-    }
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
-    ZeroMemory(&limits, sizeof(limits));
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
-        codex_set_windows_error(error, error_capacity, "SetInformationJobObject");
-        goto fail;
-    }
     if (!CreateProcessW(
             wide_executable,
             command,
             NULL,
             NULL,
             TRUE,
-            CREATE_NO_WINDOW | CREATE_SUSPENDED,
+            CREATE_NO_WINDOW,
             NULL,
             wide_directory,
             &startup_info,
@@ -99,29 +88,19 @@ static inline int codex_process_start(
         codex_set_windows_error(error, error_capacity, "CreateProcessW");
         goto fail;
     }
-    if (!AssignProcessToJobObject(job, process_info.hProcess)) {
-        codex_set_windows_error(error, error_capacity, "AssignProcessToJobObject");
-        TerminateProcess(process_info.hProcess, 1);
-        goto fail;
-    }
-    if (ResumeThread(process_info.hThread) == (DWORD)-1) {
-        codex_set_windows_error(error, error_capacity, "ResumeThread");
-        TerminateJobObject(job, 1);
-        goto fail;
-    }
-
     CloseHandle(process_info.hThread);
     CloseHandle(stdin_read);
     CloseHandle(stdout_write);
     CloseHandle(stderr_write);
     free(wide_executable);
+    free(wide_argument);
     free(wide_directory);
     free(command);
     output->stdin_write = (codex_handle)stdin_write;
     output->stdout_read = (codex_handle)stdout_read;
     output->stderr_read = (codex_handle)stderr_read;
     output->process = (codex_handle)process_info.hProcess;
-    output->job = (codex_handle)job;
+    output->job = 0;
     return 0;
 
 fail:
@@ -133,8 +112,8 @@ fail:
     if (stdout_write != NULL) CloseHandle(stdout_write);
     if (stderr_read != NULL) CloseHandle(stderr_read);
     if (stderr_write != NULL) CloseHandle(stderr_write);
-    if (job != NULL) CloseHandle(job);
     free(wide_executable);
+    free(wide_argument);
     free(wide_directory);
     free(command);
     return -1;
@@ -172,17 +151,17 @@ static inline int codex_process_wait(codex_handle raw_process, int *exit_code) {
 }
 
 static inline void codex_process_terminate(codex_handle raw_process, codex_handle raw_job) {
+    (void)raw_job;
     HANDLE process = (HANDLE)raw_process;
     if (WaitForSingleObject(process, 2000) == WAIT_TIMEOUT) {
-        if (raw_job != 0) TerminateJobObject((HANDLE)raw_job, 1);
-        else TerminateProcess(process, 1);
+        TerminateProcess(process, 1);
         WaitForSingleObject(process, INFINITE);
     }
 }
 
 static inline void codex_process_release(codex_handle raw_process, codex_handle raw_job) {
     if (raw_process != 0) CloseHandle((HANDLE)raw_process);
-    if (raw_job != 0) CloseHandle((HANDLE)raw_job);
+    (void)raw_job;
 }
 
 #endif

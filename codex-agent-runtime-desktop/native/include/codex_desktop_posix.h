@@ -16,6 +16,7 @@ static inline void codex_close_fd(int descriptor) {
 
 static inline int codex_process_start(
     const char *executable,
+    const char *argument,
     const char *working_directory,
     codex_process *output,
     char *error,
@@ -43,7 +44,6 @@ static inline int codex_process_start(
         goto fail;
     }
     if (pid == 0) {
-        setpgid(0, 0);
         if (chdir(working_directory) != 0 ||
             dup2(stdin_pipe[0], STDIN_FILENO) < 0 ||
             dup2(stdout_pipe[1], STDOUT_FILENO) < 0 ||
@@ -56,10 +56,9 @@ static inline int codex_process_start(
         codex_close_fd(stdout_pipe[1]);
         codex_close_fd(stderr_pipe[0]);
         codex_close_fd(stderr_pipe[1]);
-        execl(executable, executable, (char *)NULL);
+        execl(executable, executable, argument, (char *)NULL);
         _exit(127);
     }
-    setpgid(pid, pid);
     codex_close_fd(stdin_pipe[0]);
     codex_close_fd(stdout_pipe[1]);
     codex_close_fd(stderr_pipe[1]);
@@ -120,14 +119,14 @@ static inline void codex_process_terminate(codex_handle raw_process, codex_handl
     int status = 0;
     pid_t result = waitpid(pid, &status, WNOHANG);
     if (result == pid || (result < 0 && errno == ECHILD)) return;
-    kill(-pid, SIGTERM);
+    kill(pid, SIGTERM);
     struct timespec pause = {0, 10000000};
-    for (int attempt = 0; attempt < 200; attempt++) {
+    for (int attempt = 0; attempt < 300; attempt++) {
         result = waitpid(pid, &status, WNOHANG);
         if (result == pid || (result < 0 && errno == ECHILD)) return;
         nanosleep(&pause, NULL);
     }
-    kill(-pid, SIGKILL);
+    kill(pid, SIGKILL);
     do result = waitpid(pid, &status, 0); while (result < 0 && errno == EINTR);
 }
 

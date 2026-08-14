@@ -1,16 +1,14 @@
-# Node runtime
+# Node runtimes
 
-`codex-agent-runtime-node` is the local runtime for Kotlin/JS applications
-running on Node.js. It implements the existing `CodexRuntimeFactory` boundary;
-the shared client and protocol are unchanged.
+`codex-agent-runtime-node` provides a local Codex App Server runtime to both
+Kotlin/JS and Kotlin/WasmJS applications running on Node.js. It implements the
+existing `CodexRuntimeFactory` boundary; the shared client remains the only
+owner of the protocol handshake.
 
-It is not an npm JavaScript API. Version `0.2.0` is consumed as a Kotlin/JS
-Maven dependency by Kotlin Multiplatform or Kotlin/JS projects.
+It is a Kotlin Maven dependency, not an npm JavaScript API. Browser JavaScript,
+browser Wasm, and WASI are unsupported.
 
 ## Supported hosts
-
-The runtime supports exactly the same native App Server distributions as the
-desktop runtime:
 
 | Node host | Distribution classifier |
 | --- | --- |
@@ -20,12 +18,12 @@ desktop runtime:
 | Linux x64 | `app-server-linux-x64` |
 | Windows x64 | `app-server-windows-x64` |
 
-Node.js is pinned to `24.18.0` for release evidence. Other processor and
-operating-system combinations are rejected.
+Release evidence uses Node.js `24.18.0`. Other processor and operating-system
+combinations are rejected.
 
 ## Configuration
 
-Add the client and Node runtime to a Kotlin/JS Node application:
+Add the client and runtime to a Kotlin/JS or Kotlin/WasmJS Node application:
 
 ```kotlin
 dependencies {
@@ -34,57 +32,52 @@ dependencies {
 }
 ```
 
-Extract the matching App Server classifier yourself, then pass absolute paths:
+Extract the matching classifier. It contains the App Server and the process
+supervisor built for that same host. Pass canonical absolute paths, the
+supervisor's SHA-256, and the workspace:
 
 ```kotlin
 val factory = NodeCodexRuntimeFactory(
     NodeCodexRuntimeConfiguration(
-        appServerExecutable = executablePath.toPath(),
+        appServerExecutable = appServerPath.toPath(),
+        processSupervisorExecutable = supervisorPath.toPath(),
+        processSupervisorSha256 = supervisorSha256,
         workingDirectory = workspacePath.toPath(),
-        windowsSupervisorExecutable = windowsSupervisorPath?.toPath(),
     ),
 )
 val client = CodexAgentClient(runtimeFactory = factory)
 ```
 
-`windowsSupervisorExecutable` must be absent on macOS and Linux. On Windows it
-must point to `codex-agent-node-windows-supervisor.exe` extracted from the
-runtime's verified `windows-supervisor-x64` classifier.
+`processSupervisorExecutable` and `processSupervisorSha256` are required on
+every supported host. There is no separate Windows supervisor classifier.
 
 ## Security and lifecycle
 
 Before starting, the runtime requires canonical absolute paths, rejects
-symbolic links, checks that the workspace is a directory, checks the executable
-name, and verifies the App Server SHA-256 against the pinned distribution
-manifest. Windows applies the same checks to the supervisor.
+symbolic links, verifies the workspace and file names, and checks the packaged
+binary identities against the pinned distribution manifest.
 
-The App Server is launched directly with `shell = false`. macOS and Linux use a
-detached process group so close can terminate the complete process tree.
-Windows uses the small verified supervisor for the same ownership guarantee.
-The runtime forwards newline-delimited JSON between the process and the shared
-`AppServerConnection`; that connection remains the sole initialize/initialized
-handshake owner.
+The supervisor launches only the configured App Server and owns its complete
+process tree. Closing or restarting the runtime therefore cannot leave an App
+Server child behind. Newline-delimited JSON is forwarded to the shared
+`AppServerConnection`, which remains the sole initialize/initialized handshake
+owner.
 
-The runtime never downloads or discovers an executable. It exposes no command,
-argument, shell, Git, build-tool, gateway, remote workspace, or general process
-configuration. Browser JavaScript and Wasm remain client-only.
+The runtime never downloads, discovers, installs, or updates an executable. It
+accepts no arbitrary command, arguments, shell, Git, build-tool, gateway,
+remote workspace, cloud runtime, or general process configuration.
 
-Authentication remains owned by the Codex App Server. The Node wrapper neither
-receives nor stores OAuth tokens and does not require `OPENAI_API_KEY`.
+Authentication remains owned by the Codex App Server. The Node adapters neither
+receive nor store OAuth tokens and do not require `OPENAI_API_KEY`.
 
 ## Release evidence
 
-The release workflow first builds and verifies the Windows supervisor identity,
-then builds one portable Kotlin/JS evidence runner bound to that identity and
-executes it on the five real host targets with Node `24.18.0`. Each target
-report binds:
-
-- the immutable candidate commit and real runner OS/architecture;
-- the exact test class, four methods, and zero skips/failures/errors;
-- the compiled Kotlin/JS runner;
-- the matching classifier ZIP and App Server binary;
-- the Windows supervisor hash when applicable.
+One portable evidence bundle is reused by a five-host GitHub Actions matrix.
+Every host executes the native desktop, JVM, Kotlin/JS-on-Node, and
+Kotlin/WasmJS-on-Node lifecycle checks with its matching classifier. Each report
+binds the candidate commit, actual OS and architecture, exact compiled runners,
+classifier ZIP, App Server, supervisor, and test outcomes.
 
 Linux Arm64 is compiled on a supported x64 host and executed on the real Arm64
-runner without configuring Kotlin/Native there. The candidate consumes all five
-external records once; it does not rerun the host smokes during Apple assembly.
+runner. Candidate assembly downloads the completed matrix evidence and does not
+repeat the host smokes.

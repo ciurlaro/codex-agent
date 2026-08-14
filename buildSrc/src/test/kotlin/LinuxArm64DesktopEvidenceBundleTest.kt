@@ -17,7 +17,7 @@ class LinuxArm64DesktopEvidenceBundleTest {
         val files = desktopRuntimeEvidenceTargets.keys.map { target ->
             fixture.root.resolve(desktopRuntimeEvidenceFileName(target)).apply {
                 atomicWriteJson(buildDesktopRuntimeEvidence(DesktopRuntimeEvidenceValues(
-                    COMMIT, target, "a".repeat(64), "b".repeat(64),
+                    COMMIT, target, "a".repeat(64), "b".repeat(64), "c".repeat(64),
                 )))
             }
         }
@@ -49,7 +49,10 @@ class LinuxArm64DesktopEvidenceBundleTest {
         fixture.stage()
         ZipFile(fixture.bundle).use { zip ->
             assertEquals(
-                setOf("execution.json", "linuxArm64-test.kexe", "app-server-linux-arm64.zip", "codex-app-server"),
+                setOf(
+                    "execution.json", "linuxArm64-test.kexe", "app-server-linux-arm64.zip",
+                    "codex-app-server", "codex-process-supervisor",
+                ),
                 zip.entries().asSequence().map(ZipEntry::getName).toSet(),
             )
         }
@@ -58,6 +61,9 @@ class LinuxArm64DesktopEvidenceBundleTest {
             commands += command
             assertTrue(File(command.first()).isFile)
             assertTrue(File(environment.getValue("CODEX_AGENT_APP_SERVER_EXECUTABLE")).isFile)
+            val supervisor = File(environment.getValue("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE"))
+            assertTrue(supervisor.isFile)
+            assertEquals(supervisor.releaseDigest(), environment["CODEX_AGENT_PROCESS_SUPERVISOR_SHA256"])
             if (command.contains("--ktest_list_tests")) DesktopEvidenceProcessResult(0, exactListing())
             else DesktopEvidenceProcessResult(0, "")
         }
@@ -67,7 +73,7 @@ class LinuxArm64DesktopEvidenceBundleTest {
             it.single { argument -> argument.startsWith("--ktest_filter=") }.substringAfterLast('.')
         }.toSet())
         val evidence = fixture.evidence.readReleaseObject()
-        assertEquals(2, evidence.releaseInt("schemaVersion"))
+        assertEquals(3, evidence.releaseInt("schemaVersion"))
         assertEquals(COMMIT, evidence.releaseString("candidateCommit"))
         assertEquals("linuxArm64", evidence.releaseString("target"))
         assertEquals(fixture.classifier.releaseDigest(), evidence.releaseString("classifierArchiveSha256"))
@@ -150,6 +156,7 @@ class LinuxArm64DesktopEvidenceBundleTest {
         val test = root.resolve("test.kexe").apply { writeText("linked ARM64 test") }
         val classifier = root.resolve("classifier.zip").apply { writeZip(linkedMapOf(
             "codex-app-server" to APP_SERVER,
+            "codex-process-supervisor" to SUPERVISOR,
             "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
             "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
         )) }
@@ -168,6 +175,7 @@ class LinuxArm64DesktopEvidenceBundleTest {
         const val COMMIT = "0123456789abcdef0123456789abcdef01234567"
         val ARM_ENV = mapOf("RUNNER_OS" to "Linux", "RUNNER_ARCH" to "ARM64")
         val APP_SERVER = "official app server".encodeToByteArray()
+        val SUPERVISOR = "process supervisor".encodeToByteArray()
         fun exactListing() = buildString {
             append(DESKTOP_RUNTIME_TEST_CLASS).append(".\n")
             desktopRuntimeTestMethods.forEach { append("  ").append(it).append('\n') }

@@ -7,12 +7,12 @@ import kotlin.test.assertTrue
 
 class MavenRepositoryTasksTest {
     @Test
-    fun `exact signed 24-coordinate 145-primary publication passes`() = withRepository { repository, inventory ->
+    fun `exact signed 26-coordinate 154-primary publication passes`() = withRepository { repository, inventory ->
         writeExactRepository(repository, signed = true)
         verifyMavenRepository(repository, GROUP, VERSION, true, inventory)
         val report = inventory.readReleaseObject()
-        assertEquals(145, report.releaseInt("primaryArtifactCount"))
-        assertEquals(24, report.releaseArray("artifactIds").size)
+        assertEquals(154, report.releaseInt("primaryArtifactCount"))
+        assertEquals(26, report.releaseArray("artifactIds").size)
         expectedMavenPrimaryPaths(VERSION).forEach { relative ->
             val primary = repository.resolve("io/github/ciurlaro/$relative")
             assertEquals(primary.releaseDigest("MD5"), primary.resolveSibling(primary.name + ".md5").readText().trim())

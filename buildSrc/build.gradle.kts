@@ -77,20 +77,63 @@ val desktopDistributionManifest = providers.gradleProperty("codexAgent.desktopDi
         "../codex-agent-runtime-desktop/codex-app-server-distributions.json",
     ).asFile)
 val nodeExecutable = providers.gradleProperty("codexAgent.nodeExecutable").orElse("node")
+val jvmArm64Bundle = providers.gradleProperty("codexAgent.linuxArm64JvmExecutionBundle")
+    .map(::JavaFile).orElse(layout.buildDirectory.file(
+        "linux-arm64-jvm-evidence/linux-arm64-jvm-execution.zip",
+    ).map { it.asFile })
+
+tasks.register<JavaExec>("stageLinuxArm64JvmEvidenceBundle") {
+    group = "verification"
+    description = "Stages the portable JVM smoke and Linux ARM64 classifier."
+    val compiledRunner = providers.gradleProperty("codexAgent.jvmRuntimeEvidenceRunner").map(::JavaFile)
+    val classifierArchive = providers.gradleProperty("codexAgent.linuxArm64ClassifierArchive").map(::JavaFile)
+    val distributionsDirectory = providers.gradleProperty("codexAgent.linuxArm64DistributionsDirectory").map(::JavaFile)
+    val classifierInput = classifierArchive.orElse(distributionsDirectory)
+    dependsOn(tasks.named("classes")); classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("LinuxArm64JvmEvidenceBundleKt")
+    inputs.property("candidateCommit", candidateCommit); inputs.file(desktopDistributionManifest)
+    inputs.files(classifierInput); inputs.file(compiledRunner); outputs.file(jvmArm64Bundle)
+    argumentProviders.add(DesktopEvidenceArgumentProvider(
+        "stage", listOf(candidateCommit, desktopDistributionManifest, classifierInput, compiledRunner, jvmArm64Bundle),
+    ))
+}
+
+tasks.register<JavaExec>("executeLinuxArm64JvmEvidenceBundle") {
+    group = "verification"
+    description = "Runs the portable JVM smoke on Linux ARM64 and records exact evidence."
+    val javaExecutable = providers.gradleProperty("codexAgent.javaExecutable")
+    val evidence = providers.gradleProperty("codexAgent.jvmEvidenceOutput").map(::JavaFile).orElse(
+        layout.buildDirectory.file("reports/jvm-runtime-evidence/jvm-runtime-linuxArm64.json").map { it.asFile },
+    )
+    dependsOn(tasks.named("classes")); classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("LinuxArm64JvmEvidenceBundleKt")
+    inputs.property("candidateCommit", candidateCommit); inputs.file(jvmArm64Bundle)
+    inputs.property("javaExecutable", javaExecutable)
+    inputs.property("runnerOs", providers.environmentVariable("RUNNER_OS"))
+    inputs.property("runnerArch", providers.environmentVariable("RUNNER_ARCH"))
+    outputs.file(evidence); outputs.upToDateWhen { false }
+    argumentProviders.add(DesktopEvidenceArgumentProvider(
+        "execute", listOf(candidateCommit, jvmArm64Bundle, javaExecutable, evidence),
+    ))
+}
 
 tasks.register<JavaExec>("stageLinuxArm64NodeRuntimeEvidenceBundle") {
     group = "verification"
-    description = "Stages the prebuilt Node runtime smoke and existing Linux ARM64 classifier."
-    val compiled = providers.gradleProperty("codexAgent.nodeRuntimeEvidenceRunnerArchive").map(::JavaFile)
+    description = "Stages the prebuilt Node JS/Wasm runtime smokes and Linux ARM64 classifier."
+    val compiledJs = providers.gradleProperty("codexAgent.nodeRuntimeEvidenceRunnerArchive").map(::JavaFile)
+    val compiledWasm = providers.gradleProperty("codexAgent.nodeWasmRuntimeEvidenceRunnerArchive").map(::JavaFile)
     val classifierArchive = providers.gradleProperty("codexAgent.linuxArm64ClassifierArchive").map(::JavaFile)
     val distributionsDirectory = providers.gradleProperty("codexAgent.linuxArm64DistributionsDirectory").map(::JavaFile)
     val classifierInput = classifierArchive.orElse(distributionsDirectory)
     dependsOn(tasks.named("classes")); classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("NodeRuntimeEvidenceLinuxArm64Kt")
-    inputs.property("candidateCommit", candidateCommit); inputs.file(compiled); inputs.files(classifierInput)
+    inputs.property("candidateCommit", candidateCommit); inputs.file(compiledJs); inputs.file(compiledWasm)
+    inputs.files(classifierInput)
     inputs.file(desktopDistributionManifest); outputs.file(nodeArm64Bundle)
     argumentProviders.add(DesktopEvidenceArgumentProvider(
-        "stage", listOf(candidateCommit, compiled, classifierInput, desktopDistributionManifest, nodeArm64Bundle),
+        "stage", listOf(
+            candidateCommit, compiledJs, compiledWasm, classifierInput, desktopDistributionManifest, nodeArm64Bundle,
+        ),
     ))
 }
 
@@ -107,16 +150,30 @@ tasks.register<JavaExec>("executeLinuxArm64NodeRuntimeEvidenceBundle") {
                 "io.github.ciurlaro.codexmobile.appserver.runtime.NodeCodexRuntimeTest.xml",
         ).map { it.asFile },
     )
+    val wasmEvidence = providers.gradleProperty("codexAgent.nodeWasmEvidenceOutput").map(::JavaFile).orElse(
+        layout.buildDirectory.file(
+            "reports/node-runtime-evidence/node-wasm-runtime-linuxArm64.json",
+        ).map { it.asFile },
+    )
+    val wasmReport = providers.gradleProperty("codexAgent.nodeWasmTestReportOutput").map(::JavaFile).orElse(
+        layout.buildDirectory.file(
+            "test-results/linuxArm64NodeWasmSplitTest/" +
+                "TEST-nodeWasmRuntimeLinuxArm64Test." +
+                "io.github.ciurlaro.codexmobile.appserver.runtime.NodeCodexRuntimeTest.xml",
+        ).map { it.asFile },
+    )
     dependsOn(tasks.named("classes")); classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("NodeRuntimeEvidenceLinuxArm64Kt")
     inputs.property("candidateCommit", candidateCommit); inputs.file(nodeArm64Bundle)
     inputs.file(desktopDistributionManifest); inputs.property("nodeExecutable", nodeExecutable)
     inputs.property("runnerOs", providers.environmentVariable("RUNNER_OS"))
     inputs.property("runnerArch", providers.environmentVariable("RUNNER_ARCH"))
-    outputs.file(evidence); outputs.file(report); outputs.upToDateWhen { false }
+    outputs.file(evidence); outputs.file(report); outputs.file(wasmEvidence); outputs.file(wasmReport)
+    outputs.upToDateWhen { false }
     argumentProviders.add(DesktopEvidenceArgumentProvider(
         "execute", listOf(
-            candidateCommit, nodeArm64Bundle, desktopDistributionManifest, nodeExecutable, evidence, report,
+            candidateCommit, nodeArm64Bundle, desktopDistributionManifest, nodeExecutable,
+            evidence, report, wasmEvidence, wasmReport,
         ),
     ))
 }

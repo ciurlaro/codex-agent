@@ -3,7 +3,6 @@ import java.time.LocalDateTime
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 
@@ -12,7 +11,7 @@ internal class CandidateManifestFixture(
     private val version: String,
     private val commit: String,
 ) {
-    private val nodeRelease = CandidateNodeReleaseFixture(root.resolve("node-release"), version, commit)
+    private val runtimes = CandidateRuntimeReleaseFixture(root.resolve("runtime-release"), version, commit)
     val swiftZip = root.resolve("CodexAgent-$version.xcframework.zip").apply {
         ZipOutputStream(outputStream()).use { zip ->
             zip.putNextEntry(ZipEntry("CodexAgent.xcframework/file").apply {
@@ -27,16 +26,19 @@ internal class CandidateManifestFixture(
     val swiftPmProof = root.resolve("swiftpm-proof.json").also {
         writeTestSwiftPackageProof(it, swiftZip, swiftChecksum, packageSwift, commit, version, root)
     }
-    val centralBundle = root.resolve("codex-agent-$version-central.zip").apply { writeText("central") }
-    val desktop = nodeRelease.desktopEvidence
-    val nodeEvidence = nodeRelease.nodeEvidence
+    val centralBundle = runtimes.writeCentralBundle(root.resolve("codex-agent-$version-central.zip"))
+    val desktop = runtimes.desktopEvidence
+    val jvmEvidence = runtimes.jvmEvidence
+    val nodeEvidence = runtimes.nodeEvidence
+    val nodeWasmEvidence = runtimes.nodeWasmEvidence
+    val androidEvidence = runtimes.androidEvidence
     val iosNative = root.resolve("ios-native-evidence.json").apply {
         writeTestCandidateIosNativeEvidence(this, commit)
     }
     val mavenInventory = root.resolve("maven-inventory.json").apply { atomicWriteJson(buildJsonObject {
         put("version", JsonPrimitive(version))
         put("primaryArtifactCount", JsonPrimitive(expectedMavenPrimaryPaths(version).size))
-        put("files", buildJsonArray { nodeRelease.mavenRecords().forEach(::add) })
+        put("files", buildJsonArray { runtimes.mavenRecords().forEach(::add) })
     }) }
     val centralInventory = root.resolve("central-bundle.json").apply { atomicWriteJson(buildJsonObject {
         put("belowCentralPortalUploadLimit", JsonPrimitive(true))
@@ -47,6 +49,7 @@ internal class CandidateManifestFixture(
         put("result", JsonPrimitive("passed")); put("version", JsonPrimitive(version))
         put("mavenInventorySha256", JsonPrimitive(mavenInventory.releaseDigest()))
     }) }
+    val ciProvenance = writeTestCandidateCiProvenance(root.resolve(CANDIDATE_CI_PROVENANCE_FILE), commit)
     val resources = root.resolve("resources.json").apply {
         atomicWriteJson(buildJsonObject { put("exitCode", JsonPrimitive(0)) })
     }
@@ -54,7 +57,7 @@ internal class CandidateManifestFixture(
         put("compressedXcframeworkBytes", JsonPrimitive(1)); put("deviceFrameworkBytes", JsonPrimitive(1))
         put("sampleAppInstallBytes", JsonPrimitive(1))
     }) }
-    val desktopManifest = nodeRelease.distributionManifest
+    val desktopManifest = runtimes.distributionManifest
     val desktopLicense = root.resolve("openai-codex-LICENSE.txt").apply { writeText("license") }
     val desktopNotice = root.resolve("openai-codex-NOTICE.txt").apply { writeText("notice") }
     val approvals = writeTestPublicationApprovals(
@@ -67,20 +70,12 @@ internal class CandidateManifestFixture(
     val manifest = root.resolve("candidate-manifest.json")
     val payload = root.resolve("payload").apply { mkdirs() }
     val inputs get() = CandidateInputFiles(
-        version = version, releaseTag = "v$version", commit = commit, swiftZip = swiftZip,
-        swiftChecksum = swiftChecksum, swiftPmProof = swiftPmProof, centralBundle = centralBundle,
-        centralInventory = centralInventory, mavenInventory = mavenInventory, kmpConsumer = consumer,
-        desktopEvidence = desktop, nodeEvidence = nodeEvidence,
-        nodeClassifierArchives = nodeRelease.classifiers.values.toList(),
-        nodeRuntimeRunner = nodeRelease.runner, windowsSupervisorPackage = nodeRelease.supervisorPackage,
-        windowsSupervisorIdentity = nodeRelease.supervisorIdentity,
-        windowsSupervisorExecutable = nodeRelease.supervisorExecutable,
-        windowsSupervisorSource = nodeRelease.supervisorSource, iosNativeEvidence = iosNative,
-        privacyAudit = privacyAudit, artifactMetrics = artifactMetrics, resourceReports = listOf(resources),
-        approvals = approvals, privacyManifest = privacyManifest, privacyDataFlowReview = privacyReview,
-        privacyRequiredReasonReviews = requiredReasons.takeIf(File::isFile), packageSwift = packageSwift,
-        desktopDistributionManifest = desktopManifest, desktopBundledLicense = desktopLicense,
-        desktopBundledNotice = desktopNotice,
+        version, "v$version", commit, swiftZip, swiftChecksum, swiftPmProof, centralBundle,
+        centralInventory, mavenInventory, consumer, ciProvenance, desktop, runtimes.classifiers.values.toList(),
+        jvmEvidence, runtimes.jvmRunner, nodeEvidence, runtimes.nodeRunner,
+        nodeWasmEvidence, runtimes.nodeWasmRunner, androidEvidence, iosNative, privacyAudit,
+        artifactMetrics, listOf(resources), approvals, privacyManifest, privacyReview,
+        requiredReasons.takeIf(File::isFile), packageSwift, desktopManifest, desktopLicense, desktopNotice,
     )
     val policyFiles get() = buildMap {
         put("approvals", approvals); put("privacyManifest", privacyManifest)
@@ -95,12 +90,17 @@ internal class CandidateManifestFixture(
         privacyAudit.writePrivacyAudit(null)
     }
 
+    fun replaceCentralAndroidRuntime(bytes: ByteArray) {
+        runtimes.writeCentralBundle(centralBundle, bytes)
+    }
+
     fun copyPayloadFiles() {
         listOf(
-            swiftZip, swiftPmProof, centralBundle, centralInventory, mavenInventory, consumer,
-            *desktop.toTypedArray(), *nodeEvidence.toTypedArray(), nodeRelease.runner,
-            nodeRelease.supervisorIdentity,
-            iosNative, privacyAudit, artifactMetrics, resources,
+            swiftZip, swiftPmProof, centralBundle, centralInventory, mavenInventory, consumer, ciProvenance,
+            *desktop.toTypedArray(), *jvmEvidence.toTypedArray(), runtimes.jvmRunner,
+            *nodeEvidence.toTypedArray(), runtimes.nodeRunner,
+            *nodeWasmEvidence.toTypedArray(), runtimes.nodeWasmRunner,
+            *androidEvidence.toTypedArray(), iosNative, privacyAudit, artifactMetrics, resources,
         ).plus(policyFiles.values).forEach { it.copyTo(payload.resolve(it.name), overwrite = true) }
     }
 
@@ -109,91 +109,14 @@ internal class CandidateManifestFixture(
     })
 }
 
-internal class CandidateNodeReleaseFixture(
-    root: File,
-    private val version: String,
-    private val commit: String,
-) {
-    private val appServer = "official app server".encodeToByteArray()
-    private val appServerSha = appServer.inputStream().releaseDigest()
-    val distributionManifest = writeTestDesktopDistributionManifest(
-        root.resolve("codex-app-server-distributions.json"), appServerSha,
-    )
-    val classifiers = desktopRuntimeEvidenceTargets.mapValues { (target, spec) ->
-        root.resolve("codex-agent-runtime-desktop-$version-${spec.classifier}.zip").apply {
-            parentFile.mkdirs()
-            nodeEvidenceWriteZip(linkedMapOf(
-                (if (target == "mingwX64") "codex-app-server.exe" else "codex-app-server") to appServer,
-                "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
-                "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
-            ))
-        }
-    }
-    val desktopEvidence = desktopRuntimeEvidenceTargets.keys.map { target ->
-        root.resolve(desktopRuntimeEvidenceFileName(target)).apply {
-            atomicWriteJson(buildDesktopRuntimeEvidence(DesktopRuntimeEvidenceValues(
-                commit, target, appServerSha, classifiers.getValue(target).releaseDigest(),
-            )))
-        }
-    }
-    val runner = root.resolve(NODE_RUNTIME_RUNNER_ARCHIVE).apply {
-        nodeEvidenceWriteZip(mapOf(
-            NODE_RUNTIME_RUNNER_ENTRY to "compiled Node runtime evidence runner".encodeToByteArray(),
-        ))
-    }
-    val supervisorSource = root.resolve("windows-supervisor-source").apply {
-        mkdirs()
-        resolve("CMakeLists.txt").writeText("project(codex_agent_node_windows_supervisor C)\n")
-        resolve("supervisor.c").writeText("int main(void) { return 0; }\n")
-    }
-    val supervisorExecutable = root.resolve(WINDOWS_SUPERVISOR_FILE_NAME).apply {
-        writeText("verified Windows supervisor")
-    }
-    val supervisorIdentity = root.resolve(WINDOWS_SUPERVISOR_IDENTITY_FILE_NAME).apply {
-        writeWindowsSupervisorIdentity(this, WindowsSupervisorIdentity(
-            fileName = WINDOWS_SUPERVISOR_FILE_NAME,
-            sha256 = supervisorExecutable.windowsSupervisorSha256(),
-            bytes = supervisorExecutable.length(),
-            sourceSha256 = windowsSupervisorSourceSha256(supervisorSource),
-            compiler = WindowsSupervisorCompiler("MSVC", "19.40.33811.0", "3.30.5"),
-        ))
-    }
-    val supervisorPackage = root.resolve("codex-agent-runtime-node-$version-windows-supervisor.zip").apply {
-        writeWindowsSupervisorPackage(this, supervisorExecutable, supervisorIdentity)
-    }
-    val nodeEvidence = desktopRuntimeEvidenceTargets.keys.map { target ->
-        root.resolve(nodeRuntimeEvidenceFileName(target)).apply {
-            val proof = inspectNodeClassifier(
-                target, readDesktopCodexManifest(distributionManifest), classifiers.getValue(target),
-            )
-            atomicWriteJson(buildNodeRuntimeEvidence(NodeRuntimeEvidenceValues(
-                commit, target, proof, runner,
-                supervisorExecutable.windowsSupervisorSha256().takeIf { target == "mingwX64" },
-            )))
-        }
-    }
-
-    fun mavenRecords(): List<JsonObject> = buildList {
-        desktopRuntimeEvidenceTargets.forEach { (target, spec) ->
-            val archive = classifiers.getValue(target)
-            add(buildJsonObject {
-                put("path", JsonPrimitive(
-                    "io/github/ciurlaro/codex-agent-runtime-desktop/$version/" +
-                        "codex-agent-runtime-desktop-$version-${spec.classifier}.zip",
-                ))
-                put("bytes", JsonPrimitive(archive.length()))
-                put("sha256", JsonPrimitive(archive.releaseDigest()))
-            })
-        }
-        add(buildJsonObject {
-            put("path", JsonPrimitive(
-                "io/github/ciurlaro/codex-agent-runtime-node/$version/" +
-                    "codex-agent-runtime-node-$version-windows-supervisor-x64.zip",
-            ))
-            put("bytes", JsonPrimitive(supervisorPackage.length()))
-            put("sha256", JsonPrimitive(supervisorPackage.releaseDigest()))
-        })
-    }
+internal fun writeTestCandidateCiProvenance(file: File, commit: String): File = file.apply {
+    atomicWriteJson(buildJsonObject {
+        put("schemaVersion", JsonPrimitive(1)); put("repository", JsonPrimitive("ciurlaro/codex-agent"))
+        put("workflowPath", JsonPrimitive(".github/workflows/ci.yml")); put("runId", JsonPrimitive(123L))
+        put("runAttempt", JsonPrimitive(2)); put("event", JsonPrimitive("push"))
+        put("headBranch", JsonPrimitive("main")); put("headSha", JsonPrimitive(commit))
+        put("conclusion", JsonPrimitive("success"))
+    })
 }
 
 internal fun writeTestCandidateIosNativeEvidence(file: File, commit: String) {

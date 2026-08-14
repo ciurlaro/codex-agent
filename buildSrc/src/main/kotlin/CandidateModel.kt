@@ -15,14 +15,16 @@ internal data class CandidateInputFiles(
     val centralInventory: File,
     val mavenInventory: File,
     val kmpConsumer: File,
+    val ciProvenance: File,
     val desktopEvidence: List<File>,
+    val desktopClassifierArchives: List<File>,
+    val jvmEvidence: List<File>,
+    val jvmRuntimeRunner: File,
     val nodeEvidence: List<File>,
-    val nodeClassifierArchives: List<File>,
     val nodeRuntimeRunner: File,
-    val windowsSupervisorPackage: File,
-    val windowsSupervisorIdentity: File,
-    val windowsSupervisorExecutable: File,
-    val windowsSupervisorSource: File,
+    val nodeWasmEvidence: List<File>,
+    val nodeWasmRuntimeRunner: File,
+    val androidEvidence: List<File>,
     val iosNativeEvidence: File,
     val privacyAudit: File,
     val artifactMetrics: File,
@@ -57,49 +59,24 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         "Maven inventory must contain $expectedMavenArtifactCount primary artifacts"
     }
     val consumer = input.kmpConsumer.readReleaseObject()
-    check(consumer.releaseString("result") == "passed") { "Clean KMP consumer did not pass" }
-    check(consumer.releaseString("version") == input.version) { "Clean KMP consumer version mismatch" }
+    check(consumer.releaseString("result") == "passed" && consumer.releaseString("version") == input.version) {
+        "Clean KMP consumer did not pass for ${input.version}"
+    }
     check(consumer.releaseString("mavenInventorySha256") == input.mavenInventory.releaseDigest()) {
         "Clean KMP consumer does not bind the Maven inventory"
     }
+    verifyCandidateCiProvenance(input.ciProvenance, input.commit)
     val privacyAudit = input.privacyAudit.readReleaseObject()
     check(privacyAudit.releaseBoolean("passed")) { "Static privacy audit did not pass" }
-    val privacyReviewHash = input.privacyRequiredReasonReviews?.releaseDigest()
-    check(privacyAudit.releaseStringOrNull("reviewSha256") == privacyReviewHash) {
+    check(privacyAudit.releaseStringOrNull("reviewSha256") ==
+        input.privacyRequiredReasonReviews?.releaseDigest()) {
         "Static privacy audit does not bind the supplied required-reason review"
     }
     check(input.artifactMetrics.name == "artifact-metrics.json" && input.artifactMetrics.isFile) {
         "Artifact metrics are required"
     }
     input.artifactMetrics.readReleaseObject()
-    val desktopErrors = validateDesktopRuntimeEvidence(
-        input.desktopEvidence,
-        input.commit,
-        input.version,
-        input.mavenInventory,
-        input.desktopDistributionManifest,
-    )
-    check(desktopErrors.isEmpty()) { "Desktop runtime evidence is invalid: ${desktopErrors.joinToString()}" }
-    val supervisorIdentity = verifyWindowsSupervisorPackage(
-        input.windowsSupervisorPackage,
-        input.windowsSupervisorIdentity,
-        input.windowsSupervisorSource,
-    )
-    verifyWindowsSupervisorIdentity(
-        supervisorIdentity,
-        input.windowsSupervisorExecutable,
-        input.windowsSupervisorSource,
-    )
-    val nodeErrors = validateNodeRuntimeEvidence(
-        input.nodeEvidence,
-        input.commit,
-        input.desktopDistributionManifest,
-        input.nodeClassifierArchives,
-        input.nodeRuntimeRunner,
-        input.windowsSupervisorExecutable,
-    )
-    check(nodeErrors.isEmpty()) { "Node runtime evidence is invalid: ${nodeErrors.joinToString()}" }
-    verifyWindowsSupervisorMavenBinding(input, maven)
+    verifyCandidateRuntimeEvidence(input)
     verifyCandidateIosNativeEvidence(input.iosNativeEvidence, input.commit)
     verifyDesktopBundledGplApproval(
         input.approvals,
@@ -109,27 +86,22 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     )
     check(input.resourceReports.isNotEmpty()) { "At least one resource evidence report is required" }
     input.resourceReports.forEach { report ->
-        check(report.readReleaseObject().releaseInt("exitCode") == 0) { "Resource phase did not pass: ${report.name}" }
+        check(report.readReleaseObject().releaseInt("exitCode") == 0) {
+            "Resource phase did not pass: ${report.name}"
+        }
     }
-    val evidenceNames = listOf(
-        input.swiftPmProof,
-        input.centralInventory,
-        input.mavenInventory,
-        input.kmpConsumer,
-        input.iosNativeEvidence,
-        *input.desktopEvidence.toTypedArray(),
-        *input.nodeEvidence.toTypedArray(),
-        input.nodeRuntimeRunner,
-        input.windowsSupervisorIdentity,
-        input.privacyAudit,
-        input.artifactMetrics,
-    ) + input.resourceReports
-    check(evidenceNames.map(File::getName).toSet().size == evidenceNames.size) {
+    val evidenceFiles = listOf(
+        input.swiftPmProof, input.centralInventory, input.mavenInventory, input.kmpConsumer, input.ciProvenance,
+        input.jvmRuntimeRunner, input.nodeRuntimeRunner, input.nodeWasmRuntimeRunner,
+        input.iosNativeEvidence, input.privacyAudit, input.artifactMetrics,
+    ) + input.desktopEvidence + input.jvmEvidence + input.nodeEvidence +
+        input.nodeWasmEvidence + input.androidEvidence + input.resourceReports
+    check(evidenceFiles.map(File::getName).toSet().size == evidenceFiles.size) {
         "Candidate evidence file names must be unique"
     }
 
     val manifest = buildJsonObject {
-        put("schemaVersion", JsonPrimitive(7))
+        put("schemaVersion", JsonPrimitive(8))
         put("version", JsonPrimitive(input.version))
         put("releaseTag", JsonPrimitive(input.releaseTag))
         put("candidateCommit", JsonPrimitive(input.commit))
@@ -147,20 +119,19 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
             put("centralBundleInventory", input.centralInventory.releaseRecord())
             put("mavenInventory", input.mavenInventory.releaseRecord())
             put("cleanKmpConsumer", input.kmpConsumer.releaseRecord())
-            put("desktopRuntime", buildJsonArray {
-                input.desktopEvidence.sortedBy(File::getName).forEach { add(it.releaseRecord()) }
-            })
-            put("nodeRuntime", buildJsonArray {
-                input.nodeEvidence.sortedBy(File::getName).forEach { add(it.releaseRecord()) }
-            })
+            put("ciProvenance", input.ciProvenance.releaseRecord())
+            putRecords("desktopRuntime", input.desktopEvidence)
+            putRecords("jvmRuntime", input.jvmEvidence)
+            put("jvmRuntimeRunner", input.jvmRuntimeRunner.releaseRecord())
+            putRecords("nodeRuntime", input.nodeEvidence)
             put("nodeRuntimeRunner", input.nodeRuntimeRunner.releaseRecord())
-            put("windowsSupervisorIdentity", input.windowsSupervisorIdentity.releaseRecord())
+            putRecords("nodeWasmRuntime", input.nodeWasmEvidence)
+            put("nodeWasmRuntimeRunner", input.nodeWasmRuntimeRunner.releaseRecord())
+            putRecords("androidRuntime", input.androidEvidence)
             put("iosNative", input.iosNativeEvidence.releaseRecord())
             put("privacyAudit", input.privacyAudit.releaseRecord())
             put("artifactMetrics", input.artifactMetrics.releaseRecord())
-            put("resourceMeasurements", buildJsonArray {
-                input.resourceReports.sortedBy(File::getName).forEach { add(it.releaseRecord()) }
-            })
+            putRecords("resourceMeasurements", input.resourceReports)
         })
         put("policies", buildJsonObject {
             put("approvals", input.approvals.releaseRecord())
@@ -179,17 +150,8 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     return manifest
 }
 
-private fun verifyWindowsSupervisorMavenBinding(input: CandidateInputFiles, maven: JsonObject) {
-    val expectedPath = "io/github/ciurlaro/codex-agent-runtime-node/${input.version}/" +
-        "codex-agent-runtime-node-${input.version}-windows-supervisor-x64.zip"
-    val matches = maven.releaseArray("files").mapNotNull { it as? JsonObject }
-        .filter { it.releaseString("path") == expectedPath }
-    check(matches.size == 1) { "Maven inventory does not contain the exact Windows supervisor classifier" }
-    val record = matches.single()
-    check(record.releaseLong("bytes") == input.windowsSupervisorPackage.length() &&
-        record.releaseString("sha256") == input.windowsSupervisorPackage.releaseDigest()) {
-        "Maven inventory does not bind the Windows supervisor package"
-    }
+private fun kotlinx.serialization.json.JsonObjectBuilder.putRecords(name: String, files: List<File>) {
+    put(name, buildJsonArray { files.sortedBy(File::getName).forEach { add(it.releaseRecord()) } })
 }
 
 private fun verifySwiftPackageProof(input: CandidateInputFiles, swiftHash: String) {
@@ -230,11 +192,10 @@ private fun verifySwiftPackageProof(input: CandidateInputFiles, swiftHash: Strin
         proof.releaseString("packageSwiftChecksum") == swiftHash) {
         "SwiftPM candidate proof does not bind committed Package.swift metadata"
     }
-    listOf(
-        "nativeProvenanceSha256", "xcodeVersionSha256", "swiftVersionSha256", "toolchainSha256",
-    ).forEach { field ->
-        check(proof.releaseString(field).matches(Regex("[0-9a-f]{64}"))) {
-            "SwiftPM candidate proof has an invalid $field"
+    listOf("nativeProvenanceSha256", "xcodeVersionSha256", "swiftVersionSha256", "toolchainSha256")
+        .forEach { field ->
+            check(proof.releaseString(field).matches(Regex("[0-9a-f]{64}"))) {
+                "SwiftPM candidate proof has an invalid $field"
+            }
         }
-    }
 }

@@ -17,6 +17,9 @@ internal fun writeTestDesktopDistributionManifest(file: File, binarySha256: Stri
                     put("archiveEntry", JsonPrimitive("codex-app-server"))
                     put("binarySha256", JsonPrimitive(binarySha256))
                     put("executableName", JsonPrimitive(if (target == "mingwX64") "codex-app-server.exe" else "codex-app-server"))
+                    put("supervisorExecutableName", JsonPrimitive(
+                        if (target == "mingwX64") "codex-process-supervisor.exe" else "codex-process-supervisor",
+                    ))
                 })
             }
         })

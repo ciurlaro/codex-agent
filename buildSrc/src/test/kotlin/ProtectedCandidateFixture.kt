@@ -7,26 +7,25 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 
 internal fun withPayloadFixture(includeReview: Boolean = true, block: (ProtectedCandidatePayloadFixture) -> Unit) {
-    val fixture = ProtectedCandidatePayloadFixture("a".repeat(40), "b".repeat(64), includeReview)
+    val fixture = ProtectedCandidatePayloadFixture("a".repeat(40), includeReview)
     try { block(fixture) } finally { fixture.close() }
 }
 
 internal class ProtectedCandidatePayloadFixture(
     private val commit: String,
-    private val sha: String,
     includeReview: Boolean,
 ) : AutoCloseable {
     val root = createTempDirectory("candidate-payload").toFile()
-    private val nodeRelease = CandidateNodeReleaseFixture(root.resolve("node-release"), "0.2.0", commit)
+    private val runtimes = CandidateRuntimeReleaseFixture(root.resolve("runtime-release"), "0.2.0", commit)
     val swiftZip = root.resolve("CodexAgent-0.2.0.xcframework.zip").also(::writeZip)
     val swiftChecksum = root.resolve("swift.sha256").apply { writeText(swiftZip.releaseDigest()) }
-    val centralBundle = root.resolve("central.zip").apply { writeText("central") }
-    val desktop = nodeRelease.desktopEvidence
+    val centralBundle = runtimes.writeCentralBundle(root.resolve("central.zip"))
+    val desktop = runtimes.desktopEvidence
     val iosNative = root.resolve("ios-native-evidence.json").also { writeTestCandidateIosNativeEvidence(it, commit) }
     val maven = root.resolve("maven.json").apply { atomicWriteJson(buildJsonObject {
         put("version", JsonPrimitive("0.2.0"))
         put("primaryArtifactCount", JsonPrimitive(expectedMavenPrimaryPaths("0.2.0").size))
-        put("files", buildJsonArray { nodeRelease.mavenRecords().forEach(::add) })
+        put("files", buildJsonArray { runtimes.mavenRecords().forEach(::add) })
     }) }
     val central = root.resolve("central.json").apply { atomicWriteJson(buildJsonObject {
         put("belowCentralPortalUploadLimit", JsonPrimitive(true)); put("bundle", centralBundle.releaseRecord())
@@ -36,6 +35,7 @@ internal class ProtectedCandidatePayloadFixture(
         put("result", JsonPrimitive("passed")); put("version", JsonPrimitive("0.2.0"))
         put("mavenInventorySha256", JsonPrimitive(maven.releaseDigest()))
     }) }
+    val ciProvenance = writeTestCandidateCiProvenance(root.resolve(CANDIDATE_CI_PROVENANCE_FILE), commit)
     val reviews = root.resolve("reviews.json").takeIf { includeReview }?.apply { writeText("reviews.json") }
     val privacy = root.resolve("privacy.json").apply { atomicWriteJson(buildJsonObject {
         put("passed", JsonPrimitive(true)); reviews?.let { put("reviewSha256", JsonPrimitive(it.releaseDigest())) }
@@ -51,7 +51,7 @@ internal class ProtectedCandidatePayloadFixture(
     val privacyManifest = policy("PrivacyInfo.xcprivacy")
     val dataFlow = policy("data-flow.json")
     val packageSwift = policy("Package.swift")
-    val desktopManifest = nodeRelease.distributionManifest
+    val desktopManifest = runtimes.distributionManifest
     val desktopLicense = policy("openai-codex-LICENSE.txt")
     val desktopNotice = policy("openai-codex-NOTICE.txt")
     val approvals = writeTestPublicationApprovals(
@@ -61,28 +61,21 @@ internal class ProtectedCandidatePayloadFixture(
         writeTestSwiftPackageProof(it, swiftZip, swiftChecksum, packageSwift, commit, "0.2.0", root)
     }
     val inputs = CandidateInputFiles(
-        version = "0.2.0", releaseTag = "v0.2.0", commit = commit,
-        swiftZip = swiftZip, swiftChecksum = swiftChecksum, swiftPmProof = swiftPmProof,
-        centralBundle = centralBundle, centralInventory = central, mavenInventory = maven,
-        kmpConsumer = consumer, desktopEvidence = desktop, nodeEvidence = nodeRelease.nodeEvidence,
-        nodeClassifierArchives = nodeRelease.classifiers.values.toList(), nodeRuntimeRunner = nodeRelease.runner,
-        windowsSupervisorPackage = nodeRelease.supervisorPackage,
-        windowsSupervisorIdentity = nodeRelease.supervisorIdentity,
-        windowsSupervisorExecutable = nodeRelease.supervisorExecutable,
-        windowsSupervisorSource = nodeRelease.supervisorSource,
-        iosNativeEvidence = iosNative, privacyAudit = privacy,
-        artifactMetrics = artifactMetrics, resourceReports = listOf(resources), approvals = approvals,
-        privacyManifest = privacyManifest, privacyDataFlowReview = dataFlow,
-        privacyRequiredReasonReviews = reviews, packageSwift = packageSwift,
-        desktopDistributionManifest = desktopManifest, desktopBundledLicense = desktopLicense,
-        desktopBundledNotice = desktopNotice,
+        "0.2.0", "v0.2.0", commit, swiftZip, swiftChecksum, swiftPmProof, centralBundle,
+        central, maven, consumer, ciProvenance, desktop, runtimes.classifiers.values.toList(),
+        runtimes.jvmEvidence, runtimes.jvmRunner, runtimes.nodeEvidence, runtimes.nodeRunner,
+        runtimes.nodeWasmEvidence, runtimes.nodeWasmRunner, runtimes.androidEvidence,
+        iosNative, privacy, artifactMetrics, listOf(resources), approvals, privacyManifest, dataFlow,
+        reviews, packageSwift, desktopManifest, desktopLicense, desktopNotice,
     )
     val manifest = root.resolve("candidate-manifest.json").apply { atomicWriteJson(buildCandidateManifest(inputs)) }
     val sources = listOf(
-        swiftZip, swiftPmProof, centralBundle, central, maven, consumer, *desktop.toTypedArray(),
-        *nodeRelease.nodeEvidence.toTypedArray(), nodeRelease.runner, nodeRelease.supervisorIdentity, iosNative,
-        privacy, artifactMetrics, resources, approvals, privacyManifest, dataFlow, packageSwift,
-        desktopManifest, desktopLicense, desktopNotice,
+        swiftZip, swiftPmProof, centralBundle, central, maven, consumer, ciProvenance, *desktop.toTypedArray(),
+        *runtimes.jvmEvidence.toTypedArray(), runtimes.jvmRunner,
+        *runtimes.nodeEvidence.toTypedArray(), runtimes.nodeRunner,
+        *runtimes.nodeWasmEvidence.toTypedArray(), runtimes.nodeWasmRunner,
+        *runtimes.androidEvidence.toTypedArray(), iosNative, privacy, artifactMetrics, resources,
+        approvals, privacyManifest, dataFlow, packageSwift, desktopManifest, desktopLicense, desktopNotice,
     ) + listOfNotNull(reviews)
     val payload = root.resolve("payload")
     val verification = root.resolve("reports/payload-verification.json")
@@ -94,17 +87,23 @@ internal class ProtectedCandidatePayloadFixture(
     override fun close() { root.deleteRecursively() }
 }
 
-internal class PreflightFixture(candidateCommit: String, hash: String) : AutoCloseable {
+internal class PreflightFixture(candidateCommit: String, @Suppress("UNUSED_PARAMETER") hash: String) : AutoCloseable {
     val repository = createTempDirectory("candidate-repository").toFile()
     val external = createTempDirectory("candidate-inputs").toFile()
     val candidate = repository.resolve("build/protected-candidate/$candidateCommit")
-    private val nodeRelease = CandidateNodeReleaseFixture(external.resolve("node-release"), "0.2.0", candidateCommit)
-    val desktop = nodeRelease.desktopEvidence
+    private val runtimes = CandidateRuntimeReleaseFixture(external.resolve("runtime-release"), "0.2.0", candidateCommit)
+    val desktop = runtimes.desktopEvidence
     val iosNative = external.resolve("ios-native").apply { mkdirs() }
     val input = ProtectedCandidatePreflight(
-        "0.2.0", "v0.2.0", candidateCommit, candidateCommit, "", false,
-        repository, candidate, desktop, nodeRelease.nodeEvidence, iosNative,
-        nodeRelease.supervisorPackage, nodeRelease.supervisorIdentity, nodeRelease.supervisorSource,
+        version = "0.2.0", releaseTag = "v0.2.0", commit = candidateCommit, head = candidateCommit,
+        trackedStatus = "", parallel = false, repository = repository, candidateDirectory = candidate,
+        desktopEvidence = desktop, jvmEvidence = runtimes.jvmEvidence, jvmRuntimeRunner = runtimes.jvmRunner,
+        nodeEvidence = runtimes.nodeEvidence, nodeRuntimeRunner = runtimes.nodeRunner,
+        nodeWasmEvidence = runtimes.nodeWasmEvidence, nodeWasmRuntimeRunner = runtimes.nodeWasmRunner,
+        androidEvidence = runtimes.androidEvidence.filterNot {
+            it.name == FIREBASE_ANDROID_VERIFICATION_RECEIPT_FILE
+        },
+        iosNativeEvidenceDirectory = iosNative,
     )
 
     override fun close() { repository.deleteRecursively(); external.deleteRecursively() }
@@ -113,10 +112,3 @@ internal class PreflightFixture(candidateCommit: String, hash: String) : AutoClo
 private fun writeZip(file: File) = ZipOutputStream(file.outputStream()).use {
     it.putNextEntry(ZipEntry("member")); it.write("contents".encodeToByteArray()); it.closeEntry()
 }
-
-private fun writeDesktopEvidence(directory: File, candidate: String, hash: String): List<File> =
-    desktopRuntimeEvidenceTargets.keys.map { target ->
-        directory.resolve(desktopRuntimeEvidenceFileName(target)).apply {
-            atomicWriteJson(buildDesktopRuntimeEvidence(DesktopRuntimeEvidenceValues(candidate, target, hash, hash)))
-        }
-    }

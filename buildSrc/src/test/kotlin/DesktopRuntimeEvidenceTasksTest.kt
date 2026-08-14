@@ -30,10 +30,13 @@ class DesktopRuntimeEvidenceTasksTest {
         val commit = "a".repeat(40)
         val binary = "b".repeat(64)
         val archive = "c".repeat(64)
+        val supervisor = "d".repeat(64)
         val manifest = writeTestDesktopDistributionManifest(root.resolve("desktop.json"), binary)
         val evidence = desktopRuntimeEvidenceTargets.keys.map { target ->
             root.resolve(desktopRuntimeEvidenceFileName(target)).apply {
-                atomicWriteJson(buildDesktopRuntimeEvidence(DesktopRuntimeEvidenceValues(commit, target, binary, archive)))
+                atomicWriteJson(buildDesktopRuntimeEvidence(
+                    DesktopRuntimeEvidenceValues(commit, target, binary, supervisor, archive),
+                ))
             }
         }
         val inventory = root.resolve("maven.json").apply { atomicWriteJson(buildJsonObject {

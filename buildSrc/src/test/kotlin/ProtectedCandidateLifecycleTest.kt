@@ -95,7 +95,7 @@ class ProtectedCandidateLifecycleTest {
         assertEquals(8, protectedCandidatePhaseGatePaths.size)
         val gates = protectedCandidatePhaseGatePaths.flatten()
         assertFalse(gates.any { it == ":clean" || it.endsWith(":clean") })
-        assertFalse(gates.any { "AndroidRuntimeEvidence" in it })
+        assertFalse(gates.any { "recordFirebaseAndroidRuntimeEvidence" in it })
         assertTrue(gates.containsAll(listOf(
             ":codex-agent-runtime-ios:validateImportedCodexAgentIosNativeEvidence",
             ":codex-agent-runtime-ios:prepareCodexAgentIosArm64RustSlice",
@@ -106,13 +106,21 @@ class ProtectedCandidateLifecycleTest {
             ":codex-agent-runtime-ios:recordCodexAgentSwiftPackageProof",
             ":codex-agent-runtime-ios:verifyIosPrivacyManifest",
             ":stageCentralRepository",
+            ":verifyImportedJvmRuntimeEvidence",
+            ":stageProtectedJvmRuntimeEvidence",
             ":verifyImportedNodeRuntimeEvidence",
             ":stageProtectedNodeRuntimeEvidence",
+            ":verifyImportedNodeWasmRuntimeEvidence",
+            ":stageProtectedNodeWasmRuntimeEvidence",
+            FIREBASE_ANDROID_VERIFY_TASK_PATH,
+            ":stageProtectedFirebaseAndroidRuntimeEvidence",
             ":verifyStagedKmpConsumer",
             ":packageCentralBundle",
             ":verifyCandidateManifest",
         )))
-        assertFalse(gates.any { Regex("nodeRuntime(?:Macos|Linux|Mingw).+Test").containsMatchIn(it) })
+        assertFalse(gates.any {
+            Regex("(?:node|nodeWasm|jvm)Runtime(?:Macos|Linux|Mingw).+Test").containsMatchIn(it)
+        })
         assertFalse(gates.any { gate -> listOf(
             "preparePinned", "prepareCodexIosSource", "testCodexIos", "buildCodexIos",
         ).any(gate::contains) })
@@ -132,19 +140,6 @@ class ProtectedCandidateLifecycleTest {
                 verifyProtectedCandidateManifest(fixture.manifest, fixture.inputs)
             }
         }
-    }
-
-    @Test
-    fun `Windows supervisor extraction remains candidate local and identity exact`() = withPayloadFixture { fixture ->
-        val output = fixture.root.resolve("reports/$WINDOWS_SUPERVISOR_FILE_NAME")
-        extractCandidateWindowsSupervisor(
-            fixture.inputs.windowsSupervisorPackage,
-            fixture.inputs.windowsSupervisorIdentity,
-            fixture.inputs.windowsSupervisorSource,
-            fixture.root,
-            output,
-        )
-        assertTrue(output.readBytes().contentEquals(fixture.inputs.windowsSupervisorExecutable.readBytes()))
     }
 
     @Test

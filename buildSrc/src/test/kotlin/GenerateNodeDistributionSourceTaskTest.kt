@@ -6,11 +6,13 @@ import org.gradle.testfixtures.ProjectBuilder
 
 class GenerateNodeDistributionSourceTaskTest {
     @Test
-    fun `generates every target and leaves an absent supervisor unbound`() = withTask { task, output ->
+    fun `generates every target with its process supervisor`() = withTask { task, output ->
         task.generate()
         val source = output.walkTopDown().single { it.name == "NodeCodexDistribution.generated.kt" }.readText()
         targets.forEach { assertTrue("\"$it\" to NodeCodexDistribution" in source) }
-        assertTrue("windowsNodeSupervisorSha256: String? = null" in source)
+        assertTrue("supervisorExecutableName = \"codex-process-supervisor\"" in source)
+        assertTrue("supervisorExecutableName = \"codex-process-supervisor.exe\"" in source)
+        assertTrue("fun nodeCodexDistribution(target: String)" in source)
     }
 
     @Test
@@ -45,7 +47,7 @@ class GenerateNodeDistributionSourceTaskTest {
         ${distributions.map { target ->
             val index = targets.indexOf(target)
             val suffix = if (target == "mingwX64") ".exe" else ""
-            """{"target":"$target","classifier":"${classifiers[index]}","asset":"asset-$index.zip","archiveSha256":"${"a".repeat(64)}","archiveEntry":"binary-$index","binarySha256":"${"b".repeat(64)}","executableName":"codex-app-server$suffix"}"""
+            """{"target":"$target","classifier":"${classifiers[index]}","asset":"asset-$index.zip","archiveSha256":"${"a".repeat(64)}","archiveEntry":"binary-$index","binarySha256":"${"b".repeat(64)}","executableName":"codex-app-server$suffix","supervisorExecutableName":"codex-process-supervisor$suffix"}"""
         }.joinToString(",")}
         ]}
     """.trimIndent()

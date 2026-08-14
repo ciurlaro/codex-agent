@@ -56,7 +56,7 @@ class CentralPortalTaskTest {
 
         fixture.prepare(portal)
 
-        assertEquals(listOf("GET", "POST", "GET", "GET"), portal.requests.map { it.method })
+        assertEquals(listOf("GET", "POST", "GET", "GET", "GET"), portal.requests.map { it.method })
         assertTrue(portal.requests.none { it.url.contains("/upload") })
         assertEquals(CENTRAL_ID, fixture.record.readReleaseObject().releaseString("deploymentId"))
         assertEquals("VALIDATED", fixture.record.readReleaseObject().releaseString("deploymentState"))
@@ -124,7 +124,7 @@ class CentralPortalTaskTest {
 
         fixture.await(portal) { assertEquals(10L, it); sleeps++ }
 
-        assertEquals(5, portal.requests.size)
+        assertEquals(6, portal.requests.size)
         assertEquals(2, sleeps)
         assertEquals("VALIDATED", fixture.record.readReleaseObject().releaseString("deploymentState"))
     }
@@ -179,6 +179,7 @@ class CentralPortalTaskTest {
         assertEquals(
             listOf(
                 "$CENTRAL_API/status?id=$CENTRAL_ID",
+                "$CENTRAL_API/deployment/$CENTRAL_ID/download/$CENTRAL_ANDROID_AAR_ENTRY",
                 "$CENTRAL_API/deployment/$CENTRAL_ID/download/io/github/example/client/0.2.0/client-0.2.0.jar",
                 "$CENTRAL_API/deployment/$CENTRAL_ID/download/io/github/example/client/0.2.0/client-0.2.0.pom",
                 "$CENTRAL_API/deployment/$CENTRAL_ID",
@@ -195,7 +196,7 @@ class CentralPortalTaskTest {
         fixture.setState("PUBLISHED")
         val portal = FakePortal(status("PUBLISHED"), *downloads().toTypedArray())
         fixture.release(portal)
-        assertEquals(3, portal.requests.size)
+        assertEquals(4, portal.requests.size)
     }
 
     private fun withFixture(block: (CentralFixture) -> Unit) = withCentralFixture(block = block)

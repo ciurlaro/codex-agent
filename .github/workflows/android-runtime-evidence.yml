@@ -6,41 +6,105 @@ on:
       candidateCommit:
         required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      candidateCommit:
-        description: Exact candidate commit SHA
-        required: true
-        type: string
 
 permissions:
   contents: read
+  id-token: write
+
+concurrency:
+  group: android-runtime-evidence-${{ inputs.candidateCommit }}
+  cancel-in-progress: false
 
 jobs:
-  arm64-runtime:
-    runs-on: [self-hosted, linux, arm64, android]
-    environment: release-candidate
+  firebase-arm64-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Validate the protected candidate identity before running code
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.candidateCommit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_SHA" = "$CANDIDATE_COMMIT"
+          test "$GITHUB_REF_TYPE" = tag
+          test "$GITHUB_REF_PROTECTED" = true
+          [[ "$GITHUB_REF_NAME" =~ ^candidate/v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]]
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           ref: ${{ inputs.candidateCommit }}
-      - uses: actions/setup-java@v4
+          fetch-depth: 1
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Run and record the exact ARM64 runtime smoke
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+      - name: Build the exact application APK, test APK, and release AAR
         run: >-
-          ./gradlew :codex-agent-runtime-android:recordAndroidRuntimeEvidence
-          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
-          --no-daemon --stacktrace
-      - uses: actions/upload-artifact@v4
+          ./gradlew
+          :tooling:android-runtime-evidence:assembleDebug
+          :tooling:android-runtime-evidence:assembleDebugAndroidTest
+          :codex-agent-runtime-android:assembleRelease
+          --no-parallel --no-daemon --stacktrace
+      - name: Authenticate to Google Cloud without a service-account key
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          name: codex-agent-android-runtime-evidence
-          path: |
-            codex-agent-runtime-android/build/reports/android-runtime-evidence/android-runtime-evidence.json
-            codex-agent-runtime-android/build/reports/android-runtime-evidence/codex-agent-runtime-android-debug-androidTest.apk
-            codex-agent-runtime-android/build/reports/android-runtime-evidence/RuntimeBootstrapDeviceTest.xml
+          workload_identity_provider: ${{ vars.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GOOGLE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: ${{ env.GOOGLE_CLOUD_PROJECT }}
+      - name: Run one Firebase ARM64 API 35 instrumentation matrix
+        id: firebase
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_CLOUD_PROJECT"
+          matrix_file="$RUNNER_TEMP/firebase-test-matrix.json"
+          results="$RUNNER_TEMP/firebase-test-results"
+          gcloud firebase test android run \
+            --type=instrumentation \
+            --app=tooling/android-runtime-evidence/build/outputs/apk/debug/android-runtime-evidence-debug.apk \
+            --test=tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk \
+            --test-targets=class:io.github.ciurlaro.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest \
+            --device=model=SmallPhone.arm,version=35,locale=en,orientation=portrait \
+            --num-flaky-test-attempts=0 \
+            --project="$GOOGLE_CLOUD_PROJECT" \
+            --format=json > "$matrix_file"
+          mapfile -t result_uris < <(
+            sed -nE 's/^[[:space:]]*"gcsPath":[[:space:]]*"([^"]+)".*$/\1/p' "$matrix_file"
+          )
+          test "${#result_uris[@]}" -eq 1
+          results_uri="${result_uris[0]}"
+          [[ "$results_uri" == gs://* ]]
+          mkdir -p "$results"
+          gcloud storage cp --recursive "$results_uri" "$results"
+          {
+            printf 'matrix_file=%s\n' "$matrix_file"
+            printf 'results=%s\n' "$results"
+          } >> "$GITHUB_OUTPUT"
+      - name: Record and validate hash-bound Firebase evidence
+        env:
+          CANDIDATE_COMMIT: ${{ inputs.candidateCommit }}
+          FIREBASE_MATRIX_FILE: ${{ steps.firebase.outputs.matrix_file }}
+          FIREBASE_RESULTS_DIRECTORY: ${{ steps.firebase.outputs.results }}
+        run: >-
+          ./gradlew
+          :tooling:android-runtime-evidence:recordFirebaseAndroidRuntimeEvidence
+          -PcodexAgent.candidateCommit="$CANDIDATE_COMMIT"
+          -PcodexAgent.firebaseMatrixFile="$FIREBASE_MATRIX_FILE"
+          -PcodexAgent.firebaseResultsDirectory="$FIREBASE_RESULTS_DIRECTORY"
+          --no-parallel --no-daemon --stacktrace
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
           if-no-files-found: error
+          overwrite: true
+          name: codex-agent-android-runtime-evidence-${{ inputs.candidateCommit }}
+          path: tooling/android-runtime-evidence/build/reports/firebase-android-runtime-evidence/**
+          compression-level: 0
           retention-days: 30

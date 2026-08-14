@@ -32,7 +32,7 @@ class CentralPortalContentVerificationTest {
 
         val record = fixture.record.readReleaseObject()
         assertEquals(fixture.bundle.releaseDigest(), record.releaseString("remoteBundleVerifiedSha256"))
-        assertEquals(2, portal.requests.count { it.url.contains("/download/") })
+        assertEquals(3, portal.requests.count { it.url.contains("/download/") })
         var requests = 0
         fixture.prepare(sender = { requests++; error("verified deployment must be reused") })
         assertEquals(0, requests)
@@ -61,7 +61,7 @@ class CentralPortalContentVerificationTest {
 
         fixture.prepare(portal)
 
-        assertEquals(3, portal.requests.size)
+        assertEquals(4, portal.requests.size)
         assertEquals(3, fixture.record.readReleaseObject().releaseInt("schemaVersion"))
         fixture.mutateRecord("schemaVersion", JsonPrimitive(99))
         var requests = 0
@@ -100,7 +100,10 @@ class CentralPortalContentVerificationTest {
     @Test
     fun `unsafe and duplicate ZIP entries fail before any download`() {
         val bundles = listOf(
-            centralZip(listOf("../bad.txt" to "bad".encodeToByteArray())),
+            centralZip(listOf(
+                CENTRAL_ANDROID_AAR_ENTRY to CENTRAL_ANDROID_AAR_BYTES,
+                "../bad.txt" to "bad".encodeToByteArray(),
+            )),
             duplicateCentralZip(),
         )
         bundles.forEach { bundle -> withCentralFixture(bundle) { fixture ->

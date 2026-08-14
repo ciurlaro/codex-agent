@@ -6,7 +6,6 @@ import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
-import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -25,14 +24,16 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val centralInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val kmpConsumer: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val ciProvenance: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopClassifierArchives: ConfigurableFileCollection
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val jvmEvidence: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val jvmRuntimeRunner: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val nodeEvidence: ConfigurableFileCollection
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val nodeClassifierArchives: ConfigurableFileCollection
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val nodeRuntimeRunner: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val windowsSupervisorPackage: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val windowsSupervisorIdentity: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val windowsSupervisorExecutable: RegularFileProperty
-    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val windowsSupervisorSource: org.gradle.api.file.DirectoryProperty
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val nodeWasmEvidence: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val nodeWasmRuntimeRunner: RegularFileProperty
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val androidEvidence: ConfigurableFileCollection
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val iosNativeEvidence: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
@@ -50,27 +51,22 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
 
     @TaskAction
     fun generate() {
-        outputFile.get().asFile.atomicWriteJson(buildCandidateManifest(CandidateInputFiles(
-            version = candidateVersion.get(), releaseTag = releaseTag.get(), commit = candidateCommit.get(),
-            swiftZip = swiftZip.get().asFile, swiftChecksum = swiftChecksum.get().asFile,
-            swiftPmProof = swiftPmProof.get().asFile, centralBundle = centralBundle.get().asFile,
-            centralInventory = centralInventory.get().asFile, mavenInventory = mavenInventory.get().asFile,
-            kmpConsumer = kmpConsumer.get().asFile, desktopEvidence = desktopEvidence.files.sortedBy { it.name },
-            nodeEvidence = nodeEvidence.files.sortedBy { it.name },
-            nodeClassifierArchives = nodeClassifierArchives.files.sortedBy { it.name },
-            nodeRuntimeRunner = nodeRuntimeRunner.get().asFile,
-            windowsSupervisorPackage = windowsSupervisorPackage.get().asFile,
-            windowsSupervisorIdentity = windowsSupervisorIdentity.get().asFile,
-            windowsSupervisorExecutable = windowsSupervisorExecutable.get().asFile,
-            windowsSupervisorSource = windowsSupervisorSource.get().asFile,
-            iosNativeEvidence = iosNativeEvidence.get().asFile, privacyAudit = privacyAudit.get().asFile,
-            artifactMetrics = artifactMetrics.get().asFile,
-            resourceReports = resourceReports.files.sortedBy { it.name }, approvals = approvalsFile.get().asFile,
-            privacyManifest = privacyManifest.get().asFile, privacyDataFlowReview = privacyDataFlowReview.get().asFile,
-            privacyRequiredReasonReviews = privacyReviews.orNull?.asFile, packageSwift = packageSwift.get().asFile,
-            desktopDistributionManifest = desktopDistributionManifest.get().asFile,
-            desktopBundledLicense = desktopBundledLicense.get().asFile,
-            desktopBundledNotice = desktopBundledNotice.get().asFile,
-        )))
+        outputFile.get().asFile.atomicWriteJson(buildCandidateManifest(candidateInputs()))
     }
+
+    internal fun candidateInputs() = CandidateInputFiles(
+        candidateVersion.get(), releaseTag.get(), candidateCommit.get(),
+        swiftZip.asFile.get(), swiftChecksum.asFile.get(), swiftPmProof.asFile.get(),
+        centralBundle.asFile.get(), centralInventory.asFile.get(), mavenInventory.asFile.get(),
+        kmpConsumer.asFile.get(), ciProvenance.asFile.get(), desktopEvidence.sorted(), desktopClassifierArchives.sorted(),
+        jvmEvidence.sorted(), jvmRuntimeRunner.asFile.get(), nodeEvidence.sorted(),
+        nodeRuntimeRunner.asFile.get(), nodeWasmEvidence.sorted(), nodeWasmRuntimeRunner.asFile.get(),
+        androidEvidence.sorted(), iosNativeEvidence.asFile.get(), privacyAudit.asFile.get(),
+        artifactMetrics.asFile.get(), resourceReports.sorted(), approvalsFile.asFile.get(),
+        privacyManifest.asFile.get(), privacyDataFlowReview.asFile.get(), privacyReviews.orNull?.asFile,
+        packageSwift.asFile.get(), desktopDistributionManifest.asFile.get(),
+        desktopBundledLicense.asFile.get(), desktopBundledNotice.asFile.get(),
+    )
 }
+
+private fun ConfigurableFileCollection.sorted() = files.sortedBy { it.name }

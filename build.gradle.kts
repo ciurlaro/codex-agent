@@ -98,7 +98,7 @@ val stageCentralRepository = tasks.register("stageCentralRepository") {
 val mavenInventoryFile = candidateReports.map { it.file("maven-inventory.json") }
 val verifyCentralStaging = tasks.register<VerifyMavenStagingTask>("verifyCentralStaging") {
     group = "verification"
-    description = "Verifies the exact signed 24-coordinate staged KMP repository and materializes checksums."
+    description = "Verifies the exact signed 26-coordinate staged KMP repository and materializes checksums."
     dependsOn(stageCentralRepository)
     repositoryDirectory.set(centralStagingDirectory)
     groupId.set(project.group.toString())
@@ -229,9 +229,8 @@ val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTas
     desktopBundledLicense.set(desktopBundledLicenseFile)
     desktopBundledNotice.set(desktopBundledNoticeFile)
 }
-registerProtectedNodeRuntimeCandidate(
+registerProtectedRuntimeCandidates(
     candidateCommit = candidateCommitValue,
-    candidateRoot = candidateRoot,
     candidateEvidence = candidateEvidence,
     candidateReports = candidateReports,
     centralStagingDirectory = centralStagingDirectory,

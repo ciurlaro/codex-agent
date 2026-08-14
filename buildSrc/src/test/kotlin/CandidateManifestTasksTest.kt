@@ -9,6 +9,22 @@ import org.gradle.testfixtures.ProjectBuilder
 
 class CandidateManifestTasksTest {
     @Test
+    fun `payload transport traverses every schema-declared evidence array generically`() {
+        val repository = generateSequence(File(System.getProperty("user.dir")).canonicalFile) { it.parentFile }
+            .first { it.resolve("buildSrc/src/main/kotlin/CandidatePayloadTasks.kt").isFile }
+        listOf("CandidatePayloadTasks.kt", "ProtectedCandidatePayload.kt").forEach { name ->
+            val source = repository.resolve("buildSrc/src/main/kotlin/$name").readText()
+            assertTrue("candidateEvidenceArrayNames.forEach" in source, name)
+            listOf(
+                "desktopRuntime", "jvmRuntime", "nodeRuntime", "nodeWasmRuntime",
+                "androidRuntime", "resourceMeasurements",
+            ).forEach { field ->
+                assertFalse("releaseArray(\"$field\")" in source, "$name hard-codes $field")
+            }
+        }
+    }
+
+    @Test
     fun `canonical manifest and transported payload bind every artifact evidence and policy`() = withFixture { fixture ->
         val manifest = buildCandidateManifest(fixture.inputs)
         fixture.manifest.atomicWriteJson(manifest)
@@ -24,12 +40,21 @@ class CandidateManifestTasksTest {
         )
 
         assertEquals("passed", result.releaseString("result"))
-        assertEquals(7, manifest.releaseInt("schemaVersion"))
+        val transportedManifest = fixture.manifest.copyTo(fixture.payload.resolve(fixture.manifest.name))
+        assertEquals("passed", verifyCandidatePayload(
+            transportedManifest, fixture.payload, VERSION, "v$VERSION", COMMIT, fixture.policyFiles,
+        ).releaseString("result"))
+        assertFailsWith<IllegalStateException> {
+            verifyCandidatePayload(fixture.manifest, fixture.payload, VERSION, "v$VERSION", COMMIT, fixture.policyFiles)
+        }
+        assertEquals(8, manifest.releaseInt("schemaVersion"))
         assertTrue(manifest.releaseBoolean("protectedCandidate"))
         assertEquals(
             fixture.swiftPmProof.name,
             manifest.releaseObject("evidence").releaseObject("swiftPmProof").releaseString("fileName"),
         )
+        assertEquals(CANDIDATE_CI_PROVENANCE_FILE,
+            manifest.releaseObject("evidence").releaseObject("ciProvenance").releaseString("fileName"))
         assertEquals(
             "releaseTag=v$VERSION\nswiftAsset=${fixture.swiftZip.name}\ncentralBundle=${fixture.centralBundle.name}\n",
             candidateGithubOutputs(result),
@@ -37,30 +62,45 @@ class CandidateManifestTasksTest {
     }
 
     @Test
-    fun `Node evidence is exact target complete and hash bound`() = withFixture { fixture ->
+    fun `standalone evidence is exact target complete and hash bound`() = withFixture { fixture ->
         val unexpected = fixture.root.resolve("node-runtime-unexpected.json").apply { writeText("{}") }
         assertFailsWith<IllegalStateException> {
             buildCandidateManifest(fixture.inputs.copy(nodeEvidence = fixture.nodeEvidence + unexpected))
         }
-        val original = fixture.nodeEvidence.first().readBytes()
-        fixture.nodeEvidence.first().appendText("tampered")
+        val original = fixture.jvmEvidence.first().readBytes()
+        fixture.jvmEvidence.first().appendText("tampered")
         assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
-        fixture.nodeEvidence.first().writeBytes(original)
-        fixture.nodeEvidence.last().delete()
+        fixture.jvmEvidence.first().writeBytes(original)
+        fixture.nodeWasmEvidence.last().delete()
         assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
     }
 
     @Test
-    fun `old candidate schema and supervisor package drift fail closed`() = withFixture { fixture ->
+    fun `old candidate schema and Android receipt drift fail closed`() = withFixture { fixture ->
         val manifest = buildCandidateManifest(fixture.inputs)
         val old = fixture.root.resolve("old.json").apply {
             writeText(releaseJson.encodeToString(
                 kotlinx.serialization.json.JsonElement.serializer(), manifest,
-            ).replace("\"schemaVersion\": 7", "\"schemaVersion\": 6"))
+            ).replace("\"schemaVersion\": 8", "\"schemaVersion\": 7"))
         }
         assertFailsWith<IllegalStateException> { verifyCandidateManifestStructure(old.readReleaseObject()) }
-        fixture.inputs.windowsSupervisorPackage.appendText("tampered")
+        val provenance = fixture.ciProvenance.readBytes()
+        fixture.ciProvenance.writeText(fixture.ciProvenance.readText().replace(COMMIT, "f".repeat(40)))
         assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
+        fixture.ciProvenance.writeBytes(provenance)
+        val receipt = fixture.androidEvidence.single {
+            it.name == FIREBASE_ANDROID_VERIFICATION_RECEIPT_FILE
+        }
+        receipt.writeText(receipt.readText().replace("\"passed\"", "\"failed\""))
+        assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
+    }
+
+    @Test
+    fun `Central Android AAR must contain the Firebase evidenced runtime`() = withFixture { fixture ->
+        fixture.replaceCentralAndroidRuntime("different runtime".encodeToByteArray())
+        assertFailsWith<IllegalStateException> {
+            verifyCandidateCentralAndroidRuntimeBinding(fixture.androidEvidence, fixture.centralBundle, VERSION)
+        }
     }
 
     @Test

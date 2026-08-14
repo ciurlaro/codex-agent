@@ -41,6 +41,7 @@ data class DesktopCodexDistributionSpec(
     val archiveEntry: String,
     val binarySha256: String,
     val executableName: String,
+    val supervisorExecutableName: String,
 )
 
 fun readDesktopCodexManifest(file: File): DesktopCodexManifest {
@@ -56,6 +57,7 @@ fun readDesktopCodexManifest(file: File): DesktopCodexManifest {
             archiveEntry = entry.string("archiveEntry"),
             binarySha256 = entry.string("binarySha256"),
             executableName = entry.string("executableName"),
+            supervisorExecutableName = entry.string("supervisorExecutableName"),
         )
     }
     val manifest = DesktopCodexManifest(root.string("version"), root.string("releaseTag"), distributions)
@@ -76,6 +78,9 @@ fun readDesktopCodexManifest(file: File): DesktopCodexManifest {
         check(distribution.archiveEntry == File(distribution.archiveEntry).name) {
             "${distribution.target} archive entry must be at the archive root"
         }
+        check(distribution.supervisorExecutableName == File(distribution.supervisorExecutableName).name) {
+            "${distribution.target} supervisor executable must be at the archive root"
+        }
     }
     return manifest
 }
@@ -91,11 +96,16 @@ abstract class PackageDesktopCodexRuntimeTask @Inject constructor(
     @get:Input abstract val archiveEntry: Property<String>
     @get:Input abstract val binarySha256: Property<String>
     @get:Input abstract val executableName: Property<String>
+    @get:Input abstract val supervisorExecutableName: Property<String>
 
     @get:InputFile
     @get:Optional
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val localArchive: RegularFileProperty
+
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val supervisorExecutable: RegularFileProperty
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
@@ -151,6 +161,7 @@ abstract class PackageDesktopCodexRuntimeTask @Inject constructor(
     private fun writePackage(target: File, executable: File) {
         val members = listOf(
             executableName.get() to executable,
+            supervisorExecutableName.get() to supervisorExecutable.get().asFile,
             LICENSE_NAME to licenseFile.get().asFile,
             NOTICE_NAME to noticeFile.get().asFile,
         ).sortedBy(Pair<String, File>::first)
@@ -199,7 +210,11 @@ abstract class PackageDesktopCodexRuntimeTask @Inject constructor(
             archive.seek(cursor + 46)
             archive.readFully(nameBytes)
             val name = nameBytes.decodeToString()
-            val mode = if (name == executableName.get()) EXECUTABLE_MODE else FILE_MODE
+            val mode = if (name in setOf(executableName.get(), supervisorExecutableName.get())) {
+                EXECUTABLE_MODE
+            } else {
+                FILE_MODE
+            }
             archive.seek(cursor + 4)
             archive.write(20)
             archive.write(3)
@@ -211,12 +226,15 @@ abstract class PackageDesktopCodexRuntimeTask @Inject constructor(
 
     private fun verifyPackage(packageFile: File) = ZipFile(packageFile).use { archive ->
         val members = archive.entries().asSequence().filterNot(ZipEntry::isDirectory).toList()
-        val expected = setOf(executableName.get(), LICENSE_NAME, NOTICE_NAME)
+        val expected = setOf(executableName.get(), supervisorExecutableName.get(), LICENSE_NAME, NOTICE_NAME)
         check(members.map(ZipEntry::getName).toSet() == expected && members.size == expected.size) {
             "Desktop runtime ZIP member set is invalid"
         }
         fun digest(name: String) = archive.getInputStream(archive.getEntry(name)).use { it.releaseDigest() }
         check(digest(executableName.get()) == binarySha256.get()) { "Packaged runtime SHA-256 mismatch" }
+        check(digest(supervisorExecutableName.get()) == supervisorExecutable.get().asFile.releaseDigest()) {
+            "Packaged supervisor mismatch"
+        }
         check(digest(LICENSE_NAME) == licenseFile.get().asFile.releaseDigest()) { "Packaged license mismatch" }
         check(digest(NOTICE_NAME) == noticeFile.get().asFile.releaseDigest()) { "Packaged notice mismatch" }
     }

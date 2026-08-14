@@ -11,13 +11,13 @@ internal data class NodeEvidenceProcessResult(val exitCode: Int, val output: Str
 internal fun executeNodeRuntimeEvidence(
     candidateCommit: String,
     target: String,
+    runtimeBackend: String,
     runnerOs: String,
     runnerArch: String,
     nodeExecutable: String,
     distributionManifest: File,
     classifierArchive: File,
     compiledNodeTestRuntime: File,
-    windowsSupervisor: File?,
     evidenceFile: File,
     testReport: File,
     runner: (List<String>, Map<String, String>) -> NodeEvidenceProcessResult = ::runNodeEvidenceProcess,
@@ -25,25 +25,21 @@ internal fun executeNodeRuntimeEvidence(
     evidenceFile.delete()
     testReport.delete()
     check(candidateCommit.matches(Regex("[0-9a-f]{40}"))) { "Node evidence commit is not immutable" }
+    requireNodeRuntimeBackend(runtimeBackend)
     val expected = desktopRuntimeEvidenceTargets.getValue(target)
     check(runnerOs == expected.runnerOs && runnerArch == expected.runnerArch) {
         "Node evidence runner does not match $target"
     }
-    check(evidenceFile.name == nodeRuntimeEvidenceFileName(target)) { "Node evidence filename mismatch" }
-    check(testReport.name == nodeRuntimeTestReportFileName(target)) { "Node test report filename mismatch" }
+    check(evidenceFile.name == nodeRuntimeEvidenceFileName(target, runtimeBackend)) {
+        "Node evidence filename mismatch"
+    }
+    check(testReport.name == nodeRuntimeTestReportFileName(target, runtimeBackend)) {
+        "Node test report filename mismatch"
+    }
     check(nodeExecutable.isNotBlank() && '\n' !in nodeExecutable && '\r' !in nodeExecutable) {
         "Node executable is invalid"
     }
-    check(compiledNodeTestRuntime.isFile && compiledNodeTestRuntime.length() > 0) {
-        "Compiled Node test/runtime artifact is missing"
-    }
-    if (target == "mingwX64") {
-        check(windowsSupervisor?.isFile == true && windowsSupervisor.length() > 0) {
-            "Windows Node evidence requires the supervisor artifact"
-        }
-    } else {
-        check(windowsSupervisor == null) { "A Windows supervisor was supplied for $target" }
-    }
+    inspectNodeRuntimeRunnerArchive(compiledNodeTestRuntime, runtimeBackend)
 
     val manifest = readDesktopCodexManifest(distributionManifest)
     val classifier = inspectNodeClassifier(target, manifest, classifierArchive)
@@ -52,24 +48,39 @@ internal fun executeNodeRuntimeEvidence(
         "Node evidence requires exactly Node v$PINNED_NODE_VERSION"
     }
 
-    val temporary = Files.createTempDirectory("codex-agent-node-evidence-$target").toFile()
+    val temporary = Files.createTempDirectory("codex-agent-node-evidence-$runtimeBackend-$target")
+        .toFile().canonicalFile
     try {
         val appServer = temporary.resolve(classifier.executableName)
+        val supervisor = temporary.resolve(classifier.supervisorExecutableName)
         ZipFile(classifierArchive).use { zip ->
-            zip.getInputStream(zip.getEntry(classifier.executableName)).use { input ->
-                Files.copy(input, appServer.toPath(), REPLACE_EXISTING)
-            }
+            listOf(appServer to classifier.executableName, supervisor to classifier.supervisorExecutableName)
+                .forEach { (output, member) ->
+                    zip.getInputStream(zip.getEntry(member)).use { input ->
+                        Files.copy(input, output.toPath(), REPLACE_EXISTING)
+                    }
+                }
         }
         check(appServer.releaseDigest() == classifier.binarySha256) { "Extracted Node App Server hash mismatch" }
-        if (target != "mingwX64") check(appServer.setExecutable(true, false)) {
-            "Node App Server could not be made executable"
+        check(supervisor.releaseDigest() == classifier.supervisorSha256) {
+            "Extracted Node process supervisor hash mismatch"
         }
-        val runnerEntry = extractNodeRuntimeRunner(compiledNodeTestRuntime, temporary.resolve("runner"))
-        val environment = mutableMapOf(
+        if (target != "mingwX64") {
+            check(appServer.setExecutable(true, false) && supervisor.setExecutable(true, false)) {
+                "Node runtime executables could not be made executable"
+            }
+        }
+        val runnerEntry = extractNodeRuntimeRunner(
+            compiledNodeTestRuntime,
+            runtimeBackend,
+            temporary.resolve("runner"),
+        )
+        val environment = mapOf(
             "CODEX_AGENT_APP_SERVER_EXECUTABLE" to appServer.absolutePath,
+            "CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE" to supervisor.absolutePath,
+            "CODEX_AGENT_PROCESS_SUPERVISOR_SHA256" to classifier.supervisorSha256,
             "CODEX_AGENT_DESKTOP_TARGET" to target,
         )
-        windowsSupervisor?.let { environment["CODEX_AGENT_WINDOWS_SUPERVISOR"] = it.absolutePath }
         val listing = runner(
             listOf(nodeExecutable, runnerEntry.absolutePath, "--list-tests"),
             environment,
@@ -92,17 +103,17 @@ internal fun executeNodeRuntimeEvidence(
         evidenceFile.atomicWriteJson(buildNodeRuntimeEvidence(NodeRuntimeEvidenceValues(
             candidateCommit,
             target,
+            runtimeBackend,
             classifier,
             compiledNodeTestRuntime,
-            windowsSupervisor?.releaseDigest(),
         )))
     } finally {
         temporary.deleteRecursively()
     }
 }
 
-private fun extractNodeRuntimeRunner(archive: File, destination: File): File {
-    val members = inspectNodeRuntimeRunnerArchive(archive)
+private fun extractNodeRuntimeRunner(archive: File, runtimeBackend: String, destination: File): File {
+    val members = inspectNodeRuntimeRunnerArchive(archive, runtimeBackend)
     destination.mkdirs()
     ZipFile(archive).use { zip ->
         members.forEach { name ->
@@ -111,7 +122,7 @@ private fun extractNodeRuntimeRunner(archive: File, destination: File): File {
             }
         }
     }
-    return destination.resolve(NODE_RUNTIME_RUNNER_ENTRY)
+    return destination.resolve(nodeRuntimeRunnerEntry(runtimeBackend))
 }
 
 internal fun verifyNodeTestListing(output: String) {

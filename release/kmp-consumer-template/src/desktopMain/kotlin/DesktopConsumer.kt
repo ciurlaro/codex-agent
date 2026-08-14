@@ -2,6 +2,16 @@ import io.github.ciurlaro.codexmobile.appserver.runtime.DesktopCodexRuntimeConfi
 import io.github.ciurlaro.codexmobile.appserver.runtime.DesktopCodexRuntimeFactory
 import okio.Path
 
-fun desktopRuntimeFactory(executable: Path, workingDirectory: Path) = DesktopCodexRuntimeFactory(
-    DesktopCodexRuntimeConfiguration(executable, workingDirectory),
+fun desktopRuntimeFactory(
+    appServerExecutable: Path,
+    processSupervisorExecutable: Path,
+    processSupervisorSha256: String,
+    workingDirectory: Path,
+) = DesktopCodexRuntimeFactory(
+    DesktopCodexRuntimeConfiguration(
+        appServerExecutable = appServerExecutable,
+        processSupervisorExecutable = processSupervisorExecutable,
+        processSupervisorSha256 = processSupervisorSha256,
+        workingDirectory = workingDirectory,
+    ),
 )

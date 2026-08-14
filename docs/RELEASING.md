@@ -1,155 +1,141 @@
 # Releasing
 
-No API key or stored ChatGPT credential is part of this release process.
-Automated verification is credential-free. A real model is accepted manually
-through interactive ChatGPT browser login in the Swift test app.
+Version `0.2.0` has not yet been tagged or published. The release process is
+designed to promote one verified commit and its existing evidence without
+performing the same expensive work twice.
+
+No API key or stored ChatGPT credential is used by automated verification. A
+real-model check uses interactive ChatGPT sign-in in the iOS Simulator test app.
+
+## Candidate identity
+
+A candidate tag must match `candidate/v<version>-rc.N`. It must identify an
+exact commit on `main` with a successful same-repository CI run for that commit.
+The workflow derives the release version from the tag instead of accepting an
+unrelated version input.
+
+The protected candidate environment contains only the signing material needed
+to assemble the release payload. Its configured reviewers approve access to
+those credentials. The protected release environment separately controls Maven
+Central and GitHub publication credentials and approval.
+
+## Evidence is produced once
+
+1. The successful exact-commit CI run completes the repository gates and builds
+   the Apple device and simulator Rust slices once, in parallel. Both artifacts
+   record their commit and provenance.
+2. The Desktop Runtime Evidence workflow reuses one compiled evidence bundle in
+   the existing five-host matrix: macOS Arm64/x64, Linux Arm64/x64, and Windows
+   x64. Each host runs native desktop, JVM desktop, JS-on-Node, and
+   WasmJS-on-Node lifecycle checks against its matching classifier. That single
+   classifier contains both the App Server and process supervisor; there is no
+   standalone Windows supervisor publication.
+3. The Android Runtime Evidence workflow builds the application APK, test APK,
+   and release AAR, then runs the exact instrumentation tests on the Firebase
+   Test Lab `SmallPhone.arm` API 35 ARM virtual device. Its evidence preserves
+   the Firebase matrix result, exact test XML, and tested binaries. A connected
+   physical phone is not required.
+4. Candidate assembly downloads those exact successful CI artifacts, verifies
+   their commit and identities, imports the Apple slices, and runs only the
+   aggregate packaging and consumer gates. It does not rebuild slices or repeat
+   the desktop, Node, JVM, Wasm, or Android runtime tests.
+
+Retries reuse a logically matching successful run or artifact when one exists.
+Two independent builds are not required to have identical bytes or hashes.
+Hashes, signatures, commit bindings, and platform-required checks still verify
+each specific artifact that enters the candidate.
 
 ## Protected candidate
 
-The release candidate uses one immutable commit containing the final root
-Package.swift checksum and every implementation, build, test, workflow, policy,
-and documentation change.
+Run the Release Candidate workflow from the candidate tag. Candidate assembly
+uses a clean checkout and produces one immutable commit-scoped payload under:
 
-1. Run the Desktop Runtime Evidence workflow against that commit. Its Windows
-   job first builds and verifies the canonical supervisor package and identity.
-   One portable Kotlin/JS evidence runner is then built with that identity and
-   reused by the existing five GitHub-hosted target jobs. They execute both
-   desktop and Node initialize/shutdown smokes on macOS Arm64/x64, Linux
-   Arm64/x64, and Windows x64. Separate reports bind the exact commit, target,
-   Node 24.18.0, complete compiled runner, classifier ZIP, and App Server binary.
-   Windows uses the same transported supervisor package. Linux Arm64
-   cross-builds once and executes on the ARM runner.
-2. The successful exact-commit CI run builds the device and simulator Rust
-   slices once in parallel after its fast gates. Each successful slice is
-   retained independently for retry. The release-candidate workflow resolves
-   that CI run, downloads its exact two artifacts, and rejects commit, status,
-   workflow, or evidence mismatches.
-3. From a clean checkout of the same commit, the Apple aggregate imports and
-   hash-verifies the exact five root files without rebuilding either slice, then
-   assembles the technical candidate once:
+```text
+build/protected-candidate/<candidate-commit>/payload/
+```
 
-       DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
-         ./gradlew assembleProtectedCandidate \
-         -PcodexAgent.candidateCommit=<40-character-candidate-commit> \
-         -PcodexAgent.releaseTag=v0.2.0 \
-         -PcodexAgent.desktopEvidenceDirectory=<desktop-evidence-directory> \
-         -PcodexAgent.nodeEvidenceDirectory=<node-evidence-directory> \
-         -PcodexAgent.windowsNodeSupervisorIdentityFile=<windows-supervisor.json> \
-         -PcodexAgent.windowsNodeSupervisorPackage=<verified-supervisor-zip> \
-         -PcodexAgent.iosNativeEvidenceDirectory=<merged-native-evidence-directory> \
-         --no-parallel
+The aggregate verifies the imported evidence, iOS runtime, Swift package,
+privacy declarations, Maven publications, clean consumer, Central bundle, and
+canonical candidate manifest once. The clean consumer compiles the published
+surface for Android, iOS, five native desktop targets, JVM desktop, JS-on-Node,
+and WasmJS-on-Node.
 
-The release-candidate environment supplies only Maven signing material. The
-task requires a clean checkout at the supplied commit, isolated external
-five-target desktop and Node evidence, the exact Windows supervisor proof, and
-the imported device/simulator native evidence. It runs the ordered
-native-import verification, iOS,
-Swift, privacy, Maven, clean-consumer, Central bundle, and candidate-manifest
-gates once without a Gradle clean. The canonical `swiftpm-proof.json` binds the
-commit and tree, clean checkout, exact ZIP and checksum file, committed
-Package.swift metadata, native provenance, and pinned Apple toolchain. The
-manifest and payload bind that proof, desktop and Node runtime evidence, the
-Windows supervisor, the exact SwiftPM ZIP, and the Central bundle under:
+Candidate output is immutable. A rerun reuses an already successful candidate;
+it never silently deletes or replaces one with the same identity.
 
-    build/protected-candidate/<candidate-commit>/payload/
+Useful local gates while developing are:
 
-Candidate output is immutable. Assembly refuses to delete or rebuild an
-existing commit-scoped candidate directory; remove an incomplete directory only
-after diagnosing the failed run, then start one fresh assembly.
+```shell
+actionlint
+./gradlew -p buildSrc test
+./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag=v0.2.0
+./gradlew verifyRepository
+DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
+  ./gradlew verifyIosRuntime
+```
 
-The clean KMP consumer resolves this project only from CENTRAL_STAGING and
-compiles JVM, Android, JS, WasmJS, macOS Arm64/x64, Linux Arm64/x64, Windows
-x64, and the Node runtime, plus links iOS Arm64 and iOS Simulator Arm64. The
-typed Central bundle task validates all 24 coordinates and 145 primary files,
-signatures, Maven metadata, licence declarations, deterministic ZIP inventory,
-and the strict 1,000,000,000-byte Portal limit before the canonical candidate
-manifest is generated and fully reverified.
+None of these commands requires a connected Android phone.
 
-The standalone Android Runtime Evidence workflow remains available as an
-optional real-device diagnostic. It is not a protected-candidate or publication
-requirement. Android compilation, tests, lint, AAR publication, and clean KMP
-consumer verification remain mandatory and require no connected phone.
+## Manual ChatGPT acceptance
 
-Run the repository gates separately when developing the candidate:
-
-    actionlint
-    ./gradlew -p buildSrc test
-    ./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag=v0.2.0
-    ./gradlew verifyRepository
-    DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
-      ./gradlew verifyIosRuntime
-
-After the technical payload is uploaded, run:
-
-    ./gradlew verifyPublicationReadiness
-
-This readiness gate is intentionally separate from candidate assembly. Until
-the external Apple collected-data and static-framework GPL decisions are
-approved, the technical payload remains available but publication stays
-blocked. The decisions live in release/publication-approvals.json and are bound
-to the exact privacy manifest and release/privacy-data-flow-review.json.
-Desktop classifier GPL distribution is reviewed separately and bound to its
-exact distribution inventory, licence, and notice; it does not approve the
-static Apple framework.
-Required-reason API reviews are supplied separately only when the static audit
-finds an ambiguous API requiring a manual disposition.
-
-## Manual ChatGPT browser-login acceptance
-
-This required real-model test deliberately uses no reusable CI credential.
+The real-model test is deliberately interactive and keeps reusable credentials
+out of CI.
 
 1. Stage the test application:
 
-       DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
-         ./gradlew :codex-agent-runtime-ios:stageCodexAgentAppleDistribution
+   ```shell
+   DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
+     ./gradlew :codex-agent-runtime-ios:stageCodexAgentAppleDistribution
+   ```
 
 2. Open
-   codex-agent-runtime-ios/build/apple-distribution/CodexAgentTestApp/CodexAgentTestApp.xcodeproj
-   in Xcode. Select an iOS Simulator and run CodexAgentTestApp.
-3. Tap Sign in with ChatGPT and complete sign-in inside the secure system
-   browser sheet. The embedded App Server remains responsible for PKCE,
-   callback handling, token persistence, refresh, and completion events.
-4. Wait for Authenticated, then tap Run local workspace acceptance and require
-   PASS.
-5. On Simulator, compare the sandbox files independently:
+   `codex-agent-runtime-ios/build/apple-distribution/CodexAgentTestApp/CodexAgentTestApp.xcodeproj`
+   in Xcode and run it in an iOS Simulator.
+3. Tap **Sign in with ChatGPT**, complete sign-in in the secure system browser
+   sheet, and wait for **Authenticated**.
+4. Tap **Run local workspace acceptance** and require **PASS**.
+5. Independently compare the sandbox files:
 
-       APP_DATA=$(xcrun simctl get_app_container booted \
-         io.github.ciurlaro.CodexAgentTestApp data)
-       cmp "$APP_DATA/Documents/CodexWorkspace/acceptance-input.txt" \
-         "$APP_DATA/Documents/CodexWorkspace/acceptance-output.txt"
+   ```shell
+   APP_DATA=$(xcrun simctl get_app_container booted \
+     io.github.ciurlaro.CodexAgentTestApp data)
+   cmp "$APP_DATA/Documents/CodexWorkspace/acceptance-input.txt" \
+     "$APP_DATA/Documents/CodexWorkspace/acceptance-output.txt"
+   ```
 
-6. Repeat on a signed physical iPhone before release. Record physical execution
-   as unproven when no signing team or device is available.
+A signed physical-iPhone run may be performed as additional product testing,
+but it is not a release gate.
+
+## Publication approvals
+
+`verifyPublicationReadiness` remains separate from technical candidate
+assembly. Publication stays blocked until the repository's Apple collected-data,
+static-framework GPL, and desktop-classifier distribution decisions approve the
+exact candidate inputs. Required-reason API dispositions are needed only when
+the static audit reports an ambiguity.
+
+Google authentication for Firebase evidence uses GitHub OIDC and Workload
+Identity Federation. It needs no stored Google service-account key. Creating or
+authorizing the Google identity, generating Maven Central credentials, and
+approving protected environments remain external account-owner actions.
 
 ## Protected publication
 
-Publication consumes the exact successful candidate payload and never rebuilds
-Maven or native artifacts.
+The Publish Verified Release workflow consumes the exact successful candidate
+artifact and never rebuilds Maven, native, or runtime evidence artifacts. It:
 
-1. The Publish verified release workflow downloads the exact candidate artifact
-   from its successful release-candidate workflow run.
-2. verifyCandidatePayload recomputes every artifact, evidence, policy, commit,
-   tag, and Package.swift binding before any public mutation.
-3. verifyPublicationReadiness runs again after protected-environment approval.
-4. The workflow creates or reuses the exact draft GitHub release.
-5. prepareCentralDeployment uploads the verified bundle as USER_MANAGED only
-   when creating a new matching deployment, then immediately records its
-   deployment ID, name, candidate hash, and bundle hash.
-6. The workflow persists that record on the draft before
-   awaitCentralValidation waits for VALIDATED.
-7. It attaches and byte-checks the exact SwiftPM ZIP and candidate manifest,
-   publishes the GitHub release, and verifies the tag identity and public
-   SwiftPM resolution.
-8. releaseCentralDeployment releases that same validated deployment and waits
-   for PUBLISHED. A rerun reuses an exact matching validated or published
-   record; missing records and identity/hash mismatches fail closed.
+1. Resolves the candidate workflow and release tag from the candidate identity.
+2. Revalidates every artifact, evidence record, policy decision, commit, tag,
+   Swift package binding, signature, and candidate-manifest entry before public
+   mutation.
+3. Waits for protected release-environment approval, then creates or reuses the
+   matching Maven Central deployment and GitHub draft release.
+4. Promotes only the recorded Central bundle and exact Swift package/candidate
+   assets, then verifies their public identities and resolution.
+5. On rerun, reuses matching validated or published records and fails closed on
+   identity mismatches. It does not compare a new rebuild with the old one.
 
-Only Maven Central credentials and signing material belong in the protected
-release environments. Do not store OPENAI_API_KEY, ChatGPT credentials, or
-generated tokens.
-
-Before release, manually cover interactive ChatGPT login,
-background/foreground transitions, forced termination/relaunch, a signed
-physical iPhone, public SwiftPM resolution, Maven Central resolution, and final
-codex-mobile verification. Do not update a consumer repository from this
-project.
+Do not store `OPENAI_API_KEY`, ChatGPT credentials, generated tokens, or Google
+service-account keys in the release environments. Final consumer application
+acceptance and any optional broader device testing remain outside this
+repository's automated release.

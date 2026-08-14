@@ -6,19 +6,25 @@ import kotlin.test.assertTrue
 
 class NodeRuntimeEvidenceLinuxArm64Test {
     @Test
-    fun `split bundle reuses classifier and executes exact Node tests on ARM`() =
+    fun `split bundle reuses classifier and executes exact JS and Wasm tests on ARM`() =
         withNodeRuntimeEvidenceFixture { fixture ->
             val bundle = fixture.root.resolve("linux-arm64-node-execution.zip")
             stageLinuxArm64NodeRuntimeEvidenceBundle(
                 NODE_EVIDENCE_COMMIT,
                 fixture.compiled,
+                fixture.compiledWasm,
                 fixture.classifiers.getValue("linuxArm64"),
                 fixture.manifest,
                 bundle,
             )
             ZipFile(bundle).use { zip ->
                 assertEquals(
-                    setOf("execution.json", NODE_RUNTIME_RUNNER_ARCHIVE, "app-server-linux-arm64.zip"),
+                    setOf(
+                        "execution.json",
+                        NODE_RUNTIME_RUNNER_ARCHIVE,
+                        NODE_WASM_RUNTIME_RUNNER_ARCHIVE,
+                        "app-server-linux-arm64.zip",
+                    ),
                     zip.entries().asSequence().map { it.name }.toSet(),
                 )
             }
@@ -30,39 +36,51 @@ class NodeRuntimeEvidenceLinuxArm64Test {
                 "node",
                 fixture.evidence("linuxArm64"),
                 fixture.report("linuxArm64"),
+                fixture.evidence("linuxArm64", NODE_RUNTIME_WASM_BACKEND),
+                fixture.report("linuxArm64", NODE_RUNTIME_WASM_BACKEND),
                 NODE_EVIDENCE_ARM_ENV,
             ) { command, environment ->
                 commands += command
                 if (command.last() != "--version") {
                     assertEquals("linuxArm64", environment["CODEX_AGENT_DESKTOP_TARGET"])
+                    assertTrue(environment.containsKey("CODEX_AGENT_APP_SERVER_EXECUTABLE"))
+                    assertTrue(environment.containsKey("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE"))
+                    assertTrue(environment.containsKey("CODEX_AGENT_PROCESS_SUPERVISOR_SHA256"))
                 }
                 successfulNodeEvidenceResult(command)
             }
-            assertEquals(6, commands.size)
-            assertEquals(nodeRuntimeTestMethods, commands.drop(2).map {
-                it.last().substringAfterLast('.')
-            }.toSet())
-            assertEquals(1, fixture.evidence("linuxArm64").readReleaseObject().releaseInt("schemaVersion"))
-            verifyNodeRuntimeTestReport(fixture.report("linuxArm64"))
+            assertEquals(12, commands.size)
+            assertEquals(nodeRuntimeTestMethods, commands.filter { it.last().startsWith("--run-test=") }
+                .map { it.last().substringAfterLast('.') }.toSet())
+            nodeRuntimeBackends.forEach { backend ->
+                val evidence = fixture.evidence("linuxArm64", backend).readReleaseObject()
+                assertEquals(2, evidence.releaseInt("schemaVersion"))
+                assertEquals(backend, evidence.releaseString("runtimeBackend"))
+                verifyNodeRuntimeTestReport(fixture.report("linuxArm64", backend))
+            }
         }
 
     @Test
-    fun `split execution rejects bundle commit runner and manifest mismatches before Node`() =
+    fun `split execution rejects bundle commit runners and manifest mismatches before Node`() =
         withNodeRuntimeEvidenceFixture { fixture ->
             val bundle = fixture.root.resolve("linux-arm64-node-execution.zip")
             stageLinuxArm64NodeRuntimeEvidenceBundle(
-                NODE_EVIDENCE_COMMIT, fixture.compiled, fixture.classifiers.getValue("linuxArm64"),
-                fixture.manifest, bundle,
+                NODE_EVIDENCE_COMMIT, fixture.compiled, fixture.compiledWasm,
+                fixture.classifiers.getValue("linuxArm64"), fixture.manifest, bundle,
             )
-            fun rejected(commit: String = NODE_EVIDENCE_COMMIT,
-                         environment: Map<String, String> = NODE_EVIDENCE_ARM_ENV,
-                         manifest: java.io.File = fixture.manifest,
-                         input: java.io.File = bundle) {
+            fun rejected(
+                commit: String = NODE_EVIDENCE_COMMIT,
+                environment: Map<String, String> = NODE_EVIDENCE_ARM_ENV,
+                manifest: java.io.File = fixture.manifest,
+                input: java.io.File = bundle,
+            ) {
                 var calls = 0
                 assertFailsWith<IllegalStateException> {
                     executeLinuxArm64NodeRuntimeEvidenceBundle(
                         commit, input, manifest, "node", fixture.evidence("linuxArm64"),
-                        fixture.report("linuxArm64"), environment,
+                        fixture.report("linuxArm64"),
+                        fixture.evidence("linuxArm64", NODE_RUNTIME_WASM_BACKEND),
+                        fixture.report("linuxArm64", NODE_RUNTIME_WASM_BACKEND), environment,
                     ) { _, _ -> calls++; successfulNodeEvidenceResult(listOf("node", "--version")) }
                 }
                 assertEquals(0, calls)
@@ -77,6 +95,7 @@ class NodeRuntimeEvidenceLinuxArm64Test {
             val originals = bundle.nodeEvidenceZipEntries()
             listOf(
                 originals + (NODE_RUNTIME_RUNNER_ARCHIVE to "tampered".encodeToByteArray()),
+                originals + (NODE_WASM_RUNTIME_RUNNER_ARCHIVE to "tampered".encodeToByteArray()),
                 originals - "app-server-linux-arm64.zip",
                 originals + ("extra" to byteArrayOf()),
                 (originals - NODE_RUNTIME_RUNNER_ARCHIVE) +

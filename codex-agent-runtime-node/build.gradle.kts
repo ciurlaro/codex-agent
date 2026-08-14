@@ -3,10 +3,10 @@ import com.vanniktech.maven.publish.KotlinMultiplatform
 import com.vanniktech.maven.publish.SourcesJar
 import java.io.File
 import java.util.zip.ZipFile
-import org.gradle.api.publish.PublishingExtension
-import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.tasks.bundling.Zip
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.targets.js.nodejs.NodeJsEnvSpec
+import org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsEnvSpec
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -16,30 +16,26 @@ plugins {
 val desktopManifest = rootProject.layout.projectDirectory.file(
     "codex-agent-runtime-desktop/codex-app-server-distributions.json",
 )
-val externalSupervisorIdentity = providers.gradleProperty(
-    "codexAgent.windowsNodeSupervisorIdentityFile",
-).map(::File)
-val trackedSupervisorIdentity = layout.projectDirectory.file("windows-supervisor.json")
-val selectedSupervisorIdentity = when {
-    externalSupervisorIdentity.isPresent -> layout.file(externalSupervisorIdentity)
-    trackedSupervisorIdentity.asFile.isFile -> providers.provider { trackedSupervisorIdentity }
-    else -> null
-}
 val generateNodeDistributionSource = tasks.register<GenerateNodeDistributionSourceTask>(
     "generateNodeDistributionSource",
 ) {
     distributionManifest.set(desktopManifest)
-    selectedSupervisorIdentity?.let(windowsSupervisorIdentity::set)
     outputDirectory.set(layout.buildDirectory.dir("generated/distributions/kotlin"))
 }
 
+@OptIn(ExperimentalWasmDsl::class)
 kotlin {
+    applyDefaultHierarchyTemplate()
     js(IR) {
         nodejs()
         binaries.executable()
     }
+    wasmJs {
+        nodejs()
+        binaries.executable()
+    }
     sourceSets {
-        jsMain {
+        val webMain by getting {
             kotlin.srcDir(generateNodeDistributionSource)
             dependencies {
                 api(project(":codex-agent-client"))
@@ -48,58 +44,14 @@ kotlin {
             }
         }
         jsTest.dependencies { implementation(kotlin("test")) }
+        wasmJsTest.dependencies { implementation(kotlin("test")) }
     }
 }
 
 rootProject.extensions.configure<NodeJsEnvSpec> { download.set(false) }
 extensions.configure<NodeJsEnvSpec> { download.set(false) }
-
-val supervisorSource = layout.projectDirectory.dir("src/windowsSupervisor")
-val builtSupervisor = layout.buildDirectory.file(
-    "windows-supervisor/$WINDOWS_SUPERVISOR_FILE_NAME",
-)
-val generatedSupervisorIdentity = layout.buildDirectory.file(
-    "windows-supervisor/$WINDOWS_SUPERVISOR_IDENTITY_FILE_NAME",
-)
-val buildWindowsSupervisor = tasks.register<BuildWindowsNodeSupervisorTask>(
-    "buildWindowsNodeSupervisor",
-) {
-    sourceDirectory.set(supervisorSource)
-    outputExecutable.set(builtSupervisor)
-    generatedIdentityFile.set(generatedSupervisorIdentity)
-}
-val packageWindowsSupervisor = tasks.register<PackageWindowsNodeSupervisorTask>(
-    "packageWindowsNodeSupervisor",
-) {
-    dependsOn(buildWindowsSupervisor)
-    executableFile.set(builtSupervisor)
-    generatedIdentityFile.set(generatedSupervisorIdentity)
-    canonicalIdentityFile.set(selectedSupervisorIdentity ?: generatedSupervisorIdentity)
-    sourceDirectory.set(supervisorSource)
-    packageFile.set(layout.buildDirectory.file(
-        "distributions/codex-agent-runtime-node-${project.version}-windows-supervisor.zip",
-    ))
-}
-val externalSupervisorPackage = providers.gradleProperty(
-    "codexAgent.windowsNodeSupervisorPackage",
-).map(::File)
-val selectedSupervisorPackage = if (externalSupervisorPackage.isPresent) {
-    check(externalSupervisorIdentity.isPresent) {
-        "A Windows supervisor package requires its canonical identity"
-    }
-    layout.file(externalSupervisorPackage)
-} else {
-    packageWindowsSupervisor.flatMap { it.packageFile }
-}
-val verifyWindowsSupervisor = tasks.register<VerifyWindowsNodeSupervisorPackageTask>(
-    "verifyWindowsNodeSupervisorPackage",
-) {
-    if (!externalSupervisorPackage.isPresent) dependsOn(packageWindowsSupervisor)
-    packageFile.set(selectedSupervisorPackage)
-    canonicalIdentityFile.set(selectedSupervisorIdentity ?: generatedSupervisorIdentity)
-    sourceDirectory.set(supervisorSource)
-    proofFile.set(layout.buildDirectory.file("reports/windows-supervisor-proof.json"))
-}
+rootProject.extensions.configure<WasmNodeJsEnvSpec> { download.set(false) }
+extensions.configure<WasmNodeJsEnvSpec> { download.set(false) }
 
 val packageNodeRuntimeEvidenceRunner = tasks.register<Zip>(
     "packageNodeRuntimeEvidenceRunner",
@@ -128,39 +80,79 @@ val packageNodeRuntimeEvidenceRunner = tasks.register<Zip>(
     }
 }
 
+val nodeWasmRunnerBaseName = "codex-agent-codex-agent-runtime-node"
+val nodeWasmRunnerMembers = setOf(
+    "$nodeWasmRunnerBaseName.mjs",
+    "$nodeWasmRunnerBaseName.uninstantiated.mjs",
+    "$nodeWasmRunnerBaseName.wasm",
+)
+val packageNodeWasmRuntimeEvidenceRunner = tasks.register<Zip>(
+    "packageNodeWasmRuntimeEvidenceRunner",
+) {
+    group = "distribution"
+    description = "Packages the unoptimized standalone Kotlin/Wasm Node evidence runner."
+    dependsOn("wasmJsDevelopmentExecutableCompileSync")
+    from(layout.buildDirectory.dir("compileSync/wasmJs/main/developmentExecutable/kotlin")) {
+        include(nodeWasmRunnerMembers)
+    }
+    archiveFileName.set("codex-agent-node-wasm-runtime-evidence-runner.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    entryCompression = ZipEntryCompression.STORED
+    doLast {
+        ZipFile(archiveFile.get().asFile).use { zip ->
+            val members = zip.entries().asSequence().toList()
+            val expectedMembers = setOf(
+                "codex-agent-codex-agent-runtime-node.mjs",
+                "codex-agent-codex-agent-runtime-node.uninstantiated.mjs",
+                "codex-agent-codex-agent-runtime-node.wasm",
+            )
+            check(
+                members.none { it.isDirectory } &&
+                    members.map { it.name }.toSet() == expectedMembers &&
+                    members.all { it.name == File(it.name).name && it.size > 0 }
+            ) { "Node Wasm evidence runner package has an incomplete or unsafe module set" }
+        }
+    }
+}
+
 val nodeRuntimeEvidenceRunnerArchive = layout.file(
     providers.gradleProperty("codexAgent.nodeRuntimeEvidenceRunnerArchive").map(::File),
+)
+val nodeWasmRuntimeEvidenceRunnerArchive = layout.file(
+    providers.gradleProperty("codexAgent.nodeWasmRuntimeEvidenceRunnerArchive").map(::File),
 )
 val nodeClassifierArchive = layout.file(
     providers.gradleProperty("codexAgent.nodeClassifierArchive").map(::File),
 )
-val nodeWindowsSupervisor = layout.file(
-    providers.gradleProperty("codexAgent.nodeWindowsSupervisorExecutable").map(::File),
+val nodeEvidenceRunners = listOf(
+    Triple("nodeRuntime", "js", nodeRuntimeEvidenceRunnerArchive),
+    Triple("nodeWasmRuntime", "wasm", nodeWasmRuntimeEvidenceRunnerArchive),
 )
-listOf("macosArm64", "macosX64", "linuxX64", "mingwX64").forEach { target ->
-    tasks.register<RecordNodeRuntimeEvidenceTask>(
-        "nodeRuntime${target.replaceFirstChar(Char::uppercase)}Test",
-    ) {
-        group = "verification"
-        description = "Runs the exact $target Node App Server lifecycle evidence."
-        candidateCommit.set(providers.gradleProperty("codexAgent.candidateCommit"))
-        this.target.set(target)
-        runnerOs.set(providers.environmentVariable("RUNNER_OS"))
-        runnerArch.set(providers.environmentVariable("RUNNER_ARCH"))
-        nodeExecutable.set(providers.gradleProperty("codexAgent.nodeExecutable").orElse("node"))
-        distributionManifest.set(desktopManifest)
-        classifierArchive.set(nodeClassifierArchive)
-        compiledNodeTestRuntime.set(nodeRuntimeEvidenceRunnerArchive)
-        if (target == "mingwX64") {
-            dependsOn(verifyWindowsSupervisor)
-            windowsSupervisor.set(nodeWindowsSupervisor)
+listOf("macosArm64", "macosX64", "linuxArm64", "linuxX64", "mingwX64").forEach { target ->
+    nodeEvidenceRunners.forEach { (taskPrefix, backend, runnerArchive) ->
+        tasks.register<RecordNodeRuntimeEvidenceTask>(
+            "$taskPrefix${target.replaceFirstChar(Char::uppercase)}Test",
+        ) {
+            group = "verification"
+            description = "Runs the exact $target Node $backend App Server lifecycle evidence."
+            candidateCommit.set(providers.gradleProperty("codexAgent.candidateCommit"))
+            this.target.set(target)
+            runtimeBackend.set(backend)
+            runnerOs.set(providers.environmentVariable("RUNNER_OS"))
+            runnerArch.set(providers.environmentVariable("RUNNER_ARCH"))
+            nodeExecutable.set(providers.gradleProperty("codexAgent.nodeExecutable").orElse("node"))
+            distributionManifest.set(desktopManifest)
+            classifierArchive.set(nodeClassifierArchive)
+            compiledNodeTestRuntime.set(runnerArchive)
+            evidenceFile.set(layout.buildDirectory.file(
+                "reports/node-runtime-evidence/${nodeRuntimeEvidenceFileName(target, backend)}",
+            ))
+            testReport.set(layout.buildDirectory.file(
+                "test-results/node-runtime-evidence/${nodeRuntimeTestReportFileName(target, backend)}",
+            ))
         }
-        evidenceFile.set(layout.buildDirectory.file(
-            "reports/node-runtime-evidence/${nodeRuntimeEvidenceFileName(target)}",
-        ))
-        testReport.set(layout.buildDirectory.file(
-            "test-results/node-runtime-evidence/${nodeRuntimeTestReportFileName(target)}",
-        ))
     }
 }
 
@@ -179,7 +171,7 @@ mavenPublishing {
     ) signAllPublications()
     pom {
         name.set("Codex Agent Runtime for Node")
-        description.set("Kotlin/JS Node process runtime for the Codex App Server.")
+        description.set("Kotlin/JS and Kotlin/Wasm Node process runtime for the Codex App Server.")
         inceptionYear.set("2026")
         url.set("https://github.com/ciurlaro/codex-agent")
         licenses {
@@ -200,18 +192,6 @@ mavenPublishing {
             url.set("https://github.com/ciurlaro/codex-agent")
             connection.set("scm:git:https://github.com/ciurlaro/codex-agent.git")
             developerConnection.set("scm:git:ssh://git@github.com/ciurlaro/codex-agent.git")
-        }
-    }
-}
-
-extensions.configure<PublishingExtension> {
-    publications.withType(MavenPublication::class.java).configureEach {
-        if (name == "kotlinMultiplatform") {
-            artifact(selectedSupervisorPackage) {
-                classifier = "windows-supervisor-x64"
-                extension = "zip"
-                builtBy(verifyWindowsSupervisor)
-            }
         }
     }
 }

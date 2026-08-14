@@ -3,9 +3,15 @@ import io.github.ciurlaro.codexmobile.appserver.runtime.NodeCodexRuntimeFactory
 import okio.Path
 
 fun nodeRuntimeFactory(
-    executable: Path,
+    appServerExecutable: Path,
+    processSupervisorExecutable: Path,
+    processSupervisorSha256: String,
     workingDirectory: Path,
-    windowsSupervisorExecutable: Path? = null,
 ) = NodeCodexRuntimeFactory(
-    NodeCodexRuntimeConfiguration(executable, workingDirectory, windowsSupervisorExecutable),
+    NodeCodexRuntimeConfiguration(
+        appServerExecutable = appServerExecutable,
+        processSupervisorExecutable = processSupervisorExecutable,
+        processSupervisorSha256 = processSupervisorSha256,
+        workingDirectory = workingDirectory,
+    ),
 )

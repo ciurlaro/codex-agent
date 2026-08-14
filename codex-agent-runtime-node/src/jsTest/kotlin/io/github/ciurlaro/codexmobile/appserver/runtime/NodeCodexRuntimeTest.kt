@@ -65,7 +65,9 @@ class NodeCodexRuntimeTest {
     fun naturalExitRejectsFurtherWrites() = GlobalScope.promise {
         val process = ControlledNodeProcess()
         val runtime = NodeCodexRuntime(
-            NodeCodexRuntimeConfiguration("unused".toPath(), "unused".toPath()),
+            NodeCodexRuntimeConfiguration(
+                "unused".toPath(), "unused".toPath(), "unused".toPath(), "0".repeat(64),
+            ),
             prepare = { NodeLaunchSpec("unused", emptyArray(), "unused", false, "linuxX64") },
             launcher = NodeProcessLauncher { process },
         )

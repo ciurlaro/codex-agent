@@ -1,0 +1,23 @@
+name: Setup MSVC
+description: Export the windows-2025 runner's Visual C++ environment.
+runs:
+  using: composite
+  steps:
+    - if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+        if (-not (Test-Path $vswhere)) { throw "vswhere.exe is missing" }
+        $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if ([string]::IsNullOrWhiteSpace($installation)) { throw "MSVC installation is missing" }
+        $devCommand = Join-Path $installation.Trim() "Common7\Tools\VsDevCmd.bat"
+        if (-not (Test-Path $devCommand)) { throw "VsDevCmd.bat is missing" }
+        $environment = & $env:ComSpec /d /s /c "`"$devCommand`" -no_logo -arch=x64 -host_arch=x64 && set"
+        if ($LASTEXITCODE -ne 0) { throw "VsDevCmd failed with exit code $LASTEXITCODE" }
+        $required = @("Path", "INCLUDE", "LIB")
+        @("Path", "INCLUDE", "LIB", "LIBPATH") | ForEach-Object {
+          $name = $_
+          $entry = $environment | Where-Object { $_ -match "^$name=" } | Select-Object -First 1
+          if ($name -in $required -and -not $entry) { throw "VsDevCmd did not define $name" }
+          if ($entry) { Add-Content -Path $env:GITHUB_ENV -Value $entry }
+        }

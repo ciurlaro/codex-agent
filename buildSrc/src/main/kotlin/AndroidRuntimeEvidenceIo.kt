@@ -17,17 +17,6 @@ internal data class AndroidTestCase(val className: String, val methodName: Strin
 private val REQUIRED_ANDROID_RUNTIME_CASES = REQUIRED_ANDROID_RUNTIME_TESTS
     .mapTo(mutableSetOf()) { AndroidTestCase(ANDROID_RUNTIME_TEST_CLASS, it) }
 
-internal fun resolveAndroidTestApk(metadataFile: File): File {
-    val metadata = metadataFile.readReleaseObject()
-    val elements = metadata.releaseArray("elements")
-    check(elements.size == 1) { "Expected exactly one Android test APK output" }
-    val output = (elements.single() as? kotlinx.serialization.json.JsonObject)
-        ?.releaseString("outputFile") ?: error("Android test APK output is missing")
-    return safePayloadFile(metadataFile.parentFile, output).also {
-        check(it.isFile) { "Android test APK is missing: ${it.name}" }
-    }
-}
-
 internal fun findPassingAndroidRuntimeReport(directory: File): AndroidTestReport {
     val parsed = directory.walkTopDown()
         .filter { it.isFile && it.extension == "xml" }
@@ -96,16 +85,4 @@ internal fun parseAndroidManifestIdentity(xml: String): AndroidManifestIdentity 
     val target = Regex("""android:targetPackage="([^"]+)"""").find(xml)?.groupValues?.get(1)
         ?: error("Android instrumentation target package is missing")
     return AndroidManifestIdentity(applicationId, target)
-}
-
-internal fun singleAuthorizedAndroidDevice(adbDevices: String): String {
-    val devices = adbDevices.lineSequence()
-        .map(String::trim)
-        .filter { it.isNotEmpty() && !it.startsWith("List of devices") && !it.startsWith("*") }
-        .map { line -> line.split(Regex("\\s+")) }
-        .toList()
-    check(devices.size == 1 && devices.single().getOrNull(1) == "device") {
-        "Exactly one authorized Android device is required"
-    }
-    return devices.single().first()
 }

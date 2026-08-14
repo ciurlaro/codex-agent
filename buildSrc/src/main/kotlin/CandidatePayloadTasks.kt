@@ -18,6 +18,8 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
+private const val ANDROID_RUNTIME_EVIDENCE_FIELD = "androidRuntime"
+
 internal fun verifyCandidatePayload(
     manifestFile: File,
     payload: File,
@@ -26,6 +28,7 @@ internal fun verifyCandidatePayload(
     expectedCommit: String,
     policyFiles: Map<String, File>,
 ): JsonObject {
+    check(manifestFile.name == "candidate-manifest.json") { "Candidate manifest file name is invalid" }
     val manifest = manifestFile.readReleaseObject()
     verifyCandidateManifestStructure(manifest)
     check(manifest.releaseString("version") == expectedVersion) { "Candidate version mismatch" }
@@ -38,12 +41,14 @@ internal fun verifyCandidatePayload(
         artifacts.values.forEach { add(it as JsonObject) }
         evidence.filterKeys { it !in candidateEvidenceArrayNames }
             .values.forEach { add(it as JsonObject) }
-        evidence.releaseArray("desktopRuntime").forEach { add(it as JsonObject) }
-        evidence.releaseArray("nodeRuntime").forEach { add(it as JsonObject) }
-        evidence.releaseArray("resourceMeasurements").forEach { add(it as JsonObject) }
+        candidateEvidenceArrayNames.forEach { name ->
+            evidence.releaseArray(name).forEach { add(it as JsonObject) }
+        }
         policies.values.forEach { add(it as JsonObject) }
     }
-    val expectedFiles = records.map { it.releaseString("fileName") }
+    val transportedManifest = manifestFile.canonicalFile.parentFile == payload.canonicalFile
+    val expectedFiles = records.map { it.releaseString("fileName") } +
+        if (transportedManifest) listOf(manifestFile.name) else emptyList()
     check(expectedFiles.toSet().size == expectedFiles.size) { "Candidate payload file names are not unique" }
     check(payload.isDirectory) { "Candidate payload directory is missing" }
     val actualFiles = Files.walk(payload.toPath()).use { paths ->
@@ -54,6 +59,19 @@ internal fun verifyCandidatePayload(
         "Candidate payload file set mismatch: expected=${expectedFiles.toSet().sorted()} actual=${actualFiles.sorted()}"
     }
     records.forEach { verifyPayloadRecord(payload, it) }
+    val androidFiles = evidence.releaseArray(ANDROID_RUNTIME_EVIDENCE_FIELD).map { record ->
+        safePayloadFile(payload, (record as JsonObject).releaseString("fileName"))
+    }
+    verifyCandidateFirebaseAndroidEvidence(androidFiles, expectedCommit)
+    verifyCandidateCentralAndroidRuntimeBinding(
+        androidFiles,
+        safePayloadFile(payload, artifacts.releaseObject("centralBundle").releaseString("fileName")),
+        expectedVersion,
+    )
+    verifyCandidateCiProvenance(
+        safePayloadFile(payload, evidence.releaseObject("ciProvenance").releaseString("fileName")),
+        expectedCommit,
+    )
     check(policyFiles.keys == policies.keys) { "Candidate policy verifier is incomplete" }
     policyFiles.forEach { (name, file) ->
         val record = policies.releaseObject(name)

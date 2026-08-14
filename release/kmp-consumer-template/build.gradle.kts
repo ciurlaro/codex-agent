@@ -24,8 +24,8 @@ kotlin {
     linuxArm64()
     linuxX64()
     mingwX64()
-    js { browser(); nodejs() }
-    wasmJs { browser(); nodejs() }
+    js { nodejs() }
+    wasmJs { nodejs() }
     listOf(device, simulator).forEach { target ->
         target.binaries.framework { baseName = "StagedConsumer" }
     }
@@ -34,8 +34,16 @@ kotlin {
         commonMain.dependencies {
             implementation("io.github.ciurlaro:codex-agent-client:$codexAgentVersion")
         }
-        jsMain.dependencies {
-            implementation("io.github.ciurlaro:codex-agent-runtime-node:$codexAgentVersion")
+        jvmMain {
+            kotlin.srcDir("src/desktopMain/kotlin")
+            dependencies { implementation("io.github.ciurlaro:codex-agent-runtime-desktop:$codexAgentVersion") }
+        }
+        jsMain {
+            dependencies { implementation("io.github.ciurlaro:codex-agent-runtime-node:$codexAgentVersion") }
+        }
+        wasmJsMain {
+            kotlin.srcDir("src/jsMain/kotlin")
+            dependencies { implementation("io.github.ciurlaro:codex-agent-runtime-node:$codexAgentVersion") }
         }
         androidMain.dependencies {
             implementation("io.github.ciurlaro:codex-agent-runtime-android:$codexAgentVersion")

@@ -10,6 +10,7 @@ internal val NODE_EVIDENCE_ARM_ENV = mapOf("RUNNER_OS" to "Linux", "RUNNER_ARCH"
 
 internal class NodeRuntimeEvidenceFixture(val root: File) {
     private val appServer = "official app server".encodeToByteArray()
+    private val embeddedSupervisor = "embedded process supervisor".encodeToByteArray()
     val manifest = writeTestDesktopDistributionManifest(
         root.resolve("codex-app-server-distributions.json"),
         appServer.inputStream().releaseDigest(),
@@ -20,24 +21,33 @@ internal class NodeRuntimeEvidenceFixture(val root: File) {
             "kotlin-kotlin-stdlib.js" to "compiled Kotlin dependency".encodeToByteArray(),
         ))
     }
-    val supervisor = root.resolve("codex-agent-windows-supervisor.exe").apply {
-        writeText("Windows supervisor")
+    val compiledWasm = root.resolve(NODE_WASM_RUNTIME_RUNNER_ARCHIVE).apply {
+        nodeEvidenceWriteZip(nodeWasmRuntimeRunnerEntries.associateWith { "compiled $it".encodeToByteArray() })
     }
     val classifiers = desktopRuntimeEvidenceTargets.mapValues { (target, spec) ->
         root.resolve("codex-agent-runtime-desktop-0.2.0-${spec.classifier}.zip").apply {
             nodeEvidenceWriteZip(linkedMapOf(
                 (if (target == "mingwX64") "codex-app-server.exe" else "codex-app-server") to appServer,
+                (if (target == "mingwX64") "codex-process-supervisor.exe" else "codex-process-supervisor") to
+                    embeddedSupervisor,
                 "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
                 "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
             ))
         }
     }
 
-    fun evidence(target: String) = root.resolve(nodeRuntimeEvidenceFileName(target))
-    fun report(target: String) = root.resolve(nodeRuntimeTestReportFileName(target))
+    fun runnerArchive(runtimeBackend: String) =
+        if (runtimeBackend == NODE_RUNTIME_JS_BACKEND) compiled else compiledWasm
+
+    fun evidence(target: String, runtimeBackend: String = NODE_RUNTIME_JS_BACKEND) =
+        root.resolve(nodeRuntimeEvidenceFileName(target, runtimeBackend))
+
+    fun report(target: String, runtimeBackend: String = NODE_RUNTIME_JS_BACKEND) =
+        root.resolve(nodeRuntimeTestReportFileName(target, runtimeBackend))
 
     fun record(
         target: String,
+        runtimeBackend: String = NODE_RUNTIME_JS_BACKEND,
         runner: (List<String>, Map<String, String>) -> NodeEvidenceProcessResult = { command, _ ->
             successfulNodeEvidenceResult(command)
         },
@@ -46,33 +56,34 @@ internal class NodeRuntimeEvidenceFixture(val root: File) {
         executeNodeRuntimeEvidence(
             NODE_EVIDENCE_COMMIT,
             target,
+            runtimeBackend,
             expected.runnerOs,
             expected.runnerArch,
             "node",
             manifest,
             classifiers.getValue(target),
-            compiled,
-            supervisor.takeIf { target == "mingwX64" },
-            evidence(target),
-            report(target),
+            runnerArchive(runtimeBackend),
+            evidence(target, runtimeBackend),
+            report(target, runtimeBackend),
             runner,
         )
     }
 
-    fun recordAll() = desktopRuntimeEvidenceTargets.keys.forEach(::record)
+    fun recordAll(runtimeBackend: String = NODE_RUNTIME_JS_BACKEND) =
+        desktopRuntimeEvidenceTargets.keys.forEach { record(it, runtimeBackend) }
 
     fun validate(
-        evidenceFiles: List<File> = desktopRuntimeEvidenceTargets.keys.map(::evidence),
+        runtimeBackend: String = NODE_RUNTIME_JS_BACKEND,
+        evidenceFiles: List<File> = desktopRuntimeEvidenceTargets.keys.map { evidence(it, runtimeBackend) },
         classifierFiles: List<File> = classifiers.values.toList(),
-        compiledFile: File = compiled,
-        supervisorFile: File? = supervisor,
+        compiledFile: File = runnerArchive(runtimeBackend),
     ) = validateNodeRuntimeEvidence(
         evidenceFiles,
         NODE_EVIDENCE_COMMIT,
+        runtimeBackend,
         manifest,
         classifierFiles,
         compiledFile,
-        supervisorFile,
     )
 }
 

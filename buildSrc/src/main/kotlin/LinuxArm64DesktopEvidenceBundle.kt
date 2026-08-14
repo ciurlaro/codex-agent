@@ -9,10 +9,6 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
 
 private const val LINUX_ARM64_TARGET = "linuxArm64"
 private const val LINUX_ARM64_CLASSIFIER = "app-server-linux-arm64"
@@ -20,19 +16,11 @@ private const val METADATA_PATH = "execution.json"
 private const val TEST_PATH = "linuxArm64-test.kexe"
 private const val CLASSIFIER_PATH = "app-server-linux-arm64.zip"
 private const val APP_SERVER_PATH = "codex-app-server"
-private val EXECUTION_PATHS = setOf(METADATA_PATH, TEST_PATH, CLASSIFIER_PATH, APP_SERVER_PATH)
+private const val SUPERVISOR_PATH = "codex-process-supervisor"
+private val EXECUTION_PATHS = setOf(METADATA_PATH, TEST_PATH, CLASSIFIER_PATH, APP_SERVER_PATH, SUPERVISOR_PATH)
 private val ZIP_EPOCH = LocalDateTime.of(1980, 1, 1, 0, 0)
 
 internal data class DesktopEvidenceProcessResult(val exitCode: Int, val output: String)
-private data class ExecutionMember(val path: String, val bytes: Long, val sha256: String)
-private data class ExecutionMetadata(
-    val commit: String,
-    val executableName: String,
-    val test: ExecutionMember,
-    val classifier: ExecutionMember,
-    val appServer: ExecutionMember,
-)
-
 internal fun stageLinuxArm64DesktopEvidenceBundle(
     candidateCommit: String,
     testExecutable: File,
@@ -44,19 +32,22 @@ internal fun stageLinuxArm64DesktopEvidenceBundle(
     check(testExecutable.isFile) { "Linux ARM64 test executable is missing" }
     ZipFile(exactClassifier).use { classifier ->
         val entries = classifier.safeFiles()
-        val executable = entries.singleOrNull {
-            it.name !in setOf("openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt")
-        } ?: error("Linux ARM64 classifier must contain one executable")
         check(entries.map(ZipEntry::getName).toSet() == setOf(
-            executable.name, "openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt",
+            APP_SERVER_PATH, SUPERVISOR_PATH, "openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt",
         )) { "Linux ARM64 classifier member set is invalid" }
-        val metadata = ExecutionMetadata(
+        val appServer = classifier.getEntry(APP_SERVER_PATH)
+        val supervisor = classifier.getEntry(SUPERVISOR_PATH)
+        val metadata = LinuxArmExecutionMetadata(
             candidateCommit,
-            executable.name,
+            APP_SERVER_PATH,
+            SUPERVISOR_PATH,
             testExecutable.member(TEST_PATH),
             exactClassifier.member(CLASSIFIER_PATH),
-            classifier.getInputStream(executable).use { input ->
-                ExecutionMember(APP_SERVER_PATH, executable.size, input.releaseDigest())
+            classifier.getInputStream(appServer).use { input ->
+                LinuxArmExecutionMember(APP_SERVER_PATH, appServer.size, input.releaseDigest())
+            },
+            classifier.getInputStream(supervisor).use { input ->
+                LinuxArmExecutionMember(SUPERVISOR_PATH, supervisor.size, input.releaseDigest())
             },
         )
         val metadataBytes = metadata.jsonBytes()
@@ -67,7 +58,8 @@ internal fun stageLinuxArm64DesktopEvidenceBundle(
                 zip.add(METADATA_PATH, ByteArrayInputStream(metadataBytes))
                 zip.add(TEST_PATH, testExecutable.inputStream())
                 zip.add(CLASSIFIER_PATH, exactClassifier.inputStream())
-                zip.add(APP_SERVER_PATH, classifier.getInputStream(executable))
+                zip.add(APP_SERVER_PATH, classifier.getInputStream(appServer))
+                zip.add(SUPERVISOR_PATH, classifier.getInputStream(supervisor))
             }
             try { Files.move(temporary, output.toPath(), ATOMIC_MOVE, REPLACE_EXISTING) }
             catch (_: java.nio.file.AtomicMoveNotSupportedException) { Files.move(temporary, output.toPath(), REPLACE_EXISTING) }
@@ -106,12 +98,18 @@ internal fun executeLinuxArm64DesktopEvidenceBundle(
         check(metadata.commit == candidateCommit) { "Linux ARM64 evidence commit mismatch" }
         val test = temporary.resolve(TEST_PATH)
         val appServer = temporary.resolve(APP_SERVER_PATH)
+        val supervisor = temporary.resolve(SUPERVISOR_PATH)
         val classifier = temporary.resolve(CLASSIFIER_PATH)
-        check(test.setExecutable(true, false) && appServer.setExecutable(true, false)) {
+        check(test.setExecutable(true, false) && appServer.setExecutable(true, false) &&
+            supervisor.setExecutable(true, false)) {
             "Linux ARM64 evidence executables could not be enabled"
         }
-        verifyClassifier(classifier, metadata.executableName, metadata.appServer.sha256)
-        val processEnvironment = mapOf("CODEX_AGENT_APP_SERVER_EXECUTABLE" to appServer.absolutePath)
+        verifyClassifier(classifier, metadata)
+        val processEnvironment = mapOf(
+            "CODEX_AGENT_APP_SERVER_EXECUTABLE" to appServer.absolutePath,
+            "CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE" to supervisor.absolutePath,
+            "CODEX_AGENT_PROCESS_SUPERVISOR_SHA256" to metadata.supervisor.sha256,
+        )
         val listing = runner(listOf(test.absolutePath, "--ktest_list_tests"), processEnvironment)
         check(listing.exitCode == 0) { "Linux ARM64 test discovery failed: ${listing.output}" }
         verifyTestListing(listing.output)
@@ -129,18 +127,19 @@ internal fun executeLinuxArm64DesktopEvidenceBundle(
             candidateCommit,
             LINUX_ARM64_TARGET,
             metadata.appServer.sha256,
+            metadata.supervisor.sha256,
             metadata.classifier.sha256,
         )))
     } finally { temporary.deleteRecursively() }
 }
 
-private fun extractExecutionBundle(bundle: File, destination: File): ExecutionMetadata = ZipFile(bundle).use { zip ->
+private fun extractExecutionBundle(bundle: File, destination: File): LinuxArmExecutionMetadata = ZipFile(bundle).use { zip ->
     val entries = zip.safeFiles()
     check(entries.map(ZipEntry::getName).toSet() == EXECUTION_PATHS) { "Linux ARM64 execution bundle member set is invalid" }
     val metadataEntry = zip.getEntry(METADATA_PATH)
     check(metadataEntry.size in 1..65_536) { "Linux ARM64 execution metadata size is invalid" }
-    val metadata = zip.getInputStream(metadataEntry).use { it.readBytes() }.decodeToString().executionMetadata()
-    listOf(metadata.test, metadata.classifier, metadata.appServer).forEach { member ->
+    val metadata = zip.getInputStream(metadataEntry).use { it.readBytes() }.decodeToString().linuxArmExecutionMetadata()
+    listOf(metadata.test, metadata.classifier, metadata.appServer, metadata.supervisor).forEach { member ->
         val entry = zip.getEntry(member.path)
         check(entry.size == member.bytes) { "Linux ARM64 bundle size mismatch: ${member.path}" }
         val output = destination.resolve(member.path)
@@ -150,54 +149,7 @@ private fun extractExecutionBundle(bundle: File, destination: File): ExecutionMe
     metadata
 }
 
-private fun String.executionMetadata(): ExecutionMetadata {
-    val json = releaseJson.parseToJsonElement(this) as? JsonObject ?: error("Linux ARM64 metadata is not an object")
-    check(json.keys == setOf(
-        "schemaVersion", "candidateCommit", "target", "classifier", "executableName", "testClass", "testMethods", "members",
-    )) { "Linux ARM64 metadata fields are invalid" }
-    check(json.releaseInt("schemaVersion") == 1 && json.releaseString("target") == LINUX_ARM64_TARGET &&
-        json.releaseString("classifier") == LINUX_ARM64_CLASSIFIER) { "Linux ARM64 metadata identity is invalid" }
-    requireCommit(json.releaseString("candidateCommit"))
-    check(json.releaseString("testClass") == DESKTOP_RUNTIME_TEST_CLASS &&
-        json.releaseArray("testMethods").map { it.toString().trim('"') }.toSet() == desktopRuntimeTestMethods) {
-        "Linux ARM64 metadata test set is invalid"
-    }
-    val members = json.releaseObject("members")
-    check(members.keys == setOf("testExecutable", "classifierArchive", "appServerExecutable")) {
-        "Linux ARM64 metadata member fields are invalid"
-    }
-    fun member(name: String, path: String): ExecutionMember {
-        val value = members.releaseObject(name)
-        check(value.keys == setOf("path", "bytes", "sha256") && value.releaseString("path") == path) {
-            "Linux ARM64 metadata member is invalid: $name"
-        }
-        val result = ExecutionMember(path, value.releaseLong("bytes"), value.releaseString("sha256"))
-        check(result.bytes >= 0 && result.sha256.matches(Regex("[0-9a-f]{64}"))) {
-            "Linux ARM64 metadata member hash is invalid: $name"
-        }
-        return result
-    }
-    return ExecutionMetadata(
-        json.releaseString("candidateCommit"), json.releaseString("executableName"),
-        member("testExecutable", TEST_PATH), member("classifierArchive", CLASSIFIER_PATH),
-        member("appServerExecutable", APP_SERVER_PATH),
-    )
-}
-
-private fun ExecutionMetadata.jsonBytes() = (releaseJson.encodeToString(JsonObject.serializer(), buildJsonObject {
-    put("schemaVersion", JsonPrimitive(1)); put("candidateCommit", JsonPrimitive(commit))
-    put("target", JsonPrimitive(LINUX_ARM64_TARGET)); put("classifier", JsonPrimitive(LINUX_ARM64_CLASSIFIER))
-    put("executableName", JsonPrimitive(executableName)); put("testClass", JsonPrimitive(DESKTOP_RUNTIME_TEST_CLASS))
-    put("testMethods", buildJsonArray { desktopRuntimeTestMethods.forEach { add(JsonPrimitive(it)) } })
-    put("members", buildJsonObject {
-        fun add(name: String, value: ExecutionMember) = put(name, buildJsonObject {
-            put("path", JsonPrimitive(value.path)); put("bytes", JsonPrimitive(value.bytes)); put("sha256", JsonPrimitive(value.sha256))
-        })
-        add("testExecutable", test); add("classifierArchive", classifier); add("appServerExecutable", appServer)
-    })
-}) + "\n").encodeToByteArray()
-
-private fun File.member(path: String) = ExecutionMember(path, length(), releaseDigest())
+private fun File.member(path: String) = LinuxArmExecutionMember(path, length(), releaseDigest())
 private fun ZipFile.safeFiles(): List<ZipEntry> {
     val entries = entries().asSequence().toList()
     check(entries.none(ZipEntry::isDirectory) && entries.size == entries.map(ZipEntry::getName).toSet().size &&
@@ -210,14 +162,17 @@ private fun ZipOutputStream.add(path: String, input: java.io.InputStream) {
     putNextEntry(ZipEntry(path).apply { setTimeLocal(ZIP_EPOCH) }); input.use { it.copyTo(this) }; closeEntry()
 }
 
-private fun verifyClassifier(classifier: File, executableName: String, binarySha256: String) = ZipFile(classifier).use { zip ->
+private fun verifyClassifier(classifier: File, metadata: LinuxArmExecutionMetadata) = ZipFile(classifier).use { zip ->
     val entries = zip.safeFiles()
     check(entries.map(ZipEntry::getName).toSet() == setOf(
-        executableName, "openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt",
+        metadata.executableName, metadata.supervisorExecutableName,
+        "openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt",
     )) { "Linux ARM64 classifier member set is invalid" }
-    check(zip.getInputStream(zip.getEntry(executableName)).use { it.releaseDigest() } == binarySha256) {
+    check(zip.getInputStream(zip.getEntry(metadata.executableName)).use { it.releaseDigest() } == metadata.appServer.sha256) {
         "Linux ARM64 classifier executable mismatch"
     }
+    check(zip.getInputStream(zip.getEntry(metadata.supervisorExecutableName)).use { it.releaseDigest() } ==
+        metadata.supervisor.sha256) { "Linux ARM64 classifier supervisor mismatch" }
 }
 
 private fun verifyTestListing(output: String) {

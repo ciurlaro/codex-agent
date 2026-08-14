@@ -49,6 +49,7 @@ private val mavenArtifactSpecs = listOf(
             ".pom",
         ),
     ),
+    MavenArtifactSpec("codex-agent-runtime-desktop-jvm", listOf("-javadoc.jar", "-sources.jar", ".jar", ".module", ".pom")),
     MavenArtifactSpec("codex-agent-runtime-desktop-linuxarm64", listOf("-cinterop-codexDesktop.klib", "-javadoc.jar", "-sources.jar", ".klib", ".module", ".pom")),
     MavenArtifactSpec("codex-agent-runtime-desktop-linuxx64", listOf("-cinterop-codexDesktop.klib", "-javadoc.jar", "-sources.jar", ".klib", ".module", ".pom")),
     MavenArtifactSpec("codex-agent-runtime-desktop-macosarm64", listOf("-cinterop-codexDesktop.klib", "-javadoc.jar", "-metadata.jar", "-sources.jar", ".klib", ".module", ".pom")),
@@ -63,13 +64,13 @@ private val mavenArtifactSpecs = listOf(
             "-javadoc.jar",
             "-kotlin-tooling-metadata.json",
             "-sources.jar",
-            "-windows-supervisor-x64.zip",
             ".jar",
             ".module",
             ".pom",
         ),
     ),
     MavenArtifactSpec("codex-agent-runtime-node-js", listOf("-javadoc.jar", "-sources.jar", ".klib", ".module", ".pom")),
+    MavenArtifactSpec("codex-agent-runtime-node-wasm-js", listOf("-javadoc.jar", "-sources.jar", ".klib", ".module", ".pom")),
 )
 
 private val checksumAlgorithms = linkedMapOf(

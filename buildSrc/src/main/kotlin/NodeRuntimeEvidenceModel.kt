@@ -1,7 +1,6 @@
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -9,10 +8,20 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 internal const val PINNED_NODE_VERSION = "24.18.0"
+internal const val NODE_RUNTIME_JS_BACKEND = "js"
+internal const val NODE_RUNTIME_WASM_BACKEND = "wasm"
 internal const val NODE_RUNTIME_TEST_CLASS =
     "io.github.ciurlaro.codexmobile.appserver.runtime.NodeCodexRuntimeTest"
 internal const val NODE_RUNTIME_RUNNER_ARCHIVE = "codex-agent-node-runtime-evidence-runner.zip"
 internal const val NODE_RUNTIME_RUNNER_ENTRY = "codex-agent-codex-agent-runtime-node.js"
+internal const val NODE_WASM_RUNTIME_RUNNER_ARCHIVE = "codex-agent-node-wasm-runtime-evidence-runner.zip"
+internal const val NODE_WASM_RUNTIME_RUNNER_ENTRY = "codex-agent-codex-agent-runtime-node.mjs"
+internal val nodeRuntimeBackends = linkedSetOf(NODE_RUNTIME_JS_BACKEND, NODE_RUNTIME_WASM_BACKEND)
+internal val nodeWasmRuntimeRunnerEntries = setOf(
+    NODE_WASM_RUNTIME_RUNNER_ENTRY,
+    "codex-agent-codex-agent-runtime-node.uninstantiated.mjs",
+    "codex-agent-codex-agent-runtime-node.wasm",
+)
 internal val nodeRuntimeTestMethods = sortedSetOf(
     "closeDuringStartClosesNewProcessExactlyOnce",
     "initializesAndShutsDownOfficialAppServerWhenProvided",
@@ -20,98 +29,78 @@ internal val nodeRuntimeTestMethods = sortedSetOf(
     "rejectsWrongTargetChecksum",
 )
 
-fun nodeRuntimeEvidenceFileName(target: String) = "node-runtime-$target.json"
-
-fun nodeRuntimeTestReportFileName(target: String) =
-    "TEST-nodeRuntime${target.replaceFirstChar(Char::uppercase)}Test.$NODE_RUNTIME_TEST_CLASS.xml"
-
-internal fun nodeRuntimeEvidenceTestTask(target: String) = if (target == "linuxArm64") {
-    ":buildSrc:executeLinuxArm64NodeRuntimeEvidenceBundle"
-} else {
-    ":codex-agent-runtime-node:nodeRuntime${target.replaceFirstChar(Char::uppercase)}Test"
+fun nodeRuntimeEvidenceFileName(target: String, runtimeBackend: String = NODE_RUNTIME_JS_BACKEND): String {
+    requireNodeRuntimeBackend(runtimeBackend)
+    return if (runtimeBackend == NODE_RUNTIME_JS_BACKEND) {
+        "node-runtime-$target.json"
+    } else {
+        "node-wasm-runtime-$target.json"
+    }
 }
 
-internal data class NodeClassifierProof(
-    val target: String,
-    val classifier: String,
-    val archiveFile: File,
-    val archiveSha256: String,
-    val archiveBytes: Long,
-    val executableName: String,
-    val binarySha256: String,
-)
+fun nodeRuntimeTestReportFileName(target: String, runtimeBackend: String = NODE_RUNTIME_JS_BACKEND): String {
+    requireNodeRuntimeBackend(runtimeBackend)
+    val prefix = if (runtimeBackend == NODE_RUNTIME_JS_BACKEND) "nodeRuntime" else "nodeWasmRuntime"
+    return "TEST-$prefix${target.replaceFirstChar(Char::uppercase)}Test.$NODE_RUNTIME_TEST_CLASS.xml"
+}
+
+internal fun nodeRuntimeEvidenceTestTask(target: String, runtimeBackend: String = NODE_RUNTIME_JS_BACKEND): String {
+    requireNodeRuntimeBackend(runtimeBackend)
+    if (target == "linuxArm64") return ":buildSrc:executeLinuxArm64NodeRuntimeEvidenceBundle"
+    val prefix = if (runtimeBackend == NODE_RUNTIME_JS_BACKEND) "nodeRuntime" else "nodeWasmRuntime"
+    return ":codex-agent-runtime-node:$prefix${target.replaceFirstChar(Char::uppercase)}Test"
+}
+
+internal fun requireNodeRuntimeBackend(runtimeBackend: String): String {
+    check(runtimeBackend in nodeRuntimeBackends) { "Unsupported Node runtime backend: $runtimeBackend" }
+    return runtimeBackend
+}
+
+internal fun nodeRuntimeRunnerArchiveName(runtimeBackend: String): String = when (requireNodeRuntimeBackend(runtimeBackend)) {
+    NODE_RUNTIME_JS_BACKEND -> NODE_RUNTIME_RUNNER_ARCHIVE
+    else -> NODE_WASM_RUNTIME_RUNNER_ARCHIVE
+}
+
+internal fun nodeRuntimeRunnerEntry(runtimeBackend: String): String = when (requireNodeRuntimeBackend(runtimeBackend)) {
+    NODE_RUNTIME_JS_BACKEND -> NODE_RUNTIME_RUNNER_ENTRY
+    else -> NODE_WASM_RUNTIME_RUNNER_ENTRY
+}
+
+internal typealias NodeClassifierProof = DesktopClassifierProof
 
 internal data class NodeRuntimeEvidenceValues(
     val candidateCommit: String,
     val target: String,
+    val runtimeBackend: String,
     val classifierProof: NodeClassifierProof,
     val compiledNodeTestRuntime: File,
-    val windowsSupervisorSha256: String?,
 )
 
 internal fun inspectNodeClassifier(
     target: String,
     manifest: DesktopCodexManifest,
     archive: File,
-): NodeClassifierProof {
-    val expectedTarget = desktopRuntimeEvidenceTargets.getValue(target)
-    check(manifest.distributions.map(DesktopCodexDistributionSpec::target).toSet() ==
-        desktopRuntimeEvidenceTargets.keys) { "Desktop distribution target set mismatch" }
-    val distribution = manifest.distributions.single { it.target == target }
-    check(distribution.classifier == expectedTarget.classifier) { "Node classifier identity mismatch for $target" }
-    check(archive.name == "${expectedTarget.classifier}.zip" ||
-        archive.name.endsWith("-${expectedTarget.classifier}.zip")) {
-        "Node classifier archive filename mismatch for $target"
-    }
-    check(archive.isFile && archive.length() > 0) { "Node classifier archive is missing for $target" }
-    val binarySha = ZipFile(archive).use { zip ->
-        val entries = zip.entries().asSequence().toList()
-        check(entries.none(ZipEntry::isDirectory)) { "Node classifier must not contain directories" }
-        check(entries.map(ZipEntry::getName).toSet().size == entries.size) {
-            "Node classifier contains duplicate members"
-        }
-        check(entries.all { it.name == File(it.name).name && '/' !in it.name && '\\' !in it.name }) {
-            "Node classifier contains an unsafe member"
-        }
-        val expected = setOf(
-            distribution.executableName,
-            "openai-codex-LICENSE.txt",
-            "openai-codex-NOTICE.txt",
-        )
-        check(entries.map(ZipEntry::getName).toSet() == expected && entries.size == expected.size) {
-            "Node classifier member set mismatch for $target"
-        }
-        zip.getInputStream(zip.getEntry(distribution.executableName)).use { it.releaseDigest() }
-    }
-    check(binarySha == distribution.binarySha256) { "Node App Server hash is not pinned for $target" }
-    return NodeClassifierProof(
-        target,
-        distribution.classifier,
-        archive,
-        archive.releaseDigest(),
-        archive.length(),
-        distribution.executableName,
-        binarySha,
-    )
-}
+): NodeClassifierProof = inspectDesktopClassifier(target, manifest, archive)
 
 internal fun buildNodeRuntimeEvidence(values: NodeRuntimeEvidenceValues): JsonObject {
+    requireNodeRuntimeBackend(values.runtimeBackend)
     val target = desktopRuntimeEvidenceTargets.getValue(values.target)
     val classifier = values.classifierProof
     val compiled = values.compiledNodeTestRuntime
     check(classifier.target == values.target && classifier.classifier == target.classifier) {
         "Node evidence classifier does not match ${values.target}"
     }
-    inspectNodeRuntimeRunnerArchive(compiled)
+    inspectNodeRuntimeRunnerArchive(compiled, values.runtimeBackend)
     return buildJsonObject {
-        put("schemaVersion", JsonPrimitive(1))
+        put("schemaVersion", JsonPrimitive(2))
         put("candidateCommit", JsonPrimitive(values.candidateCommit))
         put("target", JsonPrimitive(values.target))
+        put("runtimeBackend", JsonPrimitive(values.runtimeBackend))
         put("classifier", JsonPrimitive(target.classifier))
         put("runnerOs", JsonPrimitive(target.runnerOs))
         put("runnerArch", JsonPrimitive(target.runnerArch))
         put("nodeVersion", JsonPrimitive(PINNED_NODE_VERSION))
-        put("testTask", JsonPrimitive(nodeRuntimeEvidenceTestTask(values.target)))
+        put("testTask", JsonPrimitive(nodeRuntimeEvidenceTestTask(values.target, values.runtimeBackend)))
         put("testClass", JsonPrimitive(NODE_RUNTIME_TEST_CLASS))
         put("testMethods", buildJsonArray { nodeRuntimeTestMethods.forEach { add(JsonPrimitive(it)) } })
         put("tests", JsonPrimitive(nodeRuntimeTestMethods.size))
@@ -122,13 +111,10 @@ internal fun buildNodeRuntimeEvidence(values: NodeRuntimeEvidenceValues): JsonOb
         put("classifierArchiveBytes", JsonPrimitive(classifier.archiveBytes))
         put("classifierArchiveSha256", JsonPrimitive(classifier.archiveSha256))
         put("appServerBinarySha256", JsonPrimitive(classifier.binarySha256))
+        put("processSupervisorSha256", JsonPrimitive(classifier.supervisorSha256))
         put("compiledNodeTestRuntimeFileName", JsonPrimitive(compiled.name))
         put("compiledNodeTestRuntimeBytes", JsonPrimitive(compiled.length()))
         put("compiledNodeTestRuntimeSha256", JsonPrimitive(compiled.releaseDigest()))
-        put(
-            "windowsSupervisorSha256",
-            values.windowsSupervisorSha256?.let(::JsonPrimitive) ?: JsonNull,
-        )
         put("result", JsonPrimitive("passed"))
     }
 }
@@ -136,11 +122,13 @@ internal fun buildNodeRuntimeEvidence(values: NodeRuntimeEvidenceValues): JsonOb
 internal fun validateNodeRuntimeEvidence(
     evidenceFiles: List<File>,
     expectedCommit: String,
+    runtimeBackend: String,
     distributionManifest: File,
     classifierArchives: List<File>,
     compiledNodeTestRuntime: File,
-    windowsSupervisor: File?,
 ): List<String> = buildList {
+    runCatching { requireNodeRuntimeBackend(runtimeBackend) }
+        .exceptionOrNull()?.let { add(it.message ?: "runtime backend is invalid"); return@buildList }
     if (!expectedCommit.matches(Regex("[0-9a-f]{40}"))) add("candidate commit is not immutable")
     val manifest = runCatching { readDesktopCodexManifest(distributionManifest) }
         .getOrElse { add("distribution manifest: ${it.message}"); return@buildList }
@@ -148,7 +136,7 @@ internal fun validateNodeRuntimeEvidence(
         desktopRuntimeEvidenceTargets.keys) add("distribution target set mismatch")
     if (!compiledNodeTestRuntime.isFile || compiledNodeTestRuntime.length() == 0L) {
         add("compiled Node test/runtime artifact is missing")
-    } else runCatching { inspectNodeRuntimeRunnerArchive(compiledNodeTestRuntime) }
+    } else runCatching { inspectNodeRuntimeRunnerArchive(compiledNodeTestRuntime, runtimeBackend) }
         .exceptionOrNull()?.let { add("compiled Node test/runtime artifact: ${it.message}") }
     if (classifierArchives.size != desktopRuntimeEvidenceTargets.size) add("classifier archive set mismatch")
 
@@ -163,24 +151,29 @@ internal fun validateNodeRuntimeEvidence(
     }.associateBy(NodeClassifierProof::target)
 
     val byName = evidenceFiles.associateBy(File::getName)
-    val expectedNames = desktopRuntimeEvidenceTargets.keys.map(::nodeRuntimeEvidenceFileName).toSet()
-    if (evidenceFiles.size != expectedNames.size || byName.keys != expectedNames) add("evidence file set mismatch")
+    val expectedNames = desktopRuntimeEvidenceTargets.keys
+        .map { nodeRuntimeEvidenceFileName(it, runtimeBackend) }.toSet()
+    if (evidenceFiles.size != expectedNames.size || byName.keys != expectedNames) {
+        add("evidence file set mismatch")
+    }
     val compiledDigest = compiledNodeTestRuntime.takeIf(File::isFile)?.releaseDigest()
-    val supervisorDigest = windowsSupervisor?.takeIf(File::isFile)?.releaseDigest()
 
     desktopRuntimeEvidenceTargets.forEach { (target, expected) ->
-        val file = byName[nodeRuntimeEvidenceFileName(target)] ?: return@forEach
+        val file = byName[nodeRuntimeEvidenceFileName(target, runtimeBackend)] ?: return@forEach
         runCatching {
             val report = file.readReleaseObject()
             check(report.keys == NODE_RUNTIME_EVIDENCE_KEYS) { "schema fields mismatch" }
-            check(report.releaseInt("schemaVersion") == 1) { "schema version mismatch" }
+            check(report.releaseInt("schemaVersion") == 2) { "schema version mismatch" }
             check(report.releaseString("candidateCommit") == expectedCommit) { "commit mismatch" }
             check(report.releaseString("target") == target) { "target mismatch" }
+            check(report.releaseString("runtimeBackend") == runtimeBackend) { "runtime backend mismatch" }
             check(report.releaseString("classifier") == expected.classifier) { "classifier mismatch" }
             check(report.releaseString("runnerOs") == expected.runnerOs) { "runner OS mismatch" }
             check(report.releaseString("runnerArch") == expected.runnerArch) { "runner architecture mismatch" }
             check(report.releaseString("nodeVersion") == PINNED_NODE_VERSION) { "Node version mismatch" }
-            check(report.releaseString("testTask") == nodeRuntimeEvidenceTestTask(target)) { "test task mismatch" }
+            check(report.releaseString("testTask") == nodeRuntimeEvidenceTestTask(target, runtimeBackend)) {
+                "test task mismatch"
+            }
             check(report.releaseString("testClass") == NODE_RUNTIME_TEST_CLASS) { "test class mismatch" }
             check(report.releaseArray("testMethods").map { it.jsonPrimitive.content }.toSet() ==
                 nodeRuntimeTestMethods) { "test methods mismatch" }
@@ -200,6 +193,9 @@ internal fun validateNodeRuntimeEvidence(
             check(report.releaseString("appServerBinarySha256") == classifier.binarySha256) {
                 "App Server binary hash mismatch"
             }
+            check(report.releaseString("processSupervisorSha256") == classifier.supervisorSha256) {
+                "process supervisor hash mismatch"
+            }
             check(isSafeNodeEvidenceName(report.releaseString("compiledNodeTestRuntimeFileName"))) {
                 "compiled artifact filename is unsafe"
             }
@@ -207,31 +203,23 @@ internal fun validateNodeRuntimeEvidence(
                 report.releaseString("compiledNodeTestRuntimeSha256") == compiledDigest) {
                 "compiled Node test/runtime artifact mismatch"
             }
-            val recordedSupervisor = report.releaseStringOrNull("windowsSupervisorSha256")
-            if (target == "mingwX64") {
-                check(supervisorDigest != null && recordedSupervisor == supervisorDigest) {
-                    "Windows supervisor hash mismatch"
-                }
-            } else {
-                check(recordedSupervisor == null) { "non-Windows evidence contains a supervisor hash" }
-            }
         }.exceptionOrNull()?.let { add("$target: ${it.message}") }
     }
 }
 
 private val NODE_RUNTIME_EVIDENCE_KEYS = setOf(
-    "schemaVersion", "candidateCommit", "target", "classifier", "runnerOs", "runnerArch",
+    "schemaVersion", "candidateCommit", "target", "runtimeBackend", "classifier", "runnerOs", "runnerArch",
     "nodeVersion", "testTask", "testClass", "testMethods", "tests", "skipped", "failures", "errors",
     "classifierArchiveFileName", "classifierArchiveBytes", "classifierArchiveSha256",
-    "appServerBinarySha256", "compiledNodeTestRuntimeFileName", "compiledNodeTestRuntimeBytes",
-    "compiledNodeTestRuntimeSha256", "windowsSupervisorSha256", "result",
+    "appServerBinarySha256", "processSupervisorSha256", "compiledNodeTestRuntimeFileName",
+    "compiledNodeTestRuntimeBytes", "compiledNodeTestRuntimeSha256", "result",
 )
 
 private fun isSafeNodeEvidenceName(value: String): Boolean =
     value == File(value).name && '/' !in value && '\\' !in value
 
-internal fun inspectNodeRuntimeRunnerArchive(archive: File): List<String> {
-    check(archive.isFile && archive.length() > 0 && archive.name == NODE_RUNTIME_RUNNER_ARCHIVE) {
+internal fun inspectNodeRuntimeRunnerArchive(archive: File, runtimeBackend: String): List<String> {
+    check(archive.isFile && archive.length() > 0 && archive.name == nodeRuntimeRunnerArchiveName(runtimeBackend)) {
         "Compiled Node runtime archive is missing or misnamed"
     }
     return ZipFile(archive).use { zip ->
@@ -240,10 +228,18 @@ internal fun inspectNodeRuntimeRunnerArchive(archive: File): List<String> {
         check(entries.isNotEmpty() && entries.none(ZipEntry::isDirectory) && names.toSet().size == names.size) {
             "Compiled Node runtime archive has invalid members"
         }
-        check(names.all { it == File(it).name && '/' !in it && '\\' !in it && it.endsWith(".js") }) {
-            "Compiled Node runtime archive members must be root JavaScript files"
+        check(names.all { it == File(it).name && '/' !in it && '\\' !in it }) {
+            "Compiled Node runtime archive members must be root files"
         }
-        check(NODE_RUNTIME_RUNNER_ENTRY in names) { "Compiled Node runtime entry is missing" }
+        if (runtimeBackend == NODE_RUNTIME_JS_BACKEND) {
+            check(names.all { it.endsWith(".js") } && NODE_RUNTIME_RUNNER_ENTRY in names) {
+                "Compiled Node runtime JavaScript entry is missing or invalid"
+            }
+        } else {
+            check(names.toSet() == nodeWasmRuntimeRunnerEntries && names.size == nodeWasmRuntimeRunnerEntries.size) {
+                "Compiled Node Wasm runtime archive member set is invalid"
+            }
+        }
         entries.forEach { entry ->
             check(zip.getInputStream(entry).use { it.read() } != -1) {
                 "Compiled Node runtime member is empty: ${entry.name}"

@@ -13,8 +13,7 @@ internal object ReleaseWorkflowFixture {
         "desktop-runtime-evidence.yml",
         "release-candidate.yml",
         "publish.yml",
-    )
-        .associateWith { repository.resolve(".github/workflows/$it").readText() }
+    ).associateWith { repository.resolve(".github/workflows/$it").readText() }
 }
 
 class ReleaseWorkflowContractTest {
@@ -22,197 +21,162 @@ class ReleaseWorkflowContractTest {
     private val workflows = ReleaseWorkflowFixture.workflows
 
     @Test
-    fun `workflows use only live direct Gradle entry points`() {
-        val calls = workflows.values.flatMap { workflow ->
-            Regex("""\./gradlew(?:\s+-p\s+buildSrc)?\s+([:\w-]+)""")
-                .findAll(workflow)
-                .map { it.groupValues[1] }
-                .toList()
+    fun `external actions are immutable and transport is rerun safe`() {
+        val combined = workflows.values.joinToString("\n")
+        val uses = combined.lineSequence().map { it.trim().removePrefix("- ") }
+            .filter { it.startsWith("uses: ") && !it.startsWith("uses: ./") }.toList()
+        assertTrue(uses.isNotEmpty())
+        uses.forEach { use ->
+            assertTrue(Regex("[0-9a-f]{40}").matches(use.substringAfter('@').substringBefore(' ')), use)
+            assertTrue(" # " in use, use)
         }
-        val allowed = setOf(
-            "test",
-            "verifyRepository",
-            "verifyIosRuntime",
-            "verifyReleaseMetadata",
-            "verifyPublicationReadiness",
-            "verifyCandidatePayload",
-            "verifyPublicSwiftResolution",
-            "prepareCentralDeployment",
-            "awaitCentralValidation",
-            "releaseCentralDeployment",
-            "assembleProtectedCandidate",
-            "stageLinuxArm64DesktopEvidenceBundle",
-            "executeLinuxArm64DesktopEvidenceBundle",
-            "stageLinuxArm64NodeRuntimeEvidenceBundle",
-            "executeLinuxArm64NodeRuntimeEvidenceBundle",
-            ":codex-agent-runtime-ios:verifyAppleToolchain",
-            ":codex-agent-runtime-ios:exportCodexAgentIosArm64RustSlice",
-            ":codex-agent-runtime-ios:exportCodexAgentIosSimulatorArm64RustSlice",
-            ":codex-agent-runtime-android:recordAndroidRuntimeEvidence",
-            ":codex-agent-runtime-desktop:",
-            ":codex-agent-runtime-desktop:linkDebugTestLinuxArm64",
-            ":codex-agent-runtime-node:packageNodeRuntimeEvidenceRunner",
-            ":codex-agent-runtime-node:verifyWindowsNodeSupervisorPackage",
-            ":codex-agent-runtime-node:",
-        )
-        assertTrue(calls.isNotEmpty())
-        assertEquals(emptySet(), calls.toSet() - allowed)
-        assertEquals(1, calls.count { it == "assembleProtectedCandidate" })
-        assertTrue("--no-parallel" in workflows.getValue("release-candidate.yml"))
+        val checkouts = uses.count { it.startsWith("uses: actions/checkout@") }
+        val uploads = uses.count { it.startsWith("uses: actions/upload-artifact@") }
+        assertEquals(checkouts, Regex("(?m)^\\s+persist-credentials: false$").findAll(combined).count())
+        assertEquals(uploads, Regex("(?m)^\\s+if-no-files-found: error$").findAll(combined).count())
+        assertEquals(uploads, Regex("(?m)^\\s+overwrite: (?:true|false)$").findAll(combined).count())
     }
 
     @Test
-    fun `candidate consumes one immutable commit and host evidence before one assembly`() {
-        val candidate = workflows.getValue("release-candidate.yml")
-        assertTrue("name: codex-agent-protected-candidate" in candidate)
-        assertTrue("candidate_commit" in candidate)
-        assertTrue("recordAndroidRuntimeEvidence" in workflows.getValue("android-runtime-evidence.yml"))
-        assertFalse("android-runtime-evidence" in candidate)
-        assertFalse("androidEvidenceFile" in candidate)
-        assertFalse("swiftpm-baseline" in candidate)
-        assertFalse("swiftPmBaselineProof" in candidate)
-        assertFalse("commit_a" in candidate || "commit_b" in candidate)
-        assertTrue("-PcodexAgent.iosNativeEvidenceDirectory=" in candidate)
-        assertTrue("-PcodexAgent.nodeEvidenceDirectory=" in candidate)
-        assertTrue("-PcodexAgent.windowsNodeSupervisorIdentityFile=" in candidate)
-        assertTrue("-PcodexAgent.windowsNodeSupervisorPackage=" in candidate)
-        assertTrue(candidate.indexOf("Upload the exact technical candidate") < candidate.indexOf("Require external publication approvals"))
+    fun `Firebase evidence accepts only protected candidates before OIDC and uses default result storage`() {
+        val android = workflows.getValue("android-runtime-evidence.yml")
+        val validation = android.indexOf("Validate the protected candidate identity before running code")
+        val checkout = android.indexOf("uses: actions/checkout@")
+        val build = android.indexOf("Build the exact application APK, test APK, and release AAR")
+        val authentication = android.indexOf("uses: google-github-actions/auth@")
+
+        assertFalse("workflow_dispatch:" in android)
+        assertTrue(validation in 0 until checkout)
+        assertTrue(build in (checkout + 1) until authentication)
+        assertTrue("test \"${'$'}GITHUB_SHA\" = \"${'$'}CANDIDATE_COMMIT\"" in android)
+        assertTrue("test \"${'$'}GITHUB_REF_PROTECTED\" = true" in android)
+        assertFalse("FIREBASE_TEST_RESULTS_BUCKET" in android)
+        assertFalse("--results-bucket" in android)
+        assertFalse("--results-dir" in android)
+        assertTrue("gcsPath" in android)
+        assertTrue("gcloud storage cp --recursive \"${'$'}results_uri\"" in android)
+        assertFalse("-PcodexAgent.candidateCommit=${'$'}{{" in android)
     }
 
     @Test
-    fun `iOS native slices run independently before one imported aggregate`() {
+    fun `ordinary CI cancels stale work and gates expensive Apple slices`() {
         val ci = workflows.getValue("ci.yml")
-        val candidate = workflows.getValue("release-candidate.yml")
         assertTrue("group: ci-${'$'}{{ github.workflow }}-${'$'}{{ github.event.pull_request.number || github.ref }}" in ci)
         assertTrue("cancel-in-progress: true" in ci)
-        assertTrue("cancel-in-progress: false" in candidate)
+        assertEquals(2, Regex("needs: \\[workflow-lint, android-jvm]").findAll(ci).count())
+        assertTrue("./gradlew verifyRepository" in ci)
+        assertTrue(":codex-agent-client:compileKotlinWasmJs" in repository.resolve(
+            "buildSrc/src/main/kotlin/RepositoryVerificationTasks.kt",
+        ).readText())
+        assertFalse("browser" in ci.lowercase())
+        assertFalse("wasi" in ci.lowercase())
+    }
 
-        fun section(workflow: String, job: String, next: String) =
-            workflow.substringAfter("\n  $job:").substringBefore("\n  $next:")
-        val ciDevice = section(ci, "ios-device-slice", "ios-simulator-slice")
-        val ciSimulator = section(ci, "ios-simulator-slice", "ios")
-        val ciAggregate = ci.substringAfter("\n  ios:")
-        val candidateAggregate = candidate.substringAfter("\n  apple-candidate:")
+    @Test
+    fun `candidate tag and CI identity are exact without rebuilding portable checks`() {
+        val candidate = workflows.getValue("release-candidate.yml")
+        val gate = candidate.substringAfter("\n  portable-gates:").substringBefore("\n  desktop-runtime-evidence:")
+        val resolver = candidate.substringAfter("\n  resolve-ci-evidence:").substringBefore("\n  apple-candidate:")
+        assertFalse("release_tag:" in candidate.substringAfter("workflow_dispatch:").substringBefore("  push:"))
+        assertFalse("default: v" in candidate)
+        assertFalse("0.2.0" in candidate)
+        assertTrue("^candidate/v([0-9]+\\.[0-9]+\\.[0-9]+)-rc\\.([1-9][0-9]*)$" in gate)
+        assertTrue("fetch-depth: 0" in gate)
+        assertTrue("git merge-base --is-ancestor" in gate && "origin/main" in gate)
+        assertTrue("test \"${'$'}GITHUB_REF_PROTECTED\" = true" in gate)
+        val appleCandidate = candidate.substringAfter("  apple-candidate:")
+        assertFalse("codex-agent-candidate-identity" in gate)
+        assertTrue("name: codex-agent-candidate-identity-${'$'}{{ github.run_attempt }}" in appleCandidate)
+        assertTrue("candidateRunAttempt=%s\\n' \\" in appleCandidate)
+        assertTrue("\"${'$'}GITHUB_RUN_ID\" \"${'$'}GITHUB_RUN_ATTEMPT\" > build/candidate-identity.txt" in appleCandidate)
+        assertFalse("verifyRepository" in gate)
+        assertFalse("-p buildSrc test" in gate)
+        assertTrue("--branch=main --event=push" in resolver)
+        assertTrue("--commit=\"${'$'}CANDIDATE_COMMIT\" --status=success" in resolver)
+        listOf(".path", ".event", ".head_branch", ".head_sha", ".head_repository.full_name", ".conclusion", ".run_attempt")
+            .forEach { assertTrue(it in resolver) }
+        assertTrue("test \"${'$'}repository\" = \"${'$'}GITHUB_REPOSITORY\"" in resolver)
+        assertTrue("ci-provenance.json" in resolver)
+    }
 
-        listOf(ciDevice, ciSimulator).forEach {
-            assertTrue("needs: [workflow-lint, android-jvm]" in it)
-            assertTrue("uses: actions/cache@v4" in it)
-            assertTrue("~/.cargo/registry" in it && "~/.cargo/git" in it)
-            assertTrue("native/provenance.json" in it && "native/patches/**" in it)
-            assertFalse("build/rust" in it.substringAfter("Restore pinned Cargo downloads").substringBefore("Install pinned Rust toolchain"))
-        }
-        assertTrue("needs: [ios-device-slice, ios-simulator-slice]" in ciAggregate)
-        assertTrue("resolve-ios-evidence" in candidateAggregate)
+    @Test
+    fun `candidate imports every mandatory runtime family and assembles once`() {
+        val candidate = workflows.getValue("release-candidate.yml")
+        assertTrue("uses: ./.github/workflows/desktop-runtime-evidence.yml" in candidate)
+        assertTrue("uses: ./.github/workflows/android-runtime-evidence.yml" in candidate)
+        assertTrue("id-token: write" in candidate)
+        assertTrue("pattern: codex-agent-runtime-evidence-*" in candidate)
+        assertTrue("name: codex-agent-portable-runtime-evidence-runners" in candidate)
+        assertTrue("name: codex-agent-android-runtime-evidence-${'$'}{{ needs.portable-gates.outputs.candidate_commit }}" in candidate)
+        listOf(
+            "desktopEvidenceDirectory", "jvmEvidenceDirectory", "nodeEvidenceDirectory",
+            "nodeWasmEvidenceDirectory", "androidRuntimeEvidenceDirectory", "desktopSupervisorDirectory",
+            "iosNativeEvidenceDirectory", "ciProvenance",
+        ).forEach { assertTrue("-PcodexAgent.$it=" in candidate, it) }
+        assertEquals(1, Regex("./gradlew assembleProtectedCandidate").findAll(candidate).count())
+        assertTrue("--no-parallel" in candidate)
+        assertFalse("windowsNodeSupervisor" in candidate)
+        val assembly = candidate.substringAfter("Assemble and sign the exact protected candidate once")
+            .substringBefore("- name: Upload the exact technical candidate")
+        assertTrue("SIGNING_IN_MEMORY_KEY" in assembly)
+        assertFalse("SIGNING_IN_MEMORY_KEY" in candidate.substringBefore("Assemble and sign"))
+        assertEquals(1, Regex("(?m)^    environment: release-candidate$").findAll(candidate).count())
+        assertTrue("name: codex-agent-protected-candidate-${'$'}{{ github.run_attempt }}" in candidate)
+        assertTrue("overwrite: false" in candidate)
+        val desktop = workflows.getValue("desktop-runtime-evidence.yml") +
+            repository.resolve(".github/actions/setup-msvc/action.yml").readText()
+        assertTrue("VsDevCmd.bat" in desktop && "Microsoft.VisualStudio.Component.VC.Tools.x86.x64" in desktop)
+    }
 
-        listOf(ciDevice).forEach {
-            assertTrue("exportCodexAgentIosArm64RustSlice" in it)
-            assertTrue("build/apple-slice-exports/" in it)
-            assertTrue("codex-agent-ios-arm64.a" in it)
-            assertTrue("codex-agent-ios-arm64-proof.json" in it)
-            assertTrue("native-tests-proof.json" in it)
-        }
-        listOf(ciSimulator).forEach {
-            assertTrue("exportCodexAgentIosSimulatorArm64RustSlice" in it)
-            assertTrue("build/apple-slice-exports/" in it)
-            assertTrue("codex-agent-ios-simulator-arm64.a" in it)
-            assertTrue("codex-agent-ios-simulator-arm64-proof.json" in it)
-            assertFalse("native-tests-proof.json" in it)
-        }
-        listOf(ciDevice, ciSimulator).forEach {
-            assertTrue("if-no-files-found: error" in it)
-            assertTrue("compression-level: 0" in it)
-            assertTrue("retention-days: 30" in it)
-        }
-        listOf(ciAggregate, candidateAggregate).forEach {
-            assertTrue("-PcodexAgent.iosNativeEvidenceDirectory=" in it)
-            assertFalse("exportCodexAgentIosArm64RustSlice" in it)
-            assertFalse("exportCodexAgentIosSimulatorArm64RustSlice" in it)
-            assertFalse("./gradlew clean" in it)
-        }
-        assertTrue("./gradlew verifyIosRuntime" in ciAggregate)
-        assertTrue("./gradlew assembleProtectedCandidate" in candidateAggregate)
+    @Test
+    fun `candidate reuses exact CI Apple slices without rebuilding them`() {
+        val ci = workflows.getValue("ci.yml")
+        val candidate = workflows.getValue("release-candidate.yml")
         assertEquals(1, Regex("exportCodexAgentIosArm64RustSlice").findAll(ci + candidate).count())
         assertEquals(1, Regex("exportCodexAgentIosSimulatorArm64RustSlice").findAll(ci + candidate).count())
         assertFalse("exportCodexAgentIosArm64RustSlice" in candidate)
         assertFalse("exportCodexAgentIosSimulatorArm64RustSlice" in candidate)
-        assertTrue("run-id: ${'$'}{{ needs.resolve-ios-evidence.outputs.ci_run_id }}" in candidateAggregate)
-        assertTrue("name: codex-agent-ci-ios-arm64-${'$'}{{ needs.portable-gates.outputs.candidate_commit }}" in candidateAggregate)
-        assertTrue("name: codex-agent-ci-ios-simulator-arm64-${'$'}{{ needs.portable-gates.outputs.candidate_commit }}" in candidateAggregate)
+        assertEquals(2, candidate.lineSequence().count {
+            "run-id: ${'$'}{{ needs.resolve-ci-evidence.outputs.ci_run_id }}" in it
+        })
+        assertTrue("-PcodexAgent.iosNativeEvidenceDirectory=" in candidate)
     }
 
     @Test
-    fun `candidate resolves a successful exact-commit CI run without rebuilding native slices`() {
-        val candidate = workflows.getValue("release-candidate.yml")
-        val resolver = candidate.substringAfter("\n  resolve-ios-evidence:").substringBefore("\n  apple-candidate:")
-        assertTrue("ci_run_id:" in candidate.substringBefore("\npermissions:"))
-        assertTrue("gh run list" in resolver && "--workflow=ci.yml" in resolver)
-        assertTrue("--commit=\"\$CANDIDATE_COMMIT\"" in resolver)
-        assertTrue("--status=success" in resolver)
-        assertTrue("test \"\$matches\" -ge 1" in resolver)
-        assertTrue("test \"\$matches\" -eq 1" in resolver)
-        assertTrue("actions/runs/\$ci_run_id" in resolver && "--jq .path" in resolver)
-        assertTrue(".github/workflows/ci.yml" in resolver && "headSha" in resolver && "conclusion" in resolver)
-        assertTrue("ci_run_id=%s" in resolver)
-    }
-
-    @Test
-    fun `publication persists the deployment before polling and never rebuilds`() {
+    fun `publication derives identity then publishes Central before GitHub`() {
         val publish = workflows.getValue("publish.yml")
+        assertFalse("0.2.0" in publish)
+        assertTrue("name: codex-agent-candidate-identity-${'$'}{{ github.event.workflow_run.run_attempt }}" in publish)
+        assertTrue("name: codex-agent-protected-candidate-${'$'}{{ github.event.workflow_run.run_attempt }}" in publish)
+        assertTrue("candidate_run_attempt\" = \"${'$'}WORKFLOW_RUN_ATTEMPT" in publish)
+        assertTrue("^candidate/v([0-9]+\\.[0-9]+\\.[0-9]+)-rc\\.([1-9][0-9]*)$" in publish)
+        assertTrue("environment: release-publication" in publish)
+        val jobHeader = publish.substringAfter("\n  publish:").substringBefore("    steps:")
+        assertFalse("MAVEN_CENTRAL_" in jobHeader)
+        assertEquals(3, Regex("MAVEN_CENTRAL_USERNAME:").findAll(publish).count())
+        assertEquals(3, Regex("MAVEN_CENTRAL_PASSWORD:").findAll(publish).count())
         val prepare = publish.indexOf("prepareCentralDeployment")
-        val persist = publish.indexOf("Persist the Central deployment ID immediately")
         val await = publish.indexOf("awaitCentralValidation")
-        val publicSwift = publish.indexOf("verifyPublicSwiftResolution")
-        val centralRelease = publish.indexOf("releaseCentralDeployment")
-        assertTrue(prepare >= 0 && prepare < persist && persist < await)
-        assertTrue(await < publicSwift && publicSwift < centralRelease)
-        assertTrue("-PcodexAgent.allowCentralUpload=" in publish)
-        assertTrue("test \"\$deployment_records\" -le 1" in publish)
-        assertTrue("if [ \"\$deployment_records\" -eq 1 ]" in publish)
-        assertTrue("allow_upload=false" in publish)
-        assertTrue("allow_upload=true" in publish)
+        val central = publish.indexOf("releaseCentralDeployment")
+        val github = publish.indexOf("Create or reuse the exact GitHub release after Central")
+        val swift = publish.indexOf("verifyPublicSwiftResolution")
+        assertTrue(prepare in 0 until await && await < central && central < github && github < swift)
+        assertTrue("-PcodexAgent.allowCentralUpload=true" in publish)
         assertFalse(Regex("""\./gradlew\s+(?:assemble|build|stage|publish)""").containsMatchIn(publish))
-        assertFalse("pattern: codex-agent-*-candidate" in publish)
     }
 
     @Test
-    fun `release workflows contain no retired implementations or illegal runner contexts`() {
+    fun `workflows reject retired duplicate and unsafe release paths`() {
         val combined = workflows.values.joinToString("\n")
-        listOf("release/scripts/", "python3", "curl ", "find ", "awk ", "shasum").forEach { retired ->
-            assertFalse(retired in combined, retired)
-        }
-        assertFalse(Regex("""(?m)^\s*jq\s""").containsMatchIn(combined))
+        listOf(
+            "windows-node-supervisor", "windowsNodeSupervisor", "commit_a", "commit_b",
+            "byte-parity", "browser", "wasi", "release/scripts/", "python3", "curl ", "shasum",
+        ).forEach { assertFalse(it.lowercase() in combined.lowercase(), it) }
+        assertFalse(Regex("(?m)^\\s*jq\\s").containsMatchIn(combined))
         assertFalse("${'$'}{{ runner.temp }}" in combined)
-        assertFalse("validateCentralDeployment" in combined)
         assertTrue("github.com/rhysd/actionlint/cmd/actionlint@v1.7.12" in workflows.getValue("ci.yml"))
-        assertEquals(
-            "self-hosted-runner:\n  labels:\n    - android\n",
-            repository.resolve(".github/actionlint.yaml").readText(),
-        )
-    }
-
-    @Test
-    fun `privacy reachable Apple jobs install pinned LLVM tools`() {
-        val ci = workflows.getValue("ci.yml")
-        val ciIos = ci.substringAfter("\n  ios:")
-        assertTrue("timeout-minutes: 240" in ciIos)
-        val candidate = workflows.getValue("release-candidate.yml")
-        val appleCandidate = candidate.substringAfter("\n  apple-candidate:")
-        val jobs = listOf(
-            ci.substringAfter("\n  ios-device-slice:").substringBefore("\n  ios-simulator-slice:") to
-                "exportCodexAgentIosArm64RustSlice",
-            ci.substringAfter("\n  ios-simulator-slice:").substringBefore("\n  ios:") to
-                "exportCodexAgentIosSimulatorArm64RustSlice",
-            ciIos to "./gradlew verifyIosRuntime",
-            appleCandidate to "assembleProtectedCandidate",
-        )
-
-        jobs.forEach { (job, privacyReachableTask) ->
-            val setup = job.indexOf("uses: dtolnay/rust-toolchain@1.95.0")
-            assertTrue(setup >= 0 && setup < job.indexOf(privacyReachableTask), privacyReachableTask)
-            assertTrue("targets: aarch64-apple-ios" in job, privacyReachableTask)
-            assertTrue("components: llvm-tools-preview,rust-src" in job, privacyReachableTask)
-        }
-        assertEquals(1, Regex("(?m)^  apple-candidate:$").findAll(candidate).count())
-        assertFalse("rustup toolchain install" in workflows.values.joinToString("\n"))
+        assertEquals("self-hosted-runner:\n  labels:\n    - android\n", repository.resolve(
+            ".github/actionlint.yaml",
+        ).readText())
     }
 }
