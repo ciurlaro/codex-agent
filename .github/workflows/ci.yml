@@ -160,11 +160,11 @@ jobs:
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
           components: llvm-tools-preview,rust-src
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-ci-ios-arm64-${{ github.sha }}
           path: build/ios-native-evidence
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-ci-ios-simulator-arm64-${{ github.sha }}
           path: build/ios-native-evidence

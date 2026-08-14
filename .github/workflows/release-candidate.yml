@@ -152,30 +152,30 @@ jobs:
             printf 'ci=%s\n' "$RUNNER_TEMP/ci-provenance"
             printf 'payload=%s\n' "$GITHUB_WORKSPACE/build/protected-candidate/${{ needs.portable-gates.outputs.candidate_commit }}/payload"
           } >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: codex-agent-runtime-evidence-*
           path: ${{ steps.paths.outputs.runtime }}
           merge-multiple: true
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-portable-runtime-evidence-runners
           path: .
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-android-runtime-evidence-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.android }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-ci-provenance-${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           path: ${{ steps.paths.outputs.ci }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
           name: codex-agent-ci-ios-arm64-${{ needs.portable-gates.outputs.candidate_commit }}
           path: build/ios-native-evidence
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
