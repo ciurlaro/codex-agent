@@ -48,15 +48,8 @@ dependencies {
     testImplementation(bundledSqliteTest)
 }
 
-val prepareRuntime = tasks.named<PrepareCodexRuntimeTask>("prepareCodexRuntime")
 extensions.getByType<LibraryAndroidComponentsExtension>().apply {
     beforeVariants(selector().all()) { variant -> variant.enableAndroidTest = false }
-    onVariants { variant ->
-        variant.sources.jniLibs?.addGeneratedSourceDirectory(
-            prepareRuntime,
-            PrepareCodexRuntimeTask::outputDirectory,
-        )
-    }
 }
 
 mavenPublishing {

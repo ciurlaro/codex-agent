@@ -17,28 +17,32 @@ unrelated version input.
 The protected candidate environment contains only the signing material needed
 to assemble the release payload. Its configured reviewers approve access to
 those credentials. The protected release environment separately controls Maven
-Central and GitHub publication credentials and approval.
+Central publication credentials and approval. `GRADLE_ENCRYPTION_KEY` is a
+repository CI secret used only to encrypt reusable Gradle configuration-cache
+entries; it is not publication authority.
 
 ## Evidence is produced once
 
-1. The successful exact-commit CI run completes the repository gates and builds
-   the Apple device and simulator Rust slices once, in parallel. Both artifacts
-   record their commit and provenance.
-2. The Desktop Runtime Evidence workflow reuses one compiled evidence bundle in
-   the existing five-host matrix: macOS Arm64/x64, Linux Arm64/x64, and Windows
-   x64. Each host runs native desktop, JVM desktop, JS-on-Node, and
-   WasmJS-on-Node lifecycle checks against its matching classifier. That single
-   classifier contains both the App Server and process supervisor; there is no
-   standalone Windows supervisor publication.
-3. The Android Runtime Evidence workflow builds the application APK, test APK,
-   and release AAR, then runs the exact instrumentation tests on the Firebase
-   Test Lab `SmallPhone.arm` API 35 ARM virtual device. Its evidence preserves
-   the Firebase matrix result, exact test XML, and tested binaries. A connected
-   physical phone is not required.
-4. Candidate assembly downloads those exact successful CI artifacts, verifies
-   their commit and identities, imports the Apple slices, and runs only the
-   aggregate packaging and consumer gates. It does not rebuild slices or repeat
-   the desktop, Node, JVM, Wasm, or Android runtime tests.
+1. The successful exact-commit `main` CI run completes the repository gates,
+   packages the three portable evidence runners once, and builds the Android
+   application APK, test APK, and release AAR once.
+2. That same CI run calls the Desktop Runtime Evidence workflow. Its five-host
+   matrix covers macOS Arm64/x64, Linux Arm64/x64, and Windows x64. Each host
+   runs native desktop, JVM desktop, JS-on-Node, and WasmJS-on-Node lifecycle
+   checks against its exact matching classifier. Linux Arm64 transports one
+   bundle and extracts its App Server and supervisor once.
+3. Apple host-native tests run independently on Linux while the device and
+   simulator slices build in parallel on macOS. One downstream Apple job
+   verifies those five evidence files and exports the complete verified Apple
+   distribution once.
+4. The protected candidate runs Firebase Test Lab `SmallPhone.arm` API 35
+   against the imported exact-main Android APKs. It downloads only the exact
+   test XML, records the tested binaries and AAR, and requires no connected
+   physical phone.
+5. Candidate assembly imports the attempt-bound portable runners, five
+   classifiers, five-host evidence, Android evidence/AAR, Apple native evidence,
+   and whole verified Apple distribution. It runs only aggregate packaging and
+   consumer gates; none of those expensive platform artifacts is rebuilt.
 
 Retries reuse a logically matching successful run or artifact when one exists.
 Two independent builds are not required to have identical bytes or hashes.
@@ -67,7 +71,7 @@ Useful local gates while developing are:
 
 ```shell
 actionlint
-./gradlew -p buildSrc test
+./gradlew -p gradle/build-logic test
 ./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag=v0.2.0
 ./gradlew verifyRepository
 DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
@@ -128,11 +132,15 @@ artifact and never rebuilds Maven, native, or runtime evidence artifacts. It:
 2. Revalidates every artifact, evidence record, policy decision, commit, tag,
    Swift package binding, signature, and candidate-manifest entry before public
    mutation.
-3. Waits for protected release-environment approval, then creates or reuses the
-   matching Maven Central deployment and GitHub draft release.
+3. Waits for protected release-environment approval, then uses an Ubuntu job to
+   create or reuse the matching Maven Central deployment and GitHub draft
+   release.
 4. Promotes only the recorded Central bundle and exact Swift package/candidate
-   assets, then verifies their public identities and resolution.
-5. On rerun, reuses matching validated or published records and fails closed on
+   assets, comparing the official GitHub asset digest with the manifest-bound
+   artifact without downloading it again.
+5. Runs one downstream macOS job whose only public asset download is the clean
+   Swift Package resolution check.
+6. On rerun, reuses matching validated or published records and fails closed on
    identity mismatches. It does not compare a new rebuild with the old one.
 
 Do not store `OPENAI_API_KEY`, ChatGPT credentials, generated tokens, or Google

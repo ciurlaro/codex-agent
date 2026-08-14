@@ -27,58 +27,47 @@ jobs:
       release_tag: ${{ steps.candidate.outputs.release_tag }}
       candidate_commit: ${{ steps.candidate.outputs.candidate_commit }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-      - name: Resolve and bind the protected candidate tag
-        id: candidate
+      - name: Validate the protected candidate ref before checkout
+        id: candidate-ref
         shell: bash
         run: |
           test "$GITHUB_REF_TYPE" = tag
           test "$GITHUB_REF_PROTECTED" = true
           [[ "$GITHUB_REF_NAME" =~ ^candidate/v([0-9]+\.[0-9]+\.[0-9]+)-rc\.([1-9][0-9]*)$ ]]
-          version="${BASH_REMATCH[1]}"
-          release_tag="v$version"
+          printf 'release_tag=v%s\n' "${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Bind the candidate commit to main
+        id: candidate
+        env:
+          RELEASE_TAG: ${{ steps.candidate-ref.outputs.release_tag }}
+        shell: bash
+        run: |
           candidate_commit=$(git rev-parse 'HEAD^{commit}')
           git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
           git merge-base --is-ancestor "$candidate_commit" origin/main
           {
-            printf 'release_tag=%s\n' "$release_tag"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
             printf 'candidate_commit=%s\n' "$candidate_commit"
           } >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/setup-kmp
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Verify the tag matches the single project version
         env:
           RELEASE_TAG: ${{ steps.candidate.outputs.release_tag }}
         run: >-
           ./gradlew verifyReleaseMetadata
-          -PcodexAgent.releaseTag="$RELEASE_TAG"
-          --no-daemon --stacktrace
-  desktop-runtime-evidence:
-    needs: portable-gates
-    uses: ./.github/workflows/desktop-runtime-evidence.yml
-    with:
-      candidateCommit: ${{ needs.portable-gates.outputs.candidate_commit }}
-
-  android-runtime-evidence:
-    needs: portable-gates
-    permissions:
-      contents: read
-      id-token: write
-    uses: ./.github/workflows/android-runtime-evidence.yml
-    with:
-      candidateCommit: ${{ needs.portable-gates.outputs.candidate_commit }}
+          -PcodexAgent.releaseTag="$RELEASE_TAG" --parallel --stacktrace
 
   resolve-ci-evidence:
     needs: portable-gates
     runs-on: ubuntu-24.04
     outputs:
       ci_run_id: ${{ steps.ci.outputs.ci_run_id }}
+      ci_run_attempt: ${{ steps.ci.outputs.ci_run_attempt }}
     steps:
       - name: Resolve a successful same-repository main push CI run
         id: ci
@@ -111,82 +100,123 @@ jobs:
           printf '{"schemaVersion":1,"repository":"%s","workflowPath":".github/workflows/ci.yml","runId":%s,"runAttempt":%s,"event":"%s","headBranch":"%s","headSha":"%s","conclusion":"%s"}\n' \
             "$repository" "$ci_run_id" "$attempt" "$event" "$branch" "$sha" "$conclusion" \
             > build/ci-provenance.json
-          printf 'ci_run_id=%s\n' "$ci_run_id" >> "$GITHUB_OUTPUT"
+          {
+            printf 'ci_run_id=%s\n' "$ci_run_id"
+            printf 'ci_run_attempt=%s\n' "$attempt"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           if-no-files-found: error
           overwrite: true
-          name: codex-agent-ci-provenance-${{ steps.ci.outputs.ci_run_id }}
+          name: codex-agent-ci-provenance-${{ needs.portable-gates.outputs.candidate_commit }}
           path: build/ci-provenance.json
           compression-level: 0
           retention-days: 30
 
-  apple-candidate:
-    needs: [portable-gates, desktop-runtime-evidence, android-runtime-evidence, resolve-ci-evidence]
+  android-runtime-evidence:
+    needs: [portable-gates, resolve-ci-evidence]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/android-runtime-evidence.yml
+    with:
+      candidateCommit: ${{ needs.portable-gates.outputs.candidate_commit }}
+      ciRunId: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
+    secrets: inherit
+
+  assemble-candidate:
+    needs: [portable-gates, resolve-ci-evidence, android-runtime-evidence]
     runs-on: macos-26
-    timeout-minutes: 300
+    timeout-minutes: 180
     environment: release-candidate
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
+      - name: Require signing configuration before running candidate code
+        env:
+          SIGNING_IN_MEMORY_KEY: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+          SIGNING_IN_MEMORY_KEY_PASSWORD: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+        run: |
+          test -n "$SIGNING_IN_MEMORY_KEY"
+          test -n "$SIGNING_IN_MEMORY_KEY_PASSWORD"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           ref: ${{ needs.portable-gates.outputs.candidate_commit }}
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+      - uses: ./.github/actions/setup-kmp
         with:
-          distribution: temurin
-          java-version: "17"
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          node-version: "24.18.0"
+          xcode-fingerprint: auto
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-      - uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
-        with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim
-          components: llvm-tools-preview,rust-src
       - name: Resolve isolated candidate paths
         id: paths
         run: |
           {
             printf 'runtime=%s\n' "$RUNNER_TEMP/runtime-evidence"
             printf 'android=%s\n' "$RUNNER_TEMP/android-runtime-evidence"
+            printf 'ios_native=%s\n' "$RUNNER_TEMP/ios-native-evidence"
+            printf 'ios_distribution=%s\n' "$RUNNER_TEMP/ios-verified-distribution"
             printf 'ci=%s\n' "$RUNNER_TEMP/ci-provenance"
             printf 'payload=%s\n' "$GITHUB_WORKSPACE/build/protected-candidate/${{ needs.portable-gates.outputs.candidate_commit }}/payload"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: codex-agent-runtime-evidence-*
-          path: ${{ steps.paths.outputs.runtime }}
+          run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          pattern: codex-agent-ci-runtime-evidence-*-${{ needs.portable-gates.outputs.candidate_commit }}
+          path: ${{ steps.paths.outputs.runtime }}/evidence
           merge-multiple: true
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: codex-agent-portable-runtime-evidence-runners
-          path: .
+          run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          pattern: codex-agent-ci-desktop-classifier-*-${{ needs.portable-gates.outputs.candidate_commit }}
+          path: ${{ steps.paths.outputs.runtime }}/classifiers
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          name: codex-agent-ci-portable-runtime-artifacts-${{ needs.portable-gates.outputs.candidate_commit }}
+          path: ${{ steps.paths.outputs.runtime }}/portable
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: codex-agent-android-runtime-evidence-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.android }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: codex-agent-ci-provenance-${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
+          name: codex-agent-ci-provenance-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.ci }}
+      - name: Download the three exact native evidence artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          pattern: codex-agent-ci-ios-*arm64-${{ needs.portable-gates.outputs.candidate_commit }}
+          path: ${{ steps.paths.outputs.ios_native }}
+          merge-multiple: true
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
-          name: codex-agent-ci-ios-arm64-${{ needs.portable-gates.outputs.candidate_commit }}
-          path: build/ios-native-evidence
+          name: codex-agent-ci-ios-native-tests-${{ needs.portable-gates.outputs.candidate_commit }}
+          path: ${{ steps.paths.outputs.ios_native }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
-          name: codex-agent-ci-ios-simulator-arm64-${{ needs.portable-gates.outputs.candidate_commit }}
-          path: build/ios-native-evidence
+          name: codex-agent-ci-ios-verified-distribution-${{ needs.portable-gates.outputs.candidate_commit }}
+          path: ${{ steps.paths.outputs.ios_distribution }}
       - name: Assemble and sign the exact protected candidate once
         env:
           CANDIDATE_COMMIT: ${{ needs.portable-gates.outputs.candidate_commit }}
           RELEASE_TAG: ${{ needs.portable-gates.outputs.release_tag }}
           RUNTIME: ${{ steps.paths.outputs.runtime }}
           ANDROID: ${{ steps.paths.outputs.android }}
+          IOS_NATIVE: ${{ steps.paths.outputs.ios_native }}
+          IOS_DISTRIBUTION: ${{ steps.paths.outputs.ios_distribution }}
           CI_PROVENANCE: ${{ steps.paths.outputs.ci }}/ci-provenance.json
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
@@ -194,20 +224,22 @@ jobs:
           ./gradlew assembleProtectedCandidate
           -PcodexAgent.candidateCommit="$CANDIDATE_COMMIT"
           -PcodexAgent.releaseTag="$RELEASE_TAG"
-          -PcodexAgent.desktopEvidenceDirectory="$RUNTIME/codex-agent-runtime-desktop/build/reports/desktop-runtime-evidence"
-          -PcodexAgent.jvmEvidenceDirectory="$RUNTIME/codex-agent-runtime-desktop/build/reports/jvm-runtime-evidence"
-          -PcodexAgent.nodeEvidenceDirectory="$RUNTIME/codex-agent-runtime-node/build/reports/node-runtime-evidence"
-          -PcodexAgent.nodeWasmEvidenceDirectory="$RUNTIME/codex-agent-runtime-node/build/reports/node-runtime-evidence"
+          -PcodexAgent.desktopEvidenceDirectory="$RUNTIME/evidence/codex-agent-runtime-desktop/build/reports/desktop-runtime-evidence"
+          -PcodexAgent.jvmEvidenceDirectory="$RUNTIME/evidence/codex-agent-runtime-desktop/build/reports/jvm-runtime-evidence"
+          -PcodexAgent.nodeEvidenceDirectory="$RUNTIME/evidence/codex-agent-runtime-node/build/reports/node-runtime-evidence"
+          -PcodexAgent.nodeWasmEvidenceDirectory="$RUNTIME/evidence/codex-agent-runtime-node/build/reports/node-runtime-evidence"
+          -PcodexAgent.portableRuntimeArtifactsDirectory="$RUNTIME/portable"
+          -PcodexAgent.desktopClassifierDirectory="$RUNTIME/classifiers"
           -PcodexAgent.androidRuntimeEvidenceDirectory="$ANDROID"
+          -PcodexAgent.importedAndroidReleaseAar="$ANDROID/codex-agent-runtime-android-release.aar"
+          -PcodexAgent.iosNativeEvidenceDirectory="$IOS_NATIVE"
+          -PcodexAgent.iosVerifiedDistributionDirectory="$IOS_DISTRIBUTION"
           -PcodexAgent.ciProvenance="$CI_PROVENANCE"
-          -PcodexAgent.desktopSupervisorDirectory="$RUNTIME/build/desktop-supervisors"
-          -PcodexAgent.iosNativeEvidenceDirectory="$GITHUB_WORKSPACE/build/ios-native-evidence"
-          --no-parallel --no-daemon --stacktrace
+          --parallel --stacktrace
       - name: Record the immutable candidate identity
         env:
           CANDIDATE_COMMIT: ${{ needs.portable-gates.outputs.candidate_commit }}
           RELEASE_TAG: ${{ needs.portable-gates.outputs.release_tag }}
-        shell: bash
         run: |
           printf 'candidateTag=%s\nreleaseTag=%s\ncandidateCommit=%s\ncandidateRunId=%s\ncandidateRunAttempt=%s\n' \
             "$GITHUB_REF_NAME" "$RELEASE_TAG" "$CANDIDATE_COMMIT" \
@@ -234,12 +266,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           if-no-files-found: error
-          overwrite: false
-          name: codex-agent-protected-candidate-diagnostics-${{ github.run_attempt }}
+          overwrite: true
+          name: codex-agent-protected-candidate-diagnostics-${{ needs.portable-gates.outputs.candidate_commit }}
           path: |
-            codex-agent-runtime-ios/build/reports/ios-release/**
-            codex-agent-runtime-ios/build/swift-authentication-tests-summary.json
+            ${{ steps.paths.outputs.ios_distribution }}/reports/**
             build/protected-candidate/${{ needs.portable-gates.outputs.candidate_commit }}/reports/**
           retention-days: 30
       - name: Require external publication approvals
-        run: ./gradlew verifyPublicationReadiness --no-daemon --stacktrace
+        run: ./gradlew verifyPublicationReadiness --parallel --stacktrace
