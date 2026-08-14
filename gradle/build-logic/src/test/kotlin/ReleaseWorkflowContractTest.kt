@@ -167,6 +167,8 @@ class ReleaseWorkflowContractTest {
             it.trim() == "cache-read-only: ${'$'}{{ !inputs.trustedCacheWriter }}"
         })
         assertTrue("cache-read-only: true" in aggregate)
+        assertEquals(1, Regex("--no-configuration-cache").findAll(apple).count())
+        assertTrue("--no-configuration-cache" in aggregate)
         assertFalse("exportCodexAgentIos" in candidate)
         assertTrue("codex-agent-ci-ios-verified-distribution-" in candidate)
         assertTrue("-PcodexAgent.iosVerifiedDistributionDirectory=" in candidate)

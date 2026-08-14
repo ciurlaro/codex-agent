@@ -160,6 +160,7 @@ class NativeReleaseVerificationTasksTest {
             manifest.writeText(manifest.readText().replace(checksum.readText().trim(), "0".repeat(64)))
             val failure = assertFailsWith<IllegalStateException> { verify.verify() }
             assertTrue(failure.message.orEmpty().contains("checksum mismatch"))
+            assertTrue(failure.message.orEmpty().contains(checksum.readText().trim()))
         } finally {
             directory.deleteRecursively()
         }

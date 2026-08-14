@@ -61,7 +61,9 @@ abstract class VerifySwiftPackageBinaryTask : DefaultTask() {
         val contents = manifest.get().asFile.readText()
         val checksum = checksumFile.get().asFile.readText().trim()
         check(contents.contains("url: \"${expectedUrl.get()}\"")) { "SwiftPM release URL mismatch" }
-        check(contents.contains("checksum: \"$checksum\"")) { "SwiftPM binary checksum mismatch" }
+        check(contents.contains("checksum: \"$checksum\"")) {
+            "SwiftPM binary checksum mismatch: Package.swift must use $checksum"
+        }
     }
 }
 
