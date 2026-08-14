@@ -2,6 +2,9 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.AtomicMoveNotSupportedException
+import java.util.zip.ZipFile
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
@@ -31,7 +34,11 @@ internal data class ProtectedCandidatePreflight(
     val repository: File,
     val candidateDirectory: File,
     val desktopEvidence: List<File>,
+    val nodeEvidence: List<File>,
     val iosNativeEvidenceDirectory: File,
+    val windowsSupervisorPackage: File,
+    val windowsSupervisorIdentity: File,
+    val windowsSupervisorSource: File,
 )
 
 internal val protectedCandidateStatusArguments =
@@ -47,7 +54,17 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
     check(!input.parallel) { "assembleProtectedCandidate must be invoked with --no-parallel" }
     val desktopErrors = validateDesktopRuntimeEvidence(input.desktopEvidence, input.commit)
     check(desktopErrors.isEmpty()) { "Desktop runtime evidence is invalid: ${desktopErrors.joinToString()}" }
+    val expectedNodeEvidence = desktopRuntimeEvidenceTargets.keys.map(::nodeRuntimeEvidenceFileName).toSet()
+    check(input.nodeEvidence.size == expectedNodeEvidence.size &&
+        input.nodeEvidence.map(File::getName).toSet() == expectedNodeEvidence && input.nodeEvidence.all(File::isFile)) {
+        "Exactly five target-specific Node runtime evidence files are required"
+    }
     check(input.iosNativeEvidenceDirectory.isDirectory) { "iOS native evidence directory is required" }
+    verifyWindowsSupervisorPackage(
+        input.windowsSupervisorPackage,
+        input.windowsSupervisorIdentity,
+        input.windowsSupervisorSource,
+    )
 
     val repository = input.repository.canonicalFile
     val candidate = input.candidateDirectory.canonicalFile
@@ -60,8 +77,15 @@ internal fun prepareProtectedCandidateDirectory(input: ProtectedCandidatePreflig
     check(input.desktopEvidence.none { it.canonicalFile.toPath().startsWith(candidate.toPath()) }) {
         "Desktop evidence must be external to protected candidate output"
     }
+    check(input.nodeEvidence.none { it.canonicalFile.toPath().startsWith(candidate.toPath()) }) {
+        "Node evidence must be external to protected candidate output"
+    }
     check(!input.iosNativeEvidenceDirectory.canonicalFile.toPath().startsWith(candidate.toPath())) {
         "iOS native evidence must be external to protected candidate output"
+    }
+    check(listOf(input.windowsSupervisorPackage, input.windowsSupervisorIdentity, input.windowsSupervisorSource)
+        .none { it.canonicalFile.toPath().startsWith(candidate.toPath()) }) {
+        "Windows supervisor inputs must be external to protected candidate output"
     }
     listOf("artifacts", "evidence", "maven-repository", "clean-consumer", "reports")
         .forEach { candidate.resolve(it).mkdirs() }
@@ -76,8 +100,13 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
     @get:Input abstract val candidateCommit: Property<String>
     @get:Input abstract val parallelExecution: Property<Boolean>
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val nodeEvidence: ConfigurableFileCollection
     @get:org.gradle.api.tasks.InputDirectory @get:PathSensitive(PathSensitivity.NONE)
     abstract val iosNativeEvidenceDirectory: DirectoryProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val windowsSupervisorPackage: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val windowsSupervisorIdentity: RegularFileProperty
+    @get:org.gradle.api.tasks.InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val windowsSupervisorSource: DirectoryProperty
     @get:Internal abstract val repositoryDirectory: DirectoryProperty
     @get:Internal abstract val candidateDirectory: DirectoryProperty
 
@@ -88,7 +117,9 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
         version.get(), releaseTag.get(), candidateCommit.get(), git("rev-parse", "HEAD^{commit}"),
         git(*protectedCandidateStatusArguments.toTypedArray()), parallelExecution.get(),
         repositoryDirectory.get().asFile, candidateDirectory.get().asFile,
-        desktopEvidence.files.sortedBy(File::getName), iosNativeEvidenceDirectory.get().asFile,
+        desktopEvidence.files.sortedBy(File::getName), nodeEvidence.files.sortedBy(File::getName),
+        iosNativeEvidenceDirectory.get().asFile, windowsSupervisorPackage.get().asFile,
+        windowsSupervisorIdentity.get().asFile, windowsSupervisorSource.get().asFile,
     ))
 
     private fun git(vararg arguments: String): String {
@@ -100,6 +131,57 @@ abstract class PrepareProtectedCandidateTask @Inject constructor(
         }.assertNormalExitValue()
         return output.toString(Charsets.UTF_8).trim()
     }
+}
+
+internal fun extractCandidateWindowsSupervisor(
+    packageFile: File,
+    identityFile: File,
+    sourceDirectory: File,
+    candidateDirectory: File,
+    outputFile: File,
+) {
+    val identity = verifyWindowsSupervisorPackage(packageFile, identityFile, sourceDirectory)
+    val candidate = candidateDirectory.canonicalFile
+    val output = outputFile.canonicalFile
+    check(output == candidate.resolve("reports/$WINDOWS_SUPERVISOR_FILE_NAME").canonicalFile) {
+        "Extracted Windows supervisor must remain inside candidate reports"
+    }
+    output.parentFile.mkdirs()
+    val temporary = Files.createTempFile(output.parentFile.toPath(), ".windows-supervisor-", ".tmp")
+    try {
+        ZipFile(packageFile).use { zip ->
+            zip.getInputStream(zip.getEntry(WINDOWS_SUPERVISOR_FILE_NAME)).use { input ->
+                Files.copy(input, temporary, REPLACE_EXISTING)
+            }
+        }
+        try {
+            Files.move(temporary, output.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(temporary, output.toPath(), REPLACE_EXISTING)
+        }
+    } finally {
+        Files.deleteIfExists(temporary)
+    }
+    verifyWindowsSupervisorIdentity(identity, output, sourceDirectory)
+}
+
+@CacheableTask
+abstract class ExtractCandidateWindowsSupervisorTask : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val packageFile: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val identityFile: RegularFileProperty
+    @get:org.gradle.api.tasks.InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceDirectory: DirectoryProperty
+    @get:Internal abstract val candidateDirectory: DirectoryProperty
+    @get:OutputFile abstract val outputFile: RegularFileProperty
+
+    @TaskAction
+    fun extract() = extractCandidateWindowsSupervisor(
+        packageFile.get().asFile,
+        identityFile.get().asFile,
+        sourceDirectory.get().asFile,
+        candidateDirectory.get().asFile,
+        outputFile.get().asFile,
+    )
 }
 
 @CacheableTask
@@ -129,6 +211,14 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val kmpConsumer: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val nodeEvidence: ConfigurableFileCollection
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val nodeClassifierArchives: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val nodeRuntimeRunner: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val windowsSupervisorPackage: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val windowsSupervisorIdentity: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val windowsSupervisorExecutable: RegularFileProperty
+    @get:org.gradle.api.tasks.InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val windowsSupervisorSource: DirectoryProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val iosNativeEvidence: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
@@ -155,6 +245,13 @@ abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
         centralInventory = centralInventory.get().asFile, mavenInventory = mavenInventory.get().asFile,
         kmpConsumer = kmpConsumer.get().asFile,
         desktopEvidence = desktopEvidence.files.sortedBy(File::getName),
+        nodeEvidence = nodeEvidence.files.sortedBy(File::getName),
+        nodeClassifierArchives = nodeClassifierArchives.files.sortedBy(File::getName),
+        nodeRuntimeRunner = nodeRuntimeRunner.get().asFile,
+        windowsSupervisorPackage = windowsSupervisorPackage.get().asFile,
+        windowsSupervisorIdentity = windowsSupervisorIdentity.get().asFile,
+        windowsSupervisorExecutable = windowsSupervisorExecutable.get().asFile,
+        windowsSupervisorSource = windowsSupervisorSource.get().asFile,
         iosNativeEvidence = iosNativeEvidence.get().asFile,
         privacyAudit = privacyAudit.get().asFile, artifactMetrics = artifactMetrics.get().asFile,
         resourceReports = resourceReports.files.sortedBy(File::getName),

@@ -106,10 +106,13 @@ class ProtectedCandidateLifecycleTest {
             ":codex-agent-runtime-ios:recordCodexAgentSwiftPackageProof",
             ":codex-agent-runtime-ios:verifyIosPrivacyManifest",
             ":stageCentralRepository",
+            ":verifyImportedNodeRuntimeEvidence",
+            ":stageProtectedNodeRuntimeEvidence",
             ":verifyStagedKmpConsumer",
             ":packageCentralBundle",
             ":verifyCandidateManifest",
         )))
+        assertFalse(gates.any { Regex("nodeRuntime(?:Macos|Linux|Mingw).+Test").containsMatchIn(it) })
         assertFalse(gates.any { gate -> listOf(
             "preparePinned", "prepareCodexIosSource", "testCodexIos", "buildCodexIos",
         ).any(gate::contains) })
@@ -129,6 +132,19 @@ class ProtectedCandidateLifecycleTest {
                 verifyProtectedCandidateManifest(fixture.manifest, fixture.inputs)
             }
         }
+    }
+
+    @Test
+    fun `Windows supervisor extraction remains candidate local and identity exact`() = withPayloadFixture { fixture ->
+        val output = fixture.root.resolve("reports/$WINDOWS_SUPERVISOR_FILE_NAME")
+        extractCandidateWindowsSupervisor(
+            fixture.inputs.windowsSupervisorPackage,
+            fixture.inputs.windowsSupervisorIdentity,
+            fixture.inputs.windowsSupervisorSource,
+            fixture.root,
+            output,
+        )
+        assertTrue(output.readBytes().contentEquals(fixture.inputs.windowsSupervisorExecutable.readBytes()))
     }
 
     @Test

@@ -91,13 +91,14 @@ val stageCentralRepository = tasks.register("stageCentralRepository") {
         ":codex-agent-runtime-android:publishAllPublicationsToCENTRAL_STAGINGRepository",
         ":codex-agent-runtime-desktop:publishAllPublicationsToCENTRAL_STAGINGRepository",
         ":codex-agent-runtime-ios:publishAllPublicationsToCENTRAL_STAGINGRepository",
+        ":codex-agent-runtime-node:publishAllPublicationsToCENTRAL_STAGINGRepository",
     )
 }
 
 val mavenInventoryFile = candidateReports.map { it.file("maven-inventory.json") }
 val verifyCentralStaging = tasks.register<VerifyMavenStagingTask>("verifyCentralStaging") {
     group = "verification"
-    description = "Verifies the exact signed 22-coordinate staged KMP repository and materializes checksums."
+    description = "Verifies the exact signed 24-coordinate staged KMP repository and materializes checksums."
     dependsOn(stageCentralRepository)
     repositoryDirectory.set(centralStagingDirectory)
     groupId.set(project.group.toString())
@@ -228,6 +229,18 @@ val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTas
     desktopBundledLicense.set(desktopBundledLicenseFile)
     desktopBundledNotice.set(desktopBundledNoticeFile)
 }
+registerProtectedNodeRuntimeCandidate(
+    candidateCommit = candidateCommitValue,
+    candidateRoot = candidateRoot,
+    candidateEvidence = candidateEvidence,
+    candidateReports = candidateReports,
+    centralStagingDirectory = centralStagingDirectory,
+    distributionManifest = desktopDistributionManifestFile,
+    prepareCandidate = prepareProtectedCandidate,
+    verifyCentralStaging = verifyCentralStaging,
+    generateManifest = generateCandidateManifest,
+    verifyManifest = verifyCandidateManifest,
+)
 
 val protectedCandidatePhases = registerProtectedCandidatePhases(prepareProtectedCandidate)
 

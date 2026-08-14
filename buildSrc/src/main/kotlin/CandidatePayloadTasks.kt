@@ -36,9 +36,10 @@ internal fun verifyCandidatePayload(
     val policies = manifest.releaseObject("policies")
     val records = buildList {
         artifacts.values.forEach { add(it as JsonObject) }
-        evidence.filterKeys { it !in setOf("desktopRuntime", "resourceMeasurements") }
+        evidence.filterKeys { it !in candidateEvidenceArrayNames }
             .values.forEach { add(it as JsonObject) }
         evidence.releaseArray("desktopRuntime").forEach { add(it as JsonObject) }
+        evidence.releaseArray("nodeRuntime").forEach { add(it as JsonObject) }
         evidence.releaseArray("resourceMeasurements").forEach { add(it as JsonObject) }
         policies.values.forEach { add(it as JsonObject) }
     }

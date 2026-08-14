@@ -1,7 +1,7 @@
 # Codex Agent
 
-Reusable Kotlin Multiplatform client with local Android, iOS, macOS, Linux,
-and Windows runtimes for the Codex App Server.
+Reusable Kotlin Multiplatform client with local Android, iOS, desktop, and
+Kotlin/JS Node runtimes for the Codex App Server.
 
 ## Modules
 
@@ -18,6 +18,8 @@ and Windows runtimes for the Codex App Server.
   workspace.
 - `codex-agent-runtime-desktop` launches an explicitly supplied, hash-verified
   Codex App Server on macOS Arm64/x64, Linux Arm64/x64, and Windows x64.
+- `codex-agent-runtime-node` provides the same explicit local-process boundary
+  to Kotlin/JS applications running on Node.js on those five host targets.
 
 The runtime boundary is dependency injection; no `expect`/`actual` runtime
 factory is used.
@@ -29,6 +31,7 @@ implementation("io.github.ciurlaro:codex-agent-client:0.2.0")
 implementation("io.github.ciurlaro:codex-agent-runtime-android:0.2.0")
 implementation("io.github.ciurlaro:codex-agent-runtime-ios:0.2.0")
 implementation("io.github.ciurlaro:codex-agent-runtime-desktop:0.2.0")
+implementation("io.github.ciurlaro:codex-agent-runtime-node:0.2.0")
 ```
 
 Android hosts must keep the bundled executable extracted so the runtime can
@@ -52,10 +55,27 @@ val factory = DesktopCodexRuntimeFactory(
 val client = CodexAgentClient(factory)
 ```
 
-The desktop runtime never downloads or discovers an executable. Browser and
-Node targets are client-only because they cannot launch the native App Server.
-The desktop API accepts no arbitrary command, shell, remote transport, or
-executable-discovery configuration.
+The desktop runtime never downloads or discovers an executable. Its API accepts
+no arbitrary command, shell, remote transport, or executable-discovery
+configuration.
+
+Kotlin/JS applications running on Node.js use the same explicit executable and
+workspace model:
+
+```kotlin
+val factory = NodeCodexRuntimeFactory(
+    NodeCodexRuntimeConfiguration(
+        appServerExecutable = executablePath.toPath(),
+        workingDirectory = workspacePath.toPath(),
+        windowsSupervisorExecutable = windowsSupervisorPath?.toPath(),
+    ),
+)
+val client = CodexAgentClient(factory)
+```
+
+The supervisor argument is required only on Windows and must come from the
+verified `windows-supervisor-x64` classifier. Browser JavaScript and Wasm remain
+client-only; no remote transport or browser process launcher is added.
 
 An iOS host creates a sandbox-local workspace and injects the runtime without
 an `expect`/`actual` factory:
@@ -106,6 +126,8 @@ The current `0.2.0` implementation includes:
   the sole handshake owner;
 - native desktop process runtimes and deterministic licensed Codex 0.145.0
   classifier ZIPs for macOS Arm64/x64, Linux Arm64/x64, and Windows x64;
+- a Kotlin/JS Node runtime using those same pinned classifiers, with an explicit
+  verified process-tree supervisor on Windows;
 - sandbox-local workspace and conversation state, plus bounded in-process file
   read, directory list, text search, atomic write, and `apply_patch` tools;
 - seamless ChatGPT browser authentication through `ASWebAuthenticationSession`
@@ -151,6 +173,8 @@ exists. No consumer repository is updated by this project.
   :codex-agent-client:compileKotlinIosSimulatorArm64 \
   :codex-agent-client:compileKotlinJs \
   :codex-agent-client:compileKotlinWasmJs
+./gradlew :codex-agent-runtime-node:jsNodeTest \
+  :codex-agent-runtime-node:packageNodeRuntimeEvidenceRunner
 ./gradlew :codex-agent-runtime-android:connectedDebugAndroidTest
 DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
   ./gradlew verifyIosRuntime
@@ -167,13 +191,14 @@ execution requires signing and a connected device; compilation and linking do
 not.
 See [protocol provenance](docs/PROTOCOL.md) and the
 [iOS runtime design](docs/RUNTIME_IOS.md) and
+[Node runtime design](docs/RUNTIME_NODE.md) and
 [release procedure](docs/RELEASING.md).
 
 ## License
 
 Codex Agent is licensed under GPL-3.0-or-later. The bundled Codex App Server is
 licensed separately under Apache-2.0; see [third-party notices](THIRD_PARTY_NOTICES.md).
-Distribution of the static Apple framework under the GPL remains an explicit
-external product approval and is blocked by `verifyPublicationReadiness` until
-that decision is recorded. Desktop classifier distribution is a separate,
-hash-bound GPL decision; approving it does not approve the Apple framework.
+Distribution of the static Apple framework and native runtime classifiers
+remains subject to separate, hash-bound GPL approvals. External approvals are
+not inferred by automation; missing or invalidated approval blocks
+`verifyPublicationReadiness`.

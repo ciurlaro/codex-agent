@@ -81,7 +81,7 @@ abstract class VerifyStagedKmpConsumerTask @Inject constructor(
             args(arguments)
         }.assertNormalExitValue()
         resultFile.get().asFile.atomicWriteJson(buildJsonObject {
-            put("schemaVersion", JsonPrimitive(2))
+            put("schemaVersion", JsonPrimitive(3))
             put("result", JsonPrimitive("passed"))
             put("version", JsonPrimitive(projectVersion.get()))
             put("repository", JsonPrimitive("CENTRAL_STAGING-only"))
@@ -96,6 +96,7 @@ abstract class VerifyStagedKmpConsumerTask @Inject constructor(
             put("linuxX64", JsonPrimitive("passed"))
             put("mingwX64", JsonPrimitive("passed"))
             put("js", JsonPrimitive("passed"))
+            put("nodeRuntime", JsonPrimitive("passed"))
             put("wasmJs", JsonPrimitive("passed"))
         })
     }

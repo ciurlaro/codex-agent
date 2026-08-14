@@ -10,6 +10,7 @@ class KmpConsumerVerificationTaskTest {
         val arguments = stagedConsumerArguments(java.io.File("/consumer"), java.io.File("/staging"), "0.2.0")
         assertTrue("-PCENTRAL_STAGING=/staging" in arguments)
         assertTrue("-PcodexAgent.version=0.2.0" in arguments)
+        assertTrue("compileKotlinJs" in stagedConsumerBuildTasks)
         assertEquals(stagedConsumerBuildTasks, arguments.takeLast(stagedConsumerBuildTasks.size))
         assertTrue("--no-configuration-cache" in arguments)
     }

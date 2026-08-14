@@ -3,11 +3,11 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 
 class JsonLineFramerTest {
     @Test
-    fun framesFragmentedUtf8AndCrLfWithoutEmptyMessages(): Unit = runBlocking {
+    fun framesFragmentedUtf8AndCrLfWithoutEmptyMessages() = runTest {
         val received = mutableListOf<String>()
         val framer = JsonLineFramer()
         val encoded = "é\r\n\n{\"id\":1}\nlast".encodeToByteArray()
@@ -20,7 +20,7 @@ class JsonLineFramerTest {
     }
 
     @Test
-    fun enforcesRawByteLimitAndStopsAfterTerminalFailure(): Unit = runBlocking {
+    fun enforcesRawByteLimitAndStopsAfterTerminalFailure() = runTest {
         val received = mutableListOf<String>()
         val framer = JsonLineFramer(maxBytes = 4)
 
@@ -34,7 +34,7 @@ class JsonLineFramerTest {
     }
 
     @Test
-    fun rejectsMalformedUtf8(): Unit = runBlocking {
+    fun rejectsMalformedUtf8() = runTest {
         val framer = JsonLineFramer()
 
         assertFails {
@@ -43,7 +43,7 @@ class JsonLineFramerTest {
     }
 
     @Test
-    fun acceptsLiteralReplacementCharacter(): Unit = runBlocking {
+    fun acceptsLiteralReplacementCharacter() = runTest {
         val received = mutableListOf<String>()
 
         JsonLineFramer().accept("�\n".encodeToByteArray(), onLine = received::add)

@@ -4,10 +4,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class ReleaseWorkflowContractTest {
-    private val repository = generateSequence(File(System.getProperty("user.dir")).canonicalFile) { it.parentFile }
+internal object ReleaseWorkflowFixture {
+    val repository = generateSequence(File(System.getProperty("user.dir")).canonicalFile) { it.parentFile }
         .first { it.resolve(".github/workflows/release-candidate.yml").isFile }
-    private val workflows = listOf(
+    val workflows = listOf(
         "ci.yml",
         "android-runtime-evidence.yml",
         "desktop-runtime-evidence.yml",
@@ -15,6 +15,11 @@ class ReleaseWorkflowContractTest {
         "publish.yml",
     )
         .associateWith { repository.resolve(".github/workflows/$it").readText() }
+}
+
+class ReleaseWorkflowContractTest {
+    private val repository = ReleaseWorkflowFixture.repository
+    private val workflows = ReleaseWorkflowFixture.workflows
 
     @Test
     fun `workflows use only live direct Gradle entry points`() {
@@ -38,12 +43,17 @@ class ReleaseWorkflowContractTest {
             "assembleProtectedCandidate",
             "stageLinuxArm64DesktopEvidenceBundle",
             "executeLinuxArm64DesktopEvidenceBundle",
+            "stageLinuxArm64NodeRuntimeEvidenceBundle",
+            "executeLinuxArm64NodeRuntimeEvidenceBundle",
             ":codex-agent-runtime-ios:verifyAppleToolchain",
             ":codex-agent-runtime-ios:exportCodexAgentIosArm64RustSlice",
             ":codex-agent-runtime-ios:exportCodexAgentIosSimulatorArm64RustSlice",
             ":codex-agent-runtime-android:recordAndroidRuntimeEvidence",
             ":codex-agent-runtime-desktop:",
             ":codex-agent-runtime-desktop:linkDebugTestLinuxArm64",
+            ":codex-agent-runtime-node:packageNodeRuntimeEvidenceRunner",
+            ":codex-agent-runtime-node:verifyWindowsNodeSupervisorPackage",
+            ":codex-agent-runtime-node:",
         )
         assertTrue(calls.isNotEmpty())
         assertEquals(emptySet(), calls.toSet() - allowed)
@@ -52,7 +62,7 @@ class ReleaseWorkflowContractTest {
     }
 
     @Test
-    fun `candidate consumes one immutable commit and desktop evidence before one assembly`() {
+    fun `candidate consumes one immutable commit and host evidence before one assembly`() {
         val candidate = workflows.getValue("release-candidate.yml")
         assertTrue("name: codex-agent-protected-candidate" in candidate)
         assertTrue("candidate_commit" in candidate)
@@ -63,6 +73,9 @@ class ReleaseWorkflowContractTest {
         assertFalse("swiftPmBaselineProof" in candidate)
         assertFalse("commit_a" in candidate || "commit_b" in candidate)
         assertTrue("-PcodexAgent.iosNativeEvidenceDirectory=" in candidate)
+        assertTrue("-PcodexAgent.nodeEvidenceDirectory=" in candidate)
+        assertTrue("-PcodexAgent.windowsNodeSupervisorIdentityFile=" in candidate)
+        assertTrue("-PcodexAgent.windowsNodeSupervisorPackage=" in candidate)
         assertTrue(candidate.indexOf("Upload the exact technical candidate") < candidate.indexOf("Require external publication approvals"))
     }
 
@@ -140,42 +153,6 @@ class ReleaseWorkflowContractTest {
         assertTrue("actions/runs/\$ci_run_id" in resolver && "--jq .path" in resolver)
         assertTrue(".github/workflows/ci.yml" in resolver && "headSha" in resolver && "conclusion" in resolver)
         assertTrue("ci_run_id=%s" in resolver)
-    }
-
-    @Test
-    fun `desktop evidence uses bash consistently on every hosted runner`() {
-        val desktop = workflows.getValue("desktop-runtime-evidence.yml")
-        val smoke = desktop.substringAfter("Run and record the official app-server lifecycle smoke")
-            .substringBefore("- uses: actions/upload-artifact")
-        assertTrue("shell: bash" in smoke)
-        assertTrue("-PcodexAgent.candidateCommit=${'$'}{{ inputs.candidateCommit }}" in smoke)
-    }
-
-    @Test
-    fun `Linux ARM64 evidence is cross-built then executed without root KMP configuration`() {
-        val desktop = workflows.getValue("desktop-runtime-evidence.yml")
-        val crossBuild = desktop.substringAfter("\n  linux-arm64-cross-build:")
-            .substringBefore("\n  linux-arm64-runtime:")
-        val runtime = desktop.substringAfter("\n  linux-arm64-runtime:")
-        assertTrue("runs-on: ubuntu-24.04" in crossBuild)
-        assertTrue(":codex-agent-runtime-desktop:linkDebugTestLinuxArm64" in crossBuild)
-        assertTrue(":codex-agent-runtime-desktop:packageLinuxArm64AppServer" in crossBuild)
-        assertTrue("./gradlew -p buildSrc stageLinuxArm64DesktopEvidenceBundle" in crossBuild)
-        assertTrue("-PcodexAgent.linuxArm64DistributionsDirectory=" in crossBuild)
-        assertFalse("-PcodexAgent.linuxArm64ClassifierArchive=" in crossBuild)
-        assertFalse("0.2.0" in crossBuild)
-        assertTrue("name: codex-agent-linux-arm64-execution-bundle" in crossBuild)
-
-        assertTrue("needs: linux-arm64-cross-build" in runtime)
-        assertTrue("runs-on: ubuntu-24.04-arm" in runtime)
-        assertTrue("RUNNER_OS: Linux" in runtime && "RUNNER_ARCH: ARM64" in runtime)
-        assertTrue("name: codex-agent-linux-arm64-execution-bundle" in runtime)
-        assertTrue("./gradlew -p buildSrc executeLinuxArm64DesktopEvidenceBundle" in runtime)
-        assertFalse(Regex("""\./gradlew\s+:(?!test\b)""").containsMatchIn(runtime))
-        assertTrue("name: codex-agent-desktop-runtime-evidence-linuxArm64" in runtime)
-        val finalArtifact = runtime.substringAfter("name: codex-agent-desktop-runtime-evidence-linuxArm64")
-        assertTrue("path: build/reports/desktop-runtime-evidence/desktop-runtime-linuxArm64.json" in finalArtifact)
-        assertFalse(".xml" in finalArtifact)
     }
 
     @Test

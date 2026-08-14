@@ -10,10 +10,15 @@ The release candidate uses one immutable commit containing the final root
 Package.swift checksum and every implementation, build, test, workflow, policy,
 and documentation change.
 
-1. Run the Desktop Runtime Evidence workflow against that commit. Its five
-   GitHub-hosted runners execute the real initialize/shutdown smoke on macOS
-   Arm64/x64, Linux Arm64/x64, and Windows x64, and bind each report to the
-   exact classifier ZIP.
+1. Run the Desktop Runtime Evidence workflow against that commit. Its Windows
+   job first builds and verifies the canonical supervisor package and identity.
+   One portable Kotlin/JS evidence runner is then built with that identity and
+   reused by the existing five GitHub-hosted target jobs. They execute both
+   desktop and Node initialize/shutdown smokes on macOS Arm64/x64, Linux
+   Arm64/x64, and Windows x64. Separate reports bind the exact commit, target,
+   Node 24.18.0, complete compiled runner, classifier ZIP, and App Server binary.
+   Windows uses the same transported supervisor package. Linux Arm64
+   cross-builds once and executes on the ARM runner.
 2. The successful exact-commit CI run builds the device and simulator Rust
    slices once in parallel after its fast gates. Each successful slice is
    retained independently for retry. The release-candidate workflow resolves
@@ -28,19 +33,23 @@ and documentation change.
          -PcodexAgent.candidateCommit=<40-character-candidate-commit> \
          -PcodexAgent.releaseTag=v0.2.0 \
          -PcodexAgent.desktopEvidenceDirectory=<desktop-evidence-directory> \
+         -PcodexAgent.nodeEvidenceDirectory=<node-evidence-directory> \
+         -PcodexAgent.windowsNodeSupervisorIdentityFile=<windows-supervisor.json> \
+         -PcodexAgent.windowsNodeSupervisorPackage=<verified-supervisor-zip> \
          -PcodexAgent.iosNativeEvidenceDirectory=<merged-native-evidence-directory> \
          --no-parallel
 
 The release-candidate environment supplies only Maven signing material. The
 task requires a clean checkout at the supplied commit, isolated external
-five-target desktop evidence, and the exact imported device/simulator native
-evidence. It runs the ordered native-import verification, iOS,
+five-target desktop and Node evidence, the exact Windows supervisor proof, and
+the imported device/simulator native evidence. It runs the ordered
+native-import verification, iOS,
 Swift, privacy, Maven, clean-consumer, Central bundle, and candidate-manifest
 gates once without a Gradle clean. The canonical `swiftpm-proof.json` binds the
 commit and tree, clean checkout, exact ZIP and checksum file, committed
 Package.swift metadata, native provenance, and pinned Apple toolchain. The
-manifest and payload bind that proof, the desktop runtime evidence, the exact SwiftPM
-ZIP, and the Central bundle under:
+manifest and payload bind that proof, desktop and Node runtime evidence, the
+Windows supervisor, the exact SwiftPM ZIP, and the Central bundle under:
 
     build/protected-candidate/<candidate-commit>/payload/
 
@@ -49,12 +58,12 @@ existing commit-scoped candidate directory; remove an incomplete directory only
 after diagnosing the failed run, then start one fresh assembly.
 
 The clean KMP consumer resolves this project only from CENTRAL_STAGING and
-compiles JVM, Android, JS, WasmJS, macOS Arm64/x64, Linux Arm64/x64, and Windows
-x64, plus links iOS Arm64 and iOS Simulator Arm64. The typed Central bundle
-task validates all 22 coordinates and 133 primary artifacts, signatures, Maven
-metadata, licence declarations, deterministic ZIP inventory, and the strict
-1,000,000,000-byte Portal limit before the canonical candidate manifest is
-generated and fully reverified.
+compiles JVM, Android, JS, WasmJS, macOS Arm64/x64, Linux Arm64/x64, Windows
+x64, and the Node runtime, plus links iOS Arm64 and iOS Simulator Arm64. The
+typed Central bundle task validates all 24 coordinates and 145 primary files,
+signatures, Maven metadata, licence declarations, deterministic ZIP inventory,
+and the strict 1,000,000,000-byte Portal limit before the canonical candidate
+manifest is generated and fully reverified.
 
 The standalone Android Runtime Evidence workflow remains available as an
 optional real-device diagnostic. It is not a protected-candidate or publication

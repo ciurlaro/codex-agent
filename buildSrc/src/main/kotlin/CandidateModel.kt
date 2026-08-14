@@ -1,5 +1,4 @@
 import java.io.File
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -17,6 +16,13 @@ internal data class CandidateInputFiles(
     val mavenInventory: File,
     val kmpConsumer: File,
     val desktopEvidence: List<File>,
+    val nodeEvidence: List<File>,
+    val nodeClassifierArchives: List<File>,
+    val nodeRuntimeRunner: File,
+    val windowsSupervisorPackage: File,
+    val windowsSupervisorIdentity: File,
+    val windowsSupervisorExecutable: File,
+    val windowsSupervisorSource: File,
     val iosNativeEvidence: File,
     val privacyAudit: File,
     val artifactMetrics: File,
@@ -74,6 +80,26 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         input.desktopDistributionManifest,
     )
     check(desktopErrors.isEmpty()) { "Desktop runtime evidence is invalid: ${desktopErrors.joinToString()}" }
+    val supervisorIdentity = verifyWindowsSupervisorPackage(
+        input.windowsSupervisorPackage,
+        input.windowsSupervisorIdentity,
+        input.windowsSupervisorSource,
+    )
+    verifyWindowsSupervisorIdentity(
+        supervisorIdentity,
+        input.windowsSupervisorExecutable,
+        input.windowsSupervisorSource,
+    )
+    val nodeErrors = validateNodeRuntimeEvidence(
+        input.nodeEvidence,
+        input.commit,
+        input.desktopDistributionManifest,
+        input.nodeClassifierArchives,
+        input.nodeRuntimeRunner,
+        input.windowsSupervisorExecutable,
+    )
+    check(nodeErrors.isEmpty()) { "Node runtime evidence is invalid: ${nodeErrors.joinToString()}" }
+    verifyWindowsSupervisorMavenBinding(input, maven)
     verifyCandidateIosNativeEvidence(input.iosNativeEvidence, input.commit)
     verifyDesktopBundledGplApproval(
         input.approvals,
@@ -92,6 +118,9 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         input.kmpConsumer,
         input.iosNativeEvidence,
         *input.desktopEvidence.toTypedArray(),
+        *input.nodeEvidence.toTypedArray(),
+        input.nodeRuntimeRunner,
+        input.windowsSupervisorIdentity,
         input.privacyAudit,
         input.artifactMetrics,
     ) + input.resourceReports
@@ -100,7 +129,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     }
 
     val manifest = buildJsonObject {
-        put("schemaVersion", JsonPrimitive(6))
+        put("schemaVersion", JsonPrimitive(7))
         put("version", JsonPrimitive(input.version))
         put("releaseTag", JsonPrimitive(input.releaseTag))
         put("candidateCommit", JsonPrimitive(input.commit))
@@ -121,6 +150,11 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
             put("desktopRuntime", buildJsonArray {
                 input.desktopEvidence.sortedBy(File::getName).forEach { add(it.releaseRecord()) }
             })
+            put("nodeRuntime", buildJsonArray {
+                input.nodeEvidence.sortedBy(File::getName).forEach { add(it.releaseRecord()) }
+            })
+            put("nodeRuntimeRunner", input.nodeRuntimeRunner.releaseRecord())
+            put("windowsSupervisorIdentity", input.windowsSupervisorIdentity.releaseRecord())
             put("iosNative", input.iosNativeEvidence.releaseRecord())
             put("privacyAudit", input.privacyAudit.releaseRecord())
             put("artifactMetrics", input.artifactMetrics.releaseRecord())
@@ -145,58 +179,17 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     return manifest
 }
 
-internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
-    check(manifest.keys == setOf(
-        "schemaVersion", "version", "releaseTag", "candidateCommit", "protectedCandidate", "artifacts", "evidence", "policies",
-    )) { "Candidate manifest has unexpected top-level fields" }
-    check(manifest.releaseInt("schemaVersion") == 6) { "Candidate manifest schema must be 6" }
-    val version = manifest.releaseString("version")
-    check(manifest.releaseString("releaseTag") == "v$version") { "Candidate release tag/version mismatch" }
-    check(manifest.releaseString("candidateCommit").matches(Regex("[0-9a-f]{40}"))) {
-        "Candidate commit is not immutable"
+private fun verifyWindowsSupervisorMavenBinding(input: CandidateInputFiles, maven: JsonObject) {
+    val expectedPath = "io/github/ciurlaro/codex-agent-runtime-node/${input.version}/" +
+        "codex-agent-runtime-node-${input.version}-windows-supervisor-x64.zip"
+    val matches = maven.releaseArray("files").mapNotNull { it as? JsonObject }
+        .filter { it.releaseString("path") == expectedPath }
+    check(matches.size == 1) { "Maven inventory does not contain the exact Windows supervisor classifier" }
+    val record = matches.single()
+    check(record.releaseLong("bytes") == input.windowsSupervisorPackage.length() &&
+        record.releaseString("sha256") == input.windowsSupervisorPackage.releaseDigest()) {
+        "Maven inventory does not bind the Windows supervisor package"
     }
-    check(manifest.releaseBoolean("protectedCandidate")) { "Candidate is not technically protected" }
-    val artifacts = manifest.releaseObject("artifacts")
-    check(artifacts.keys == setOf("swiftPackage", "centralBundle")) { "Candidate artifact set is invalid" }
-    val swift = artifacts.releaseObject("swiftPackage")
-    verifyRecordShape(swift)
-    check(swift.releaseString("swiftPmChecksum") == swift.releaseString("sha256")) {
-        "SwiftPM checksum and ZIP SHA-256 differ"
-    }
-    check(swift["members"] is JsonArray) { "SwiftPM member inventory is missing" }
-    verifyRecordShape(artifacts.releaseObject("centralBundle"))
-    val evidence = manifest.releaseObject("evidence")
-    val expectedEvidence = setOf(
-        "swiftPmProof", "centralBundleInventory", "mavenInventory", "cleanKmpConsumer",
-        "desktopRuntime", "iosNative", "privacyAudit", "artifactMetrics", "resourceMeasurements",
-    )
-    check(evidence.keys == expectedEvidence) { "Candidate evidence set is invalid" }
-    expectedEvidence.minus(setOf("desktopRuntime", "resourceMeasurements"))
-        .forEach { verifyRecordShape(evidence.releaseObject(it)) }
-    check(evidence.releaseObject("swiftPmProof").releaseString("fileName") == "swiftpm-proof.json") {
-        "Candidate SwiftPM proof file name is invalid"
-    }
-    check(evidence.releaseObject("artifactMetrics").releaseString("fileName") == "artifact-metrics.json") {
-        "Candidate artifact metrics file name is invalid"
-    }
-    check(evidence.releaseObject("iosNative").releaseString("fileName") == "ios-native-evidence.json") {
-        "Candidate iOS native evidence file name is invalid"
-    }
-    val resources = evidence.releaseArray("resourceMeasurements")
-    check(resources.isNotEmpty()) { "Candidate resource evidence is missing" }
-    resources.forEach { verifyRecordShape(it as? JsonObject ?: error("Invalid resource record")) }
-    val desktop = evidence.releaseArray("desktopRuntime")
-    check(desktop.size == desktopRuntimeEvidenceTargets.size) { "Candidate desktop evidence set is incomplete" }
-    desktop.forEach { verifyRecordShape(it as? JsonObject ?: error("Invalid desktop runtime record")) }
-    val policies = manifest.releaseObject("policies")
-    val requiredPolicies = setOf(
-        "approvals", "privacyManifest", "privacyDataFlowReview", "packageSwift",
-        "desktopDistributionManifest", "desktopBundledLicense", "desktopBundledNotice",
-    )
-    check(policies.keys == requiredPolicies || policies.keys == requiredPolicies + "privacyRequiredReasonReviews") {
-        "Candidate policy set is invalid"
-    }
-    policies.values.forEach { verifyRecordShape(it as? JsonObject ?: error("Invalid candidate policy record")) }
 }
 
 private fun verifySwiftPackageProof(input: CandidateInputFiles, swiftHash: String) {
@@ -244,11 +237,4 @@ private fun verifySwiftPackageProof(input: CandidateInputFiles, swiftHash: Strin
             "SwiftPM candidate proof has an invalid $field"
         }
     }
-}
-
-private fun verifyRecordShape(record: JsonObject) {
-    val fileName = record.releaseString("fileName")
-    check(fileName == File(fileName).name && '/' !in fileName && '\\' !in fileName) { "Unsafe candidate file name" }
-    check(record.releaseLong("bytes") >= 0) { "Candidate file size is invalid" }
-    check(record.releaseString("sha256").matches(Regex("[0-9a-f]{64}"))) { "Candidate SHA-256 is invalid" }
 }

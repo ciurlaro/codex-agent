@@ -67,3 +67,56 @@ tasks.register<JavaExec>("executeLinuxArm64DesktopEvidenceBundle") {
         "execute", listOf(candidateCommit, linuxArm64Bundle, evidence, report),
     ))
 }
+
+val nodeArm64Bundle = providers.gradleProperty("codexAgent.linuxArm64NodeExecutionBundle")
+    .map(::JavaFile).orElse(layout.buildDirectory.file(
+        "linux-arm64-node-evidence/linux-arm64-node-execution.zip",
+    ).map { it.asFile })
+val desktopDistributionManifest = providers.gradleProperty("codexAgent.desktopDistributionManifest")
+    .map(::JavaFile).orElse(layout.projectDirectory.file(
+        "../codex-agent-runtime-desktop/codex-app-server-distributions.json",
+    ).asFile)
+val nodeExecutable = providers.gradleProperty("codexAgent.nodeExecutable").orElse("node")
+
+tasks.register<JavaExec>("stageLinuxArm64NodeRuntimeEvidenceBundle") {
+    group = "verification"
+    description = "Stages the prebuilt Node runtime smoke and existing Linux ARM64 classifier."
+    val compiled = providers.gradleProperty("codexAgent.nodeRuntimeEvidenceRunnerArchive").map(::JavaFile)
+    val classifierArchive = providers.gradleProperty("codexAgent.linuxArm64ClassifierArchive").map(::JavaFile)
+    val distributionsDirectory = providers.gradleProperty("codexAgent.linuxArm64DistributionsDirectory").map(::JavaFile)
+    val classifierInput = classifierArchive.orElse(distributionsDirectory)
+    dependsOn(tasks.named("classes")); classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("NodeRuntimeEvidenceLinuxArm64Kt")
+    inputs.property("candidateCommit", candidateCommit); inputs.file(compiled); inputs.files(classifierInput)
+    inputs.file(desktopDistributionManifest); outputs.file(nodeArm64Bundle)
+    argumentProviders.add(DesktopEvidenceArgumentProvider(
+        "stage", listOf(candidateCommit, compiled, classifierInput, desktopDistributionManifest, nodeArm64Bundle),
+    ))
+}
+
+tasks.register<JavaExec>("executeLinuxArm64NodeRuntimeEvidenceBundle") {
+    group = "verification"
+    description = "Runs the prebuilt Node smoke on Linux ARM64 and records exact evidence."
+    val evidence = providers.gradleProperty("codexAgent.nodeEvidenceOutput").map(::JavaFile).orElse(
+        layout.buildDirectory.file("reports/node-runtime-evidence/node-runtime-linuxArm64.json").map { it.asFile },
+    )
+    val report = providers.gradleProperty("codexAgent.nodeTestReportOutput").map(::JavaFile).orElse(
+        layout.buildDirectory.file(
+            "test-results/linuxArm64NodeSplitTest/" +
+                "TEST-nodeRuntimeLinuxArm64Test." +
+                "io.github.ciurlaro.codexmobile.appserver.runtime.NodeCodexRuntimeTest.xml",
+        ).map { it.asFile },
+    )
+    dependsOn(tasks.named("classes")); classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("NodeRuntimeEvidenceLinuxArm64Kt")
+    inputs.property("candidateCommit", candidateCommit); inputs.file(nodeArm64Bundle)
+    inputs.file(desktopDistributionManifest); inputs.property("nodeExecutable", nodeExecutable)
+    inputs.property("runnerOs", providers.environmentVariable("RUNNER_OS"))
+    inputs.property("runnerArch", providers.environmentVariable("RUNNER_ARCH"))
+    outputs.file(evidence); outputs.file(report); outputs.upToDateWhen { false }
+    argumentProviders.add(DesktopEvidenceArgumentProvider(
+        "execute", listOf(
+            candidateCommit, nodeArm64Bundle, desktopDistributionManifest, nodeExecutable, evidence, report,
+        ),
+    ))
+}

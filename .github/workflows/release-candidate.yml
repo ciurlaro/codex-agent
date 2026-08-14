@@ -127,6 +127,9 @@ jobs:
         run: |
           {
             printf 'desktop=%s\n' "$RUNNER_TEMP/desktop-runtime-evidence"
+            printf 'node=%s\n' "$RUNNER_TEMP/node-runtime-evidence"
+            printf 'supervisor_identity=%s\n' "$RUNNER_TEMP/node-windows-supervisor-identity"
+            printf 'supervisor_package=%s\n' "$RUNNER_TEMP/node-windows-supervisor-package"
             printf 'payload=%s\n' "$GITHUB_WORKSPACE/build/protected-candidate/${{ needs.portable-gates.outputs.candidate_commit }}/payload"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
@@ -134,6 +137,33 @@ jobs:
           pattern: codex-agent-desktop-runtime-evidence-*
           path: ${{ steps.paths.outputs.desktop }}
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: codex-agent-node-runtime-evidence-*
+          path: ${{ steps.paths.outputs.node }}
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-agent-node-evidence-runner
+          path: codex-agent-runtime-node/build/distributions
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-agent-node-windows-supervisor-identity
+          path: ${{ steps.paths.outputs.supervisor_identity }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-agent-node-windows-supervisor-package
+          path: ${{ steps.paths.outputs.supervisor_package }}
+      - name: Resolve the versionless Windows supervisor package
+        id: supervisor
+        shell: bash
+        env:
+          PACKAGE_DIRECTORY: ${{ steps.paths.outputs.supervisor_package }}
+        run: |
+          shopt -s nullglob
+          packages=("$PACKAGE_DIRECTORY/"*-windows-supervisor.zip)
+          test "${#packages[@]}" -eq 1
+          printf 'package=%s\n' "${packages[0]}" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           run-id: ${{ needs.resolve-ios-evidence.outputs.ci_run_id }}
@@ -152,6 +182,9 @@ jobs:
           -PcodexAgent.candidateCommit=${{ needs.portable-gates.outputs.candidate_commit }}
           -PcodexAgent.releaseTag=${{ needs.portable-gates.outputs.release_tag }}
           -PcodexAgent.desktopEvidenceDirectory=${{ steps.paths.outputs.desktop }}
+          -PcodexAgent.nodeEvidenceDirectory=${{ steps.paths.outputs.node }}
+          -PcodexAgent.windowsNodeSupervisorIdentityFile=${{ steps.paths.outputs.supervisor_identity }}/windows-supervisor.json
+          -PcodexAgent.windowsNodeSupervisorPackage=${{ steps.supervisor.outputs.package }}
           "-PcodexAgent.iosNativeEvidenceDirectory=$GITHUB_WORKSPACE/build/ios-native-evidence"
           --no-parallel --no-daemon --stacktrace
       - name: Upload the exact technical candidate

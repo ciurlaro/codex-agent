@@ -5,7 +5,6 @@ import java.util.zip.ZipOutputStream
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 
 internal const val CENTRAL_API = "https://central.example/api/v1/publisher"
@@ -83,37 +82,22 @@ internal class CentralFixture(directory: File, bundleBytes: ByteArray) {
     val name = "codex-agent-0.2.0-$CENTRAL_COMMIT-${bundle.releaseDigest()}"
 
     init {
-        fun record(fileName: String) = buildJsonObject {
-            put("fileName", JsonPrimitive(fileName)); put("bytes", JsonPrimitive(1)); put("sha256", JsonPrimitive("0".repeat(64)))
+        val canonical = CandidateManifestFixture(
+            directory.resolve("candidate-fixture"),
+            "0.2.0",
+            CENTRAL_COMMIT,
+        )
+        val centralInventory = directory.resolve("candidate-central-bundle.json").apply {
+            atomicWriteJson(buildJsonObject {
+                put("belowCentralPortalUploadLimit", JsonPrimitive(true))
+                put("mavenInventorySha256", JsonPrimitive(canonical.mavenInventory.releaseDigest()))
+                put("bundle", bundle.releaseRecord())
+            })
         }
-        candidate.atomicWriteJson(buildJsonObject {
-            put("schemaVersion", JsonPrimitive(6)); put("version", JsonPrimitive("0.2.0"))
-            put("releaseTag", JsonPrimitive("v0.2.0")); put("candidateCommit", JsonPrimitive(CENTRAL_COMMIT))
-            put("protectedCandidate", JsonPrimitive(true))
-            put("artifacts", buildJsonObject {
-                put("swiftPackage", buildJsonObject {
-                    record("CodexAgent-0.2.0.xcframework.zip").forEach { (key, value) -> put(key, value) }
-                    put("swiftPmChecksum", JsonPrimitive("0".repeat(64))); put("members", buildJsonArray {})
-                })
-                put("centralBundle", bundle.releaseRecord())
-            })
-            put("evidence", buildJsonObject {
-                put("swiftPmProof", record("swiftpm-proof.json")); put("centralBundleInventory", record("central-bundle.json"))
-                put("mavenInventory", record("maven-inventory.json")); put("cleanKmpConsumer", record("kmp-consumer.json"))
-                put("desktopRuntime", buildJsonArray {
-                    desktopRuntimeEvidenceTargets.keys.forEach { add(record(desktopRuntimeEvidenceFileName(it))) }
-                })
-                put("iosNative", record("ios-native-evidence.json"))
-                put("privacyAudit", record("privacy-audit.json")); put("artifactMetrics", record("artifact-metrics.json"))
-                put("resourceMeasurements", buildJsonArray { add(record("resource-measurement.json")) })
-            })
-            put("policies", buildJsonObject {
-                put("approvals", record("publication-approvals.json")); put("privacyManifest", record("PrivacyInfo.xcprivacy"))
-                put("privacyDataFlowReview", record("privacy-data-flow-review.json")); put("packageSwift", record("Package.swift"))
-                put("desktopDistributionManifest", record("codex-app-server-distributions.json"))
-                put("desktopBundledLicense", record("openai-codex-LICENSE.txt")); put("desktopBundledNotice", record("openai-codex-NOTICE.txt"))
-            })
-        })
+        candidate.atomicWriteJson(buildCandidateManifest(canonical.inputs.copy(
+            centralBundle = bundle,
+            centralInventory = centralInventory,
+        )))
     }
 
     fun prepare(portal: FakePortal, allow: Boolean = false) = prepare(portal::send, allow)

@@ -24,7 +24,7 @@ class CandidateManifestTasksTest {
         )
 
         assertEquals("passed", result.releaseString("result"))
-        assertEquals(6, manifest.releaseInt("schemaVersion"))
+        assertEquals(7, manifest.releaseInt("schemaVersion"))
         assertTrue(manifest.releaseBoolean("protectedCandidate"))
         assertEquals(
             fixture.swiftPmProof.name,
@@ -34,6 +34,33 @@ class CandidateManifestTasksTest {
             "releaseTag=v$VERSION\nswiftAsset=${fixture.swiftZip.name}\ncentralBundle=${fixture.centralBundle.name}\n",
             candidateGithubOutputs(result),
         )
+    }
+
+    @Test
+    fun `Node evidence is exact target complete and hash bound`() = withFixture { fixture ->
+        val unexpected = fixture.root.resolve("node-runtime-unexpected.json").apply { writeText("{}") }
+        assertFailsWith<IllegalStateException> {
+            buildCandidateManifest(fixture.inputs.copy(nodeEvidence = fixture.nodeEvidence + unexpected))
+        }
+        val original = fixture.nodeEvidence.first().readBytes()
+        fixture.nodeEvidence.first().appendText("tampered")
+        assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
+        fixture.nodeEvidence.first().writeBytes(original)
+        fixture.nodeEvidence.last().delete()
+        assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
+    }
+
+    @Test
+    fun `old candidate schema and supervisor package drift fail closed`() = withFixture { fixture ->
+        val manifest = buildCandidateManifest(fixture.inputs)
+        val old = fixture.root.resolve("old.json").apply {
+            writeText(releaseJson.encodeToString(
+                kotlinx.serialization.json.JsonElement.serializer(), manifest,
+            ).replace("\"schemaVersion\": 7", "\"schemaVersion\": 6"))
+        }
+        assertFailsWith<IllegalStateException> { verifyCandidateManifestStructure(old.readReleaseObject()) }
+        fixture.inputs.windowsSupervisorPackage.appendText("tampered")
+        assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
     }
 
     @Test

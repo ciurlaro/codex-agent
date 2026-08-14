@@ -34,6 +34,9 @@ kotlin {
         commonMain.dependencies {
             implementation("io.github.ciurlaro:codex-agent-client:$codexAgentVersion")
         }
+        jsMain.dependencies {
+            implementation("io.github.ciurlaro:codex-agent-runtime-node:$codexAgentVersion")
+        }
         androidMain.dependencies {
             implementation("io.github.ciurlaro:codex-agent-runtime-android:$codexAgentVersion")
         }
