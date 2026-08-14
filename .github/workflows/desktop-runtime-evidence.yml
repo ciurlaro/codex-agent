@@ -41,7 +41,7 @@ jobs:
           :codex-agent-runtime-node:packageNodeRuntimeEvidenceRunner
           :codex-agent-runtime-node:packageNodeWasmRuntimeEvidenceRunner
           --no-daemon --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -151,7 +151,7 @@ jobs:
           -PcodexAgent.nodeWasmRuntimeEvidenceRunnerArchive="$PWD/codex-agent-runtime-node/build/distributions/codex-agent-node-wasm-runtime-evidence-runner.zip"
           -PcodexAgent.desktopDistributionManifest="$PWD/codex-agent-runtime-desktop/codex-app-server-distributions.json"
           --no-daemon --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -180,7 +180,7 @@ jobs:
           cc -std=c11 -D_POSIX_C_SOURCE=200809L -O2 -Wall -Wextra -Werror \
             codex-agent-runtime-desktop/native/supervisor/codex_process_supervisor.c -o "$output"
           chmod 755 "$output"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -234,7 +234,7 @@ jobs:
           -PcodexAgent.linuxArm64JvmExecutionBundle="$PWD/build/linux-arm64-inputs/jvm.zip"
           -PcodexAgent.linuxArm64NodeExecutionBundle="$PWD/build/linux-arm64-inputs/node.zip"
           --no-daemon --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -285,7 +285,7 @@ jobs:
           -PcodexAgent.nodeEvidenceOutput="$PWD/codex-agent-runtime-node/build/reports/node-runtime-evidence/node-runtime-linuxArm64.json"
           -PcodexAgent.nodeWasmEvidenceOutput="$PWD/codex-agent-runtime-node/build/reports/node-runtime-evidence/node-wasm-runtime-linuxArm64.json"
           --no-daemon --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
