@@ -124,7 +124,7 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
                 ?: error("Missing iOS provenance value: $key")
         check(value("gitRevision") == revision.get()) { "Codex iOS revision provenance mismatch" }
         check(value("sourceArchiveSha256") == archiveSha256.get()) { "Codex iOS archive provenance mismatch" }
-        check(codexArchive.get().asFile.sha256() == archiveSha256.get()) {
+        check(codexArchive.get().asFile.releaseDigest() == archiveSha256.get()) {
             "Codex iOS source archive SHA-256 mismatch"
         }
         check(value("cargoLockSha256") == cargoLockSha256.get()) { "Codex iOS Cargo.lock provenance mismatch" }
@@ -165,7 +165,7 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
         check(value("sqliteSourceArchiveSha256") == sqliteArchiveSha256.get()) {
             "Codex iOS SQLite archive provenance mismatch"
         }
-        check(sqliteArchive.get().asFile.sha256() == sqliteArchiveSha256.get()) {
+        check(sqliteArchive.get().asFile.releaseDigest() == sqliteArchiveSha256.get()) {
             "Codex iOS SQLite archive SHA-256 mismatch"
         }
         mapOf(
@@ -176,23 +176,12 @@ abstract class VerifyCodexIosProvenanceTask : DefaultTask() {
             "bridgeManifestSha256" to bridgeManifest,
             "cHeaderSha256" to cHeader,
         ).forEach { (key, file) ->
-            check(file.get().asFile.sha256() == value(key)) { "Codex iOS $key mismatch" }
+            check(file.get().asFile.releaseDigest() == value(key)) { "Codex iOS $key mismatch" }
         }
         check(bridgeSource.get().asFile.treeSha256() == value("bridgeSourceSha256")) {
             "Codex iOS bridgeSourceSha256 mismatch"
         }
     }
-}
-
-private fun File.sha256(): String = inputStream().use { input ->
-    val digest = MessageDigest.getInstance("SHA-256")
-    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-    while (true) {
-        val count = input.read(buffer)
-        if (count < 0) break
-        digest.update(buffer, 0, count)
-    }
-    digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
 
 private fun File.treeSha256(): String {

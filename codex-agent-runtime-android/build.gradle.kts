@@ -62,7 +62,6 @@ mavenPublishing {
         ),
     )
     coordinates("io.github.ciurlaro", "codex-agent-runtime-android", project.version.toString())
-    publishToMavenCentral(automaticRelease = true)
     if (
         providers.gradleProperty("signingInMemoryKey").isPresent ||
         providers.gradleProperty("signing.secretKeyRingFile").isPresent

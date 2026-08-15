@@ -154,11 +154,41 @@ Run on an Apple Silicon macOS host with full Xcode selected through
 `DEVELOPER_DIR` and the pinned Rust toolchain/targets installed:
 
 ```shell
+export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
 rustup toolchain install 1.95.0 --profile minimal \
   --target aarch64-apple-ios,aarch64-apple-ios-sim
-DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
-  ./gradlew verifyIosRuntime
+./gradlew :codex-agent-runtime-ios:clean
+./gradlew :codex-agent-runtime-ios:preflightIosRuntime
+./gradlew :codex-agent-runtime-ios:verifyCodexAgentSwiftSimulatorCompilation
+# Freeze the source tree here; do not edit it during either remaining gate.
+./gradlew verifyIosRuntime
+./gradlew verifyRepository
 ```
+
+The preflight requires 40 GiB free by default. Override that only for a
+deliberately smaller check with
+`-PcodexAgent.iosMinimumFreeDiskGiB=<positive-integer>`.
+Run focused unit tests before the simulator step when changing shared code.
+The scoped clean happens once at the start; do not delete Cargo or Gradle
+intermediates while a build is running. The Swift task stages a temporary
+simulator-only package and runs
+`build-for-testing`. It builds no device slice and boots no Simulator. Its typed
+Gradle task declares package, framework, and pinned toolchain inputs, keeps
+DerivedData as local state, and caches its success report. Budget 45–90 minutes
+for a cold full gate and keep the Gradle caches between attempts.
+
+For an exact clean commit already covered by exported Apple native evidence,
+the full gate can reuse the five verified slice/proof files instead of
+rebuilding them:
+
+```shell
+./gradlew verifyIosRuntime \
+  -PcodexAgent.candidateCommit=<exact-commit> \
+  -PcodexAgent.iosNativeEvidenceDirectory=<absolute-evidence-directory>
+```
+
+Evidence reuse intentionally fails if the commit, tree, native inputs,
+compiler, Rust toolchain, Xcode, or Swift identity differs.
 
 This credential-free gate verifies the native bridge, iPhoneOS and Simulator
 compilation/linking, real embedded App Server startup and shared JSON-RPC

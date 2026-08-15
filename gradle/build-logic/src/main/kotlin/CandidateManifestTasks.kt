@@ -12,8 +12,7 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
-@CacheableTask
-abstract class GenerateCandidateManifestTask : DefaultTask() {
+abstract class CandidateManifestInputsTask : DefaultTask() {
     @get:Input abstract val candidateVersion: Property<String>
     @get:Input abstract val releaseTag: Property<String>
     @get:Input abstract val candidateCommit: Property<String>
@@ -37,7 +36,7 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val iosNativeEvidence: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val resourceReports: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val iosRuntimeMetrics: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val approvalsFile: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyManifest: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyDataFlowReview: RegularFileProperty
@@ -47,13 +46,6 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopDistributionManifest: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledLicense: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledNotice: RegularFileProperty
-    @get:OutputFile abstract val outputFile: RegularFileProperty
-
-    @TaskAction
-    fun generate() {
-        outputFile.get().asFile.atomicWriteJson(buildCandidateManifest(candidateInputs()))
-    }
-
     internal fun candidateInputs() = CandidateInputFiles(
         candidateVersion.get(), releaseTag.get(), candidateCommit.get(),
         swiftZip.asFile.get(), swiftChecksum.asFile.get(), swiftPmProof.asFile.get(),
@@ -62,11 +54,21 @@ abstract class GenerateCandidateManifestTask : DefaultTask() {
         jvmEvidence.sorted(), jvmRuntimeRunner.asFile.get(), nodeEvidence.sorted(),
         nodeRuntimeRunner.asFile.get(), nodeWasmEvidence.sorted(), nodeWasmRuntimeRunner.asFile.get(),
         androidEvidence.sorted(), iosNativeEvidence.asFile.get(), privacyAudit.asFile.get(),
-        artifactMetrics.asFile.get(), resourceReports.sorted(), approvalsFile.asFile.get(),
+        artifactMetrics.asFile.get(), iosRuntimeMetrics.asFile.get(), approvalsFile.asFile.get(),
         privacyManifest.asFile.get(), privacyDataFlowReview.asFile.get(), privacyReviews.orNull?.asFile,
         packageSwift.asFile.get(), desktopDistributionManifest.asFile.get(),
         desktopBundledLicense.asFile.get(), desktopBundledNotice.asFile.get(),
     )
+}
+
+@CacheableTask
+abstract class GenerateCandidateManifestTask : CandidateManifestInputsTask() {
+    @get:OutputFile abstract val outputFile: RegularFileProperty
+
+    @TaskAction
+    fun generate() {
+        outputFile.get().asFile.atomicWriteJson(buildCandidateManifest(candidateInputs()))
+    }
 }
 
 private fun ConfigurableFileCollection.sorted() = files.sortedBy { it.name }

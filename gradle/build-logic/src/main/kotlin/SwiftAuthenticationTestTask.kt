@@ -3,14 +3,18 @@ import java.nio.file.Files
 import javax.inject.Inject
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.intOrNull
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.LocalState
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
@@ -94,6 +98,68 @@ internal fun swiftAuthenticationXcodebuildCommand(
     "CODE_SIGNING_ALLOWED=NO",
     "test",
 )
+
+internal fun swiftSimulatorXCFrameworkCommand(framework: File, output: File) = listOf(
+    "xcodebuild", "-create-xcframework", "-framework", framework.absolutePath,
+    "-output", output.absolutePath,
+)
+
+internal fun swiftSimulatorBuildForTestingCommand(derivedData: File) = listOf(
+    "xcodebuild",
+    "-scheme", "CodexAgent-Package",
+    "-destination", "generic/platform=iOS Simulator",
+    "-derivedDataPath", derivedData.absolutePath,
+    "ARCHS=arm64",
+    "ONLY_ACTIVE_ARCH=YES",
+    "CODE_SIGNING_ALLOWED=NO",
+    "build-for-testing",
+)
+
+@CacheableTask
+abstract class VerifySwiftSimulatorCompilationTask @Inject constructor(
+    private val processes: ExecOperations,
+) : DefaultTask() {
+    @get:InputFile @get:PathSensitive(PathSensitivity.RELATIVE) abstract val packageManifest: RegularFileProperty
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val sourcesDirectory: DirectoryProperty
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val testsDirectory: DirectoryProperty
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val simulatorFrameworkDirectory: DirectoryProperty
+    @get:Input abstract val expectedXcodeVersion: Property<String>
+    @get:Input abstract val expectedXcodeBuild: Property<String>
+    @get:Input abstract val expectedSwiftVersion: Property<String>
+    @get:LocalState abstract val derivedDataDirectory: DirectoryProperty
+    @get:OutputFile abstract val reportFile: RegularFileProperty
+
+    @TaskAction fun verify() {
+        val packageRoot = temporaryDir.resolve("CodexAgentPackage")
+        deleteReleaseTree(packageRoot)
+        try {
+            Files.createDirectories(packageRoot.toPath())
+            Files.copy(packageManifest.get().asFile.toPath(), packageRoot.resolve("Package.swift").toPath())
+            copyReleaseTree(sourcesDirectory.get().asFile, packageRoot.resolve("Sources"))
+            copyReleaseTree(testsDirectory.get().asFile, packageRoot.resolve("Tests"))
+            val xcframework = packageRoot.resolve("CodexAgent.xcframework")
+            processes.captureReleaseProcess(swiftSimulatorXCFrameworkCommand(
+                simulatorFrameworkDirectory.get().asFile,
+                xcframework,
+            ))
+            processes.captureReleaseProcess(
+                swiftSimulatorBuildForTestingCommand(derivedDataDirectory.get().asFile),
+                packageRoot,
+            )
+            reportFile.get().asFile.atomicWriteJson(buildJsonObject {
+                put("schemaVersion", JsonPrimitive(1))
+                put("result", JsonPrimitive("passed"))
+                put("target", JsonPrimitive("iosSimulatorArm64"))
+                put("xcodeVersion", JsonPrimitive(expectedXcodeVersion.get()))
+                put("xcodeBuild", JsonPrimitive(expectedXcodeBuild.get()))
+                put("swiftVersion", JsonPrimitive(expectedSwiftVersion.get()))
+            })
+        } finally {
+            deleteReleaseTree(packageRoot)
+        }
+    }
+}
 
 @DisableCachingByDefault(because = "Boots a selected simulator and executes XCTest")
 abstract class VerifySwiftAuthenticationTestsTask @Inject constructor(

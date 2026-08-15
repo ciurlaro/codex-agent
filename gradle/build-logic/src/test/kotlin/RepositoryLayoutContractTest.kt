@@ -28,6 +28,30 @@ class RepositoryLayoutContractTest {
     }
 
     @Test
+    fun `isolated consumer tool versions follow the root catalog`() {
+        val catalog = repository.resolve("gradle/libs.versions.toml").readText()
+        fun version(name: String) = checkNotNull(
+            Regex("(?m)^${Regex.escape(name)} = \"([^\"]+)\"").find(catalog)?.groupValues?.get(1),
+        )
+        val consumer = repository.resolve("gradle/release/kmp-consumer-template/build.gradle.kts").readText()
+        assertTrue("kotlin(\"multiplatform\") version \"${version("kotlin")}\"" in consumer)
+        assertTrue("id(\"com.android.kotlin.multiplatform.library\") version \"${version("agp")}\"" in consumer)
+    }
+
+    @Test
+    fun `Central publishing has one verified transport path`() {
+        listOf(
+            "codex-agent-client", "codex-agent-runtime-android", "codex-agent-runtime-desktop",
+            "codex-agent-runtime-ios", "codex-agent-runtime-node",
+        ).forEach { module ->
+            assertFalse("publishToMavenCentral(" in repository.resolve("$module/build.gradle.kts").readText(), module)
+        }
+        val publish = repository.resolve(".github/workflows/publish.yml").readText()
+        listOf("prepareCentralDeployment", "awaitCentralValidation", "releaseCentralDeployment")
+            .forEach { assertTrue(it in publish, it) }
+    }
+
+    @Test
     fun `all internal plugins are explicit and applied only by their owners`() {
         val owners = linkedMapOf(
             "build.gradle.kts" to "root-release",

@@ -1,7 +1,5 @@
 import java.io.File
 import java.util.zip.ZipFile
-import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Element
 
 internal data class AndroidTestReport(
@@ -41,17 +39,7 @@ private fun requirePassingAndroidRuntimeReport(report: AndroidTestReport) {
 }
 
 internal fun parseAndroidTestReport(file: File): AndroidTestReport {
-    val factory = DocumentBuilderFactory.newInstance().apply {
-        setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        setFeature("http://xml.org/sax/features/external-general-entities", false)
-        setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-        setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-        setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-        setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
-        isXIncludeAware = false
-        isExpandEntityReferences = false
-    }
-    val document = factory.newDocumentBuilder().parse(file)
+    val document = secureDocumentBuilderFactory().newDocumentBuilder().parse(file)
     val cases = document.getElementsByTagName("testcase")
     val parsedCases = (0 until cases.length).map { index ->
         val element = cases.item(index) as Element

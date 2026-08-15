@@ -19,7 +19,7 @@ class DesktopEvidenceArgumentProvider(
 plugins { `kotlin-dsl` }
 repositories { google(); mavenCentral(); gradlePluginPortal() }
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation(libs.kotlinx.serialization.json)
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
     implementation("com.android.tools.build:gradle:${libs.versions.agp.get()}")
     testImplementation(gradleTestKit())
@@ -35,7 +35,7 @@ val manifest = providers.gradleProperty("codexAgent.desktopDistributionManifest"
 val classifierArchive = providers.gradleProperty("codexAgent.linuxArm64ClassifierArchive").map(::JavaFile)
 val classifierDirectory = providers.gradleProperty("codexAgent.linuxArm64DistributionsDirectory").map(::JavaFile)
 val classifier = classifierArchive.orElse(classifierDirectory)
-val stageBundle = tasks.register<JavaExec>("stageLinuxArm64RuntimeEvidenceBundle") {
+tasks.register<JavaExec>("stageLinuxArm64RuntimeEvidenceBundle") {
     group = "verification"
     description = "Stages one hash-manifested Linux ARM64 runtime evidence bundle."
     val test = providers.gradleProperty("codexAgent.linuxArm64TestExecutable").map(::JavaFile)
@@ -51,7 +51,7 @@ val stageBundle = tasks.register<JavaExec>("stageLinuxArm64RuntimeEvidenceBundle
     ))
 }
 
-val executeBundle = tasks.register<JavaExec>("executeLinuxArm64RuntimeEvidenceBundle") {
+tasks.register<JavaExec>("executeLinuxArm64RuntimeEvidenceBundle") {
     group = "verification"
     description = "Executes all four Linux ARM64 runtime backends from one extracted bundle."
     val java = providers.gradleProperty("codexAgent.javaExecutable")
@@ -86,12 +86,3 @@ val executeBundle = tasks.register<JavaExec>("executeLinuxArm64RuntimeEvidenceBu
             jvmEvidence, nodeEvidence, nodeReport, wasmEvidence, wasmReport),
     ))
 }
-
-listOf(
-    "stageLinuxArm64DesktopEvidenceBundle", "stageLinuxArm64JvmEvidenceBundle",
-    "stageLinuxArm64NodeRuntimeEvidenceBundle",
-).forEach { name -> tasks.register(name) { group = "verification"; dependsOn(stageBundle) } }
-listOf(
-    "executeLinuxArm64DesktopEvidenceBundle", "executeLinuxArm64JvmEvidenceBundle",
-    "executeLinuxArm64NodeRuntimeEvidenceBundle",
-).forEach { name -> tasks.register(name) { group = "verification"; dependsOn(executeBundle) } }

@@ -4,7 +4,6 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
-import java.security.MessageDigest
 import java.time.Duration
 import javax.inject.Inject
 import kotlinx.serialization.json.JsonPrimitive
@@ -38,7 +37,7 @@ abstract class GenerateSha256Task : DefaultTask() {
     fun generate() {
         outputFile.get().asFile.apply {
             parentFile.mkdirs()
-            writeText("${inputFile.get().asFile.sha256()}\n")
+            writeText("${inputFile.get().asFile.releaseDigest()}\n")
         }
     }
 }
@@ -179,15 +178,4 @@ abstract class VerifyPublicSwiftResolutionTask @Inject constructor(
             Files.deleteIfExists(temporary)
         }
     }
-}
-
-private fun File.sha256(): String = inputStream().use { input ->
-    val digest = MessageDigest.getInstance("SHA-256")
-    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-    while (true) {
-        val count = input.read(buffer)
-        if (count < 0) break
-        digest.update(buffer, 0, count)
-    }
-    digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }

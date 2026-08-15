@@ -7,7 +7,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
         "schemaVersion", "version", "releaseTag", "candidateCommit", "protectedCandidate",
         "artifacts", "evidence", "policies",
     )) { "Candidate manifest has unexpected top-level fields" }
-    check(manifest.releaseInt("schemaVersion") == 8) { "Candidate manifest schema must be 8" }
+    check(manifest.releaseInt("schemaVersion") == 9) { "Candidate manifest schema must be 9" }
     val version = manifest.releaseString("version")
     check(manifest.releaseString("releaseTag") == "v$version") { "Candidate release tag/version mismatch" }
     check(manifest.releaseString("candidateCommit").matches(Regex("[0-9a-f]{40}"))) {
@@ -30,7 +30,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
         "swiftPmProof", "centralBundleInventory", "mavenInventory", "cleanKmpConsumer", "ciProvenance",
         "desktopRuntime", "jvmRuntime", "jvmRuntimeRunner", "nodeRuntime", "nodeRuntimeRunner",
         "nodeWasmRuntime", "nodeWasmRuntimeRunner", "androidRuntime", "iosNative", "privacyAudit",
-        "artifactMetrics", "resourceMeasurements",
+        "artifactMetrics", "iosRuntimeMetrics",
     )
     check(evidence.keys == expectedEvidence) { "Candidate evidence set is invalid" }
     expectedEvidence.minus(candidateEvidenceArrayNames)
@@ -39,6 +39,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
         "swiftPmProof" to "swiftpm-proof.json",
         "ciProvenance" to CANDIDATE_CI_PROVENANCE_FILE,
         "artifactMetrics" to "artifact-metrics.json",
+        "iosRuntimeMetrics" to "runtime-metrics.json",
         "iosNative" to "ios-native-evidence.json",
         "jvmRuntimeRunner" to JVM_RUNTIME_RUNNER_ARCHIVE,
         "nodeRuntimeRunner" to NODE_RUNTIME_RUNNER_ARCHIVE,
@@ -63,10 +64,6 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
         desktopRuntimeEvidenceTargets.keys.map { nodeRuntimeEvidenceFileName(it, NODE_RUNTIME_WASM_BACKEND) }.toSet(),
     )
     verifyEvidenceArray(evidence, "androidRuntime", candidateFirebaseAndroidEvidenceFileNames.toSet())
-    val resources = evidence.releaseArray("resourceMeasurements")
-    check(resources.isNotEmpty()) { "Candidate resource evidence is missing" }
-    resources.forEach { verifyRecordShape(it as? JsonObject ?: error("Invalid resource record")) }
-
     val policies = manifest.releaseObject("policies")
     val requiredPolicies = setOf(
         "approvals", "privacyManifest", "privacyDataFlowReview", "packageSwift",
@@ -79,7 +76,7 @@ internal fun verifyCandidateManifestStructure(manifest: JsonObject) {
 }
 
 internal val candidateEvidenceArrayNames = setOf(
-    "desktopRuntime", "jvmRuntime", "nodeRuntime", "nodeWasmRuntime", "androidRuntime", "resourceMeasurements",
+    "desktopRuntime", "jvmRuntime", "nodeRuntime", "nodeWasmRuntime", "androidRuntime",
 )
 
 private fun verifyEvidenceArray(evidence: JsonObject, name: String, expectedNames: Set<String>) {

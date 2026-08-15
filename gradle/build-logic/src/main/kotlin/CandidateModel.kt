@@ -3,6 +3,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.longOrNull
 
 internal data class CandidateInputFiles(
     val version: String,
@@ -28,7 +29,7 @@ internal data class CandidateInputFiles(
     val iosNativeEvidence: File,
     val privacyAudit: File,
     val artifactMetrics: File,
-    val resourceReports: List<File>,
+    val iosRuntimeMetrics: File,
     val approvals: File,
     val privacyManifest: File,
     val privacyDataFlowReview: File,
@@ -84,24 +85,22 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
         input.desktopBundledLicense,
         input.desktopBundledNotice,
     )
-    check(input.resourceReports.isNotEmpty()) { "At least one resource evidence report is required" }
-    input.resourceReports.forEach { report ->
-        check(report.readReleaseObject().releaseInt("exitCode") == 0) {
-            "Resource phase did not pass: ${report.name}"
-        }
+    check(input.iosRuntimeMetrics.name == "runtime-metrics.json" && input.iosRuntimeMetrics.isFile) {
+        "iOS runtime metrics are required"
     }
+    validateIosRuntimeMetrics(input.iosRuntimeMetrics.readReleaseObject())
     val evidenceFiles = listOf(
         input.swiftPmProof, input.centralInventory, input.mavenInventory, input.kmpConsumer, input.ciProvenance,
         input.jvmRuntimeRunner, input.nodeRuntimeRunner, input.nodeWasmRuntimeRunner,
         input.iosNativeEvidence, input.privacyAudit, input.artifactMetrics,
     ) + input.desktopEvidence + input.jvmEvidence + input.nodeEvidence +
-        input.nodeWasmEvidence + input.androidEvidence + input.resourceReports
+        input.nodeWasmEvidence + input.androidEvidence + input.iosRuntimeMetrics
     check(evidenceFiles.map(File::getName).toSet().size == evidenceFiles.size) {
         "Candidate evidence file names must be unique"
     }
 
     val manifest = buildJsonObject {
-        put("schemaVersion", JsonPrimitive(8))
+        put("schemaVersion", JsonPrimitive(9))
         put("version", JsonPrimitive(input.version))
         put("releaseTag", JsonPrimitive(input.releaseTag))
         put("candidateCommit", JsonPrimitive(input.commit))
@@ -131,7 +130,7 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
             put("iosNative", input.iosNativeEvidence.releaseRecord())
             put("privacyAudit", input.privacyAudit.releaseRecord())
             put("artifactMetrics", input.artifactMetrics.releaseRecord())
-            putRecords("resourceMeasurements", input.resourceReports)
+            put("iosRuntimeMetrics", input.iosRuntimeMetrics.releaseRecord())
         })
         put("policies", buildJsonObject {
             put("approvals", input.approvals.releaseRecord())
@@ -148,6 +147,24 @@ internal fun buildCandidateManifest(input: CandidateInputFiles): JsonObject {
     }
     verifyCandidateManifestStructure(manifest)
     return manifest
+}
+
+internal fun validateIosRuntimeMetrics(metrics: JsonObject) {
+    fun durations(name: String) = metrics.releaseArray(name).map { value ->
+        (value as? JsonPrimitive)?.longOrNull ?: error("Invalid $name value")
+    }
+    val startup = durations("startupMilliseconds")
+    val shutdown = durations("shutdownMilliseconds")
+    check(metrics.releaseInt("warmupCycles") == 1 && metrics.releaseInt("measuredCycles") == 5) {
+        "iOS runtime metrics use the wrong cycle counts"
+    }
+    check(startup.size == 5 && startup.all { it in 0L until 30_000L }) { "iOS runtime startup gate failed" }
+    check(shutdown.size == 5 && shutdown.all { it in 0L until 5_000L }) { "iOS runtime shutdown gate failed" }
+    check(metrics.releaseLong("coldStartupMilliseconds") in 0L until 30_000L) { "iOS cold startup gate failed" }
+    check(metrics.releaseLong("startupMaximumMilliseconds") == startup.max()) { "iOS startup maximum mismatch" }
+    check(metrics.releaseLong("shutdownMaximumMilliseconds") == shutdown.max()) { "iOS shutdown maximum mismatch" }
+    check(metrics.releaseLong("idleCurrentResidentBytes") >= 0L) { "iOS idle memory is invalid" }
+    check(metrics.releaseLong("recursiveSearchCurrentResidentBytes") >= 0L) { "iOS search memory is invalid" }
 }
 
 private fun kotlinx.serialization.json.JsonObjectBuilder.putRecords(name: String, files: List<File>) {

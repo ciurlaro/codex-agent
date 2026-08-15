@@ -157,15 +157,6 @@ val stagePrivacyAudit = tasks.register<CopyCandidateFileTask>("stageProtectedPri
 }
 
 val runtimeMetrics = layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/runtime-metrics.json")
-val resourceEvidence = candidateEvidence.map { it.file("resource-measurement.json") }
-val measureCandidateResources = tasks.register<ConsumeReleaseResourceReportTask>("measureProtectedCandidateResources") {
-    phase.set("ios-runtime-benchmark")
-    producerTaskPath.set(":codex-agent-runtime-ios:iosSimulatorArm64Test")
-    metricsFile.set(runtimeMetrics)
-    workspace.set(layout.projectDirectory)
-    trackedPaths.from(candidateArtifacts, centralStagingDirectory)
-    outputFile.set(resourceEvidence)
-}
 
 val candidateManifest = candidateRoot.map { it.file("candidate-manifest.json") }
 val generateCandidateManifest = tasks.register<GenerateCandidateManifestTask>("generateCandidateManifest") {
@@ -184,7 +175,7 @@ val generateCandidateManifest = tasks.register<GenerateCandidateManifestTask>("g
     desktopEvidence.from(desktopEvidenceFiles)
     iosNativeEvidence.set(stagedIosNativeEvidence)
     privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
-    resourceReports.from(resourceEvidence)
+    iosRuntimeMetrics.set(runtimeMetrics)
     approvalsFile.set(publicationApprovals)
     privacyManifest.set(privacyManifestFile)
     privacyDataFlowReview.set(privacyDataFlowReviewFile)
@@ -211,7 +202,7 @@ val verifyCandidateManifest = tasks.register<VerifyProtectedCandidateManifestTas
     desktopEvidence.from(desktopEvidenceFiles)
     iosNativeEvidence.set(stagedIosNativeEvidence)
     privacyAudit.set(stagedPrivacyAudit); artifactMetrics.set(layout.projectDirectory.file("codex-agent-runtime-ios/build/reports/ios-release/artifact-metrics.json"))
-    resourceReports.from(resourceEvidence)
+    iosRuntimeMetrics.set(runtimeMetrics)
     approvalsFile.set(publicationApprovals)
     privacyManifest.set(privacyManifestFile)
     privacyDataFlowReview.set(privacyDataFlowReviewFile)
@@ -250,7 +241,6 @@ gradle.projectsEvaluated {
     }
     if (!reuseVerifiedApple && !providers.gradleProperty("codexAgent.privacyRequiredReasonReview").isPresent)
         generateCandidateManifest.configure { dependsOn(ios.named("generateIosPrivacyRequiredReasonReview")) }
-    measureCandidateResources.configure { dependsOn(packageCentralBundle) }
     subprojects {
         tasks.withType<PublishToMavenRepository>().configureEach { mustRunAfter(protectedCandidatePhases.privacy) }
     }

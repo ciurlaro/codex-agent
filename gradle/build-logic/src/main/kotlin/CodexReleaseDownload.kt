@@ -7,7 +7,7 @@ import java.nio.file.Path
 import java.time.Duration
 
 internal fun downloadHttps(url: URI, target: Path) {
-    check(url.scheme == "https") { "Codex runtime download must use HTTPS" }
+    check(url.scheme == "https") { "Download must use HTTPS" }
     val request = HttpRequest.newBuilder(url).timeout(Duration.ofMinutes(5)).GET().build()
     val client = HttpClient.newBuilder()
         .followRedirects(HttpClient.Redirect.NORMAL)
@@ -19,9 +19,9 @@ internal fun downloadHttps(url: URI, target: Path) {
         try {
             val response = client.send(request, HttpResponse.BodyHandlers.ofFile(target))
             check(response.statusCode() in 200..299) {
-                "Codex runtime download failed with HTTP ${response.statusCode()}"
+                "Download failed with HTTP ${response.statusCode()}"
             }
-            check(response.uri().scheme == "https") { "Codex runtime redirected outside HTTPS" }
+            check(response.uri().scheme == "https") { "Download redirected outside HTTPS" }
             return
         } catch (error: java.io.IOException) {
             failure = error

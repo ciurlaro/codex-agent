@@ -5,6 +5,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.time.LocalDateTime
+import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -13,6 +14,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
 private const val ARM_TARGET = "linuxArm64"
+internal const val LINUX_ARM64_RUNTIME_EVIDENCE_TASK = ":build-logic:executeLinuxArm64RuntimeEvidenceBundle"
 private const val ARM_METADATA = "execution.json"
 private const val ARM_TEST = "linuxArm64-test.kexe"
 private const val ARM_MANIFEST = "codex-app-server-distributions.json"
@@ -22,6 +24,8 @@ private val ARM_INPUTS = linkedSetOf(
     NODE_RUNTIME_RUNNER_ARCHIVE, NODE_WASM_RUNTIME_RUNNER_ARCHIVE,
 )
 private val ARM_ZIP_EPOCH = LocalDateTime.of(1980, 1, 1, 0, 0)
+
+internal data class DesktopEvidenceProcessResult(val exitCode: Int, val output: String)
 
 internal fun stageLinuxArm64RuntimeEvidenceBundle(
     candidateCommit: String,
@@ -171,6 +175,98 @@ private fun ZipOutputStream.addArmInput(path: String, input: java.io.InputStream
 
 private fun requireArmCommit(value: String) = check(value.matches(Regex("[0-9a-f]{40}"))) {
     "Linux ARM64 candidate commit is not immutable"
+}
+
+internal fun resolveLinuxArm64Classifier(input: File): File {
+    if (input.isFile) return input
+    check(input.isDirectory) { "Linux ARM64 classifier input is missing" }
+    val classifier = ARM_CLASSIFIER.removeSuffix(".zip")
+    val matches = input.listFiles().orEmpty().filter { file ->
+        file.isFile && file.name.startsWith("codex-agent-runtime-desktop-") &&
+            file.name.endsWith("-$classifier.zip") && file.canonicalFile.parentFile == input.canonicalFile
+    }
+    check(matches.size == 1) { "Linux ARM64 distributions directory must contain exactly one classifier archive" }
+    return matches.single()
+}
+
+internal fun executeLinuxArm64DesktopEvidenceInputs(
+    candidateCommit: String,
+    test: File,
+    classifier: File,
+    executables: DesktopRuntimeExecutables,
+    binarySha256: String,
+    supervisorSha256: String,
+    evidence: File,
+    report: File,
+    environment: Map<String, String> = System.getenv(),
+    runner: (List<String>, Map<String, String>) -> DesktopEvidenceProcessResult = ::runDesktopEvidenceProcess,
+) {
+    requireArmCommit(candidateCommit)
+    check(environment["RUNNER_OS"] == "Linux" && environment["RUNNER_ARCH"] == "ARM64") {
+        "Linux ARM64 evidence must run on RUNNER_OS=Linux and RUNNER_ARCH=ARM64"
+    }
+    check(evidence.name == desktopRuntimeEvidenceFileName(ARM_TARGET)) { "Desktop evidence filename mismatch" }
+    check(report.name == "TEST-linuxArm64Test.$DESKTOP_RUNTIME_TEST_CLASS.xml") {
+        "Desktop test report filename mismatch"
+    }
+    check(test.isFile && test.setExecutable(true, false)) { "Linux ARM64 test executable could not be enabled" }
+    validateDesktopRuntimeExecutables(ARM_TARGET, binarySha256, supervisorSha256, executables)
+    val runtimeRoot = Files.createTempDirectory("codex-agent-linux-arm64-platform-evidence").toFile()
+    try {
+        val processEnvironment = stageRuntimeBundleForEvidence(
+            classifier,
+            ARM_TARGET,
+            ARM_CLASSIFIER.removeSuffix(".zip"),
+            runtimeRoot,
+        ).environment(ARM_TARGET)
+        val listing = runner(listOf(test.absolutePath, "--ktest_list_tests"), processEnvironment)
+        check(listing.exitCode == 0) { "Linux ARM64 test discovery failed: ${listing.output}" }
+        val tests = listing.output.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+        check(tests.firstOrNull() == "$DESKTOP_RUNTIME_TEST_CLASS." &&
+            tests.drop(1).toSet() == desktopRuntimeTestMethods && tests.size == desktopRuntimeTestMethods.size + 1) {
+            "Linux ARM64 test executable has an unexpected test set"
+        }
+        desktopRuntimeTestMethods.forEach { method ->
+            val result = runner(listOf(
+                test.absolutePath, "--ktest_filter=$DESKTOP_RUNTIME_TEST_CLASS.$method", "--ktest_logger=SILENT",
+            ), processEnvironment)
+            check(result.exitCode == 0) { "Linux ARM64 desktop test failed ($method): ${result.output}" }
+        }
+    } finally {
+        runtimeRoot.deleteRecursively()
+    }
+    report.parentFile.mkdirs()
+    report.writeText(buildString {
+        append("<testsuite tests=\"4\" skipped=\"0\" failures=\"0\" errors=\"0\">\n")
+        desktopRuntimeTestMethods.forEach { method ->
+            append("  <testcase classname=\"linuxArm64Test.$DESKTOP_RUNTIME_TEST_CLASS\" name=\"")
+                .append(method).append("\"/>\n")
+        }
+        append("</testsuite>\n")
+    })
+    verifyDesktopRuntimeTestReport(report, ARM_TARGET)
+    evidence.atomicWriteJson(buildDesktopRuntimeEvidence(DesktopRuntimeEvidenceValues(
+        candidateCommit, ARM_TARGET, binarySha256, supervisorSha256, classifier.releaseDigest(),
+    )))
+}
+
+internal fun runDesktopEvidenceProcess(
+    command: List<String>,
+    environment: Map<String, String>,
+): DesktopEvidenceProcessResult {
+    val log = Files.createTempFile("desktop-evidence-process", ".log").toFile()
+    try {
+        val process = ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log).apply {
+            environment().putAll(environment)
+        }.start()
+        check(process.waitFor(5, TimeUnit.MINUTES)) {
+            process.destroyForcibly()
+            "Linux ARM64 desktop test timed out"
+        }
+        return DesktopEvidenceProcessResult(process.exitValue(), log.readText())
+    } finally {
+        log.delete()
+    }
 }
 
 fun main(arguments: Array<String>) {

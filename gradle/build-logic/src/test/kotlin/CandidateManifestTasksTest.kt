@@ -14,14 +14,16 @@ class CandidateManifestTasksTest {
             .first { it.resolve("gradle/build-logic/src/main/kotlin/CandidatePayloadTasks.kt").isFile }
         listOf("CandidatePayloadTasks.kt", "ProtectedCandidatePayload.kt").forEach { name ->
             val source = repository.resolve("gradle/build-logic/src/main/kotlin/$name").readText()
-            assertTrue("candidateEvidenceArrayNames.forEach" in source, name)
+            assertTrue("candidatePayloadRecords(" in source, name)
             listOf(
-                "desktopRuntime", "jvmRuntime", "nodeRuntime", "nodeWasmRuntime",
-                "androidRuntime", "resourceMeasurements",
+                "desktopRuntime", "jvmRuntime", "nodeRuntime", "nodeWasmRuntime", "androidRuntime",
             ).forEach { field ->
                 assertFalse("releaseArray(\"$field\")" in source, "$name hard-codes $field")
             }
         }
+        assertTrue("candidateEvidenceArrayNames.forEach" in repository.resolve(
+            "gradle/build-logic/src/main/kotlin/CandidatePayloadTasks.kt",
+        ).readText())
     }
 
     @Test
@@ -47,7 +49,7 @@ class CandidateManifestTasksTest {
         assertFailsWith<IllegalStateException> {
             verifyCandidatePayload(fixture.manifest, fixture.payload, VERSION, "v$VERSION", COMMIT, fixture.policyFiles)
         }
-        assertEquals(8, manifest.releaseInt("schemaVersion"))
+        assertEquals(9, manifest.releaseInt("schemaVersion"))
         assertTrue(manifest.releaseBoolean("protectedCandidate"))
         assertEquals(
             fixture.swiftPmProof.name,
@@ -81,7 +83,7 @@ class CandidateManifestTasksTest {
         val old = fixture.root.resolve("old.json").apply {
             writeText(releaseJson.encodeToString(
                 kotlinx.serialization.json.JsonElement.serializer(), manifest,
-            ).replace("\"schemaVersion\": 8", "\"schemaVersion\": 7"))
+            ).replace("\"schemaVersion\": 9", "\"schemaVersion\": 8"))
         }
         assertFailsWith<IllegalStateException> { verifyCandidateManifestStructure(old.readReleaseObject()) }
         val provenance = fixture.ciProvenance.readBytes()
@@ -222,6 +224,17 @@ class CandidateManifestTasksTest {
         fixture.artifactMetrics.delete()
         val failure = assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
         assertTrue(failure.message.orEmpty().contains("Artifact metrics"))
+    }
+
+    @Test
+    fun `iOS runtime metrics are validated and transported directly`() = withFixture { fixture ->
+        val manifest = buildCandidateManifest(fixture.inputs)
+        assertEquals(
+            "runtime-metrics.json",
+            manifest.releaseObject("evidence").releaseObject("iosRuntimeMetrics").releaseString("fileName"),
+        )
+        writeTestIosRuntimeMetrics(fixture.runtimeMetrics, startup = 30_000)
+        assertFailsWith<IllegalStateException> { buildCandidateManifest(fixture.inputs) }
     }
 
     @Test

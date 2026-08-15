@@ -1,10 +1,6 @@
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import java.time.Duration
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
@@ -36,17 +32,7 @@ abstract class PreparePinnedArchiveTask : DefaultTask() {
         if (localArchive.isPresent) {
             Files.copy(localArchive.get().asFile.toPath(), temporary.toPath(), StandardCopyOption.REPLACE_EXISTING)
         } else {
-            val uri = URI(sourceUrl.get())
-            check(uri.scheme == "https") { "Pinned archive URL must use HTTPS" }
-            val request = HttpRequest.newBuilder(uri).timeout(Duration.ofMinutes(5)).GET().build()
-            val response = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(Duration.ofSeconds(60))
-                .build()
-                .send(request, HttpResponse.BodyHandlers.ofFile(temporary.toPath()))
-            check(response.statusCode() in 200..299 && response.uri().scheme == "https") {
-                "Pinned archive download failed"
-            }
+            downloadHttps(URI(sourceUrl.get()), temporary.toPath())
         }
         check(temporary.releaseDigest() == expected) { "Pinned archive SHA-256 mismatch" }
         Files.move(temporary.toPath(), output.toPath(), StandardCopyOption.REPLACE_EXISTING)

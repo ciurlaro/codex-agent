@@ -1,6 +1,5 @@
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ArchiveOperations
@@ -90,7 +89,7 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
         val temporary = Files.createTempDirectory(temporaryDir.toPath(), "source-")
         try {
             val archive = sourceArchive.get().asFile
-            check(archive.sha256() == archiveSha256.get()) {
+            check(archive.releaseDigest() == archiveSha256.get()) {
                 "Codex iOS source archive SHA-256 mismatch"
             }
 
@@ -109,12 +108,12 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
                 into(staged)
             }
             val cargoLock = staged.resolve("codex-rs/Cargo.lock")
-            check(cargoLock.isFile && cargoLock.sha256() == cargoLockSha256.get()) {
+            check(cargoLock.isFile && cargoLock.releaseDigest() == cargoLockSha256.get()) {
                 "Codex iOS Cargo.lock SHA-256 mismatch"
             }
 
             val sqliteArchive = this.sqliteArchive.get().asFile
-            check(sqliteArchive.sha256() == sqliteArchiveSha256.get()) {
+            check(sqliteArchive.releaseDigest() == sqliteArchiveSha256.get()) {
                 "libsqlite3-sys archive SHA-256 mismatch"
             }
             val sqliteExtracted = temporary.resolve("sqlite-extracted").toFile().also { it.mkdirs() }
@@ -131,14 +130,14 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
             }
             val sqliteRoot = sqliteRoots.single()
             val sqliteSource = sqliteRoot.resolve("sqlite3/sqlite3.c")
-            check(sqliteSource.isFile && sqliteSource.sha256() == sqliteSourceSha256.get()) {
+            check(sqliteSource.isFile && sqliteSource.releaseDigest() == sqliteSourceSha256.get()) {
                 "libsqlite3-sys sqlite3.c SHA-256 mismatch"
             }
             exec.exec {
                 workingDir(sqliteRoot)
                 commandLine("patch", "-p1", "-N", "-i", sqlitePatch.get().asFile.absolutePath)
             }
-            check(sqliteSource.sha256() == patchedSqliteSourceSha256.get()) {
+            check(sqliteSource.releaseDigest() == patchedSqliteSourceSha256.get()) {
                 "Patched libsqlite3-sys sqlite3.c SHA-256 mismatch"
             }
             files.copy {
@@ -152,9 +151,9 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
                     commandLine("patch", "-p1", "-N", "-i", patch.absolutePath)
                 }
             }
-            check(cargoLock.sha256() == preparedCargoLockSha256.get()) {
+            check(cargoLock.releaseDigest() == preparedCargoLockSha256.get()) {
                 "Prepared Codex iOS Cargo.lock SHA-256 mismatch: " +
-                    "expected=${preparedCargoLockSha256.get()} actual=${cargoLock.sha256()}"
+                    "expected=${preparedCargoLockSha256.get()} actual=${cargoLock.releaseDigest()}"
             }
             files.copy {
                 from(bridgeSource)
@@ -181,14 +180,4 @@ abstract class PrepareCodexIosSourceTask @Inject constructor(
         check(value.matches(Regex("[0-9a-f]{64}"))) { "invalid Codex iOS source archive SHA-256" }
     }
 
-    private fun java.io.File.sha256(): String = inputStream().use { input ->
-        val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
-            digest.update(buffer, 0, count)
-        }
-        digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
-    }
 }

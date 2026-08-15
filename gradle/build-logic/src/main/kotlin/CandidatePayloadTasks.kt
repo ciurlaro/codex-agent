@@ -34,18 +34,10 @@ internal fun verifyCandidatePayload(
     check(manifest.releaseString("version") == expectedVersion) { "Candidate version mismatch" }
     check(manifest.releaseString("releaseTag") == expectedTag) { "Candidate release tag mismatch" }
     check(manifest.releaseString("candidateCommit") == expectedCommit) { "Candidate commit mismatch" }
-    val artifacts = manifest.releaseObject("artifacts")
     val evidence = manifest.releaseObject("evidence")
     val policies = manifest.releaseObject("policies")
-    val records = buildList {
-        artifacts.values.forEach { add(it as JsonObject) }
-        evidence.filterKeys { it !in candidateEvidenceArrayNames }
-            .values.forEach { add(it as JsonObject) }
-        candidateEvidenceArrayNames.forEach { name ->
-            evidence.releaseArray(name).forEach { add(it as JsonObject) }
-        }
-        policies.values.forEach { add(it as JsonObject) }
-    }
+    val artifacts = manifest.releaseObject("artifacts")
+    val records = candidatePayloadRecords(manifest)
     val transportedManifest = manifestFile.canonicalFile.parentFile == payload.canonicalFile
     val expectedFiles = records.map { it.releaseString("fileName") } +
         if (transportedManifest) listOf(manifestFile.name) else emptyList()
@@ -85,6 +77,16 @@ internal fun verifyCandidatePayload(
         put("swiftAsset", JsonPrimitive(artifacts.releaseObject("swiftPackage").releaseString("fileName")))
         put("centralBundle", JsonPrimitive(artifacts.releaseObject("centralBundle").releaseString("fileName")))
     }
+}
+
+internal fun candidatePayloadRecords(manifest: JsonObject): List<JsonObject> = buildList {
+    manifest.releaseObject("artifacts").values.forEach { add(it as JsonObject) }
+    val evidence = manifest.releaseObject("evidence")
+    evidence.filterKeys { it !in candidateEvidenceArrayNames }.values.forEach { add(it as JsonObject) }
+    candidateEvidenceArrayNames.forEach { name ->
+        evidence.releaseArray(name).forEach { add(it as JsonObject) }
+    }
+    manifest.releaseObject("policies").values.forEach { add(it as JsonObject) }
 }
 
 internal fun candidateGithubOutputs(result: JsonObject): String = buildString {

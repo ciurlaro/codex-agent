@@ -157,20 +157,17 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ inputs.candidateCommit }}
+      - uses: ./.github/actions/setup-kmp
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Compile only the supervisor on the ARM host
-        run: |
-          test "$RUNNER_OS" = Linux && test "$RUNNER_ARCH" = ARM64
-          output=build/desktop-supervisors/linuxArm64/codex-process-supervisor
-          mkdir -p "${output%/*}"
-          cc -std=c11 -D_POSIX_C_SOURCE=200809L -O2 -Wall -Wextra -Werror \
-            codex-agent-runtime-desktop/native/supervisor/codex_process_supervisor.c -o "$output"
-          chmod 755 "$output"
+        run: ./gradlew :codex-agent-runtime-desktop:compileDesktopProcessSupervisor --stacktrace
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           if-no-files-found: error
           overwrite: true
           name: codex-agent-ci-linux-arm64-supervisor-${{ inputs.candidateCommit }}
-          path: build/desktop-supervisors
+          path: codex-agent-runtime-desktop/build/supervisor
           compression-level: 0
           retention-days: 1
 

@@ -12,6 +12,12 @@ internal const val JVM_RUNTIME_RUNNER_ENTRYPOINT =
     "io.github.ciurlaro.codexmobile.appserver.runtime.JvmRuntimeEvidenceMain"
 internal const val JVM_RUNTIME_TEST_TASK = ":codex-agent-runtime-desktop:jvmTest"
 
+internal fun jvmRuntimeEvidenceTestTask(target: String) = if (target == "linuxArm64") {
+    LINUX_ARM64_RUNTIME_EVIDENCE_TASK
+} else {
+    JVM_RUNTIME_TEST_TASK
+}
+
 fun jvmRuntimeEvidenceFileName(target: String) = "jvm-runtime-$target.json"
 
 internal data class JvmRuntimeEvidenceValues(
@@ -35,7 +41,7 @@ internal fun buildJvmRuntimeEvidence(values: JvmRuntimeEvidenceValues): JsonObje
         put("classifier", JsonPrimitive(expected.classifier))
         put("runnerOs", JsonPrimitive(expected.runnerOs))
         put("runnerArch", JsonPrimitive(expected.runnerArch))
-        put("testTask", JsonPrimitive(JVM_RUNTIME_TEST_TASK))
+        put("testTask", JsonPrimitive(jvmRuntimeEvidenceTestTask(values.target)))
         put("testClass", JsonPrimitive(DESKTOP_RUNTIME_TEST_CLASS))
         put("testMethods", buildJsonArray { desktopRuntimeTestMethods.forEach { add(JsonPrimitive(it)) } })
         put("tests", JsonPrimitive(desktopRuntimeTestMethods.size))
@@ -97,7 +103,7 @@ internal fun validateJvmRuntimeEvidence(
             check(report.releaseString("classifier") == expected.classifier) { "classifier mismatch" }
             check(report.releaseString("runnerOs") == expected.runnerOs) { "runner OS mismatch" }
             check(report.releaseString("runnerArch") == expected.runnerArch) { "runner architecture mismatch" }
-            check(report.releaseString("testTask") == JVM_RUNTIME_TEST_TASK) { "test task mismatch" }
+            check(report.releaseString("testTask") == jvmRuntimeEvidenceTestTask(target)) { "test task mismatch" }
             check(report.releaseString("testClass") == DESKTOP_RUNTIME_TEST_CLASS) { "test class mismatch" }
             check(report.releaseArray("testMethods").map { it.jsonPrimitive.content }.toSet() ==
                 desktopRuntimeTestMethods) { "test methods mismatch" }

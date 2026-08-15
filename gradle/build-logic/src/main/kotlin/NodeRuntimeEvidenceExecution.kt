@@ -3,8 +3,6 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipFile
-import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
 
 internal data class NodeEvidenceProcessResult(val exitCode: Int, val output: String)
 
@@ -114,7 +112,7 @@ internal fun verifyNodeTestListing(output: String) {
 }
 
 internal fun verifyNodeRuntimeTestReport(file: File) {
-    val suite = nodeDocumentBuilderFactory().newDocumentBuilder().parse(file).documentElement
+    val suite = secureDocumentBuilderFactory(namespaceAware = true).newDocumentBuilder().parse(file).documentElement
     check(suite.tagName == "testsuite") { "Node test report has no testsuite root" }
     check(suite.getAttribute("tests").toInt() == nodeRuntimeTestMethods.size &&
         suite.getAttribute("skipped").toInt() == 0 && suite.getAttribute("failures").toInt() == 0 &&
@@ -147,15 +145,6 @@ private fun writeNodeRuntimeTestReport(file: File) {
         }
         append("</testsuite>\n")
     })
-}
-
-private fun nodeDocumentBuilderFactory() = DocumentBuilderFactory.newInstance().apply {
-    isNamespaceAware = true
-    setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-    setFeature("http://xml.org/sax/features/external-general-entities", false)
-    setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-    setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-    setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
 }
 
 internal fun runNodeEvidenceProcess(

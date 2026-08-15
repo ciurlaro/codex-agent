@@ -1,7 +1,5 @@
 import java.io.File
 import java.nio.file.Files
-import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -173,14 +171,7 @@ internal fun verifyMavenRepository(
 private fun File.isMavenSidecar(): Boolean = name.endsWith(".asc") || checksumAlgorithms.keys.any(name::endsWith)
 
 private fun verifyGplPom(pom: File) {
-    val factory = DocumentBuilderFactory.newInstance().apply {
-        isNamespaceAware = true
-        setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        setFeature("http://xml.org/sax/features/external-general-entities", false)
-        setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-        setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-        setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
-    }
+    val factory = secureDocumentBuilderFactory(namespaceAware = true)
     val licenses = factory.newDocumentBuilder().parse(pom).getElementsByTagNameNS("*", "license")
     val valid = (0 until licenses.length).map { licenses.item(it) }.any { license ->
         fun value(name: String): String = (license as org.w3c.dom.Element)

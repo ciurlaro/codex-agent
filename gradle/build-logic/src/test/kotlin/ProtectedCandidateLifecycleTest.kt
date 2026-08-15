@@ -196,7 +196,7 @@ class ProtectedCandidateLifecycleTest {
         fixture.swiftPmProof.appendText("tampered")
         assertFailsWith<IllegalStateException> { fixture.stage() }
         fixture.swiftPmProof.writeBytes(originalProof)
-        fixture.resources.delete()
+        fixture.runtimeMetrics.delete()
         assertFailsWith<IllegalStateException> { fixture.stage() }
     }
 

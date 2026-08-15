@@ -6,6 +6,8 @@ import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.MessageDigest
 import java.util.zip.ZipFile
+import javax.xml.XMLConstants
+import javax.xml.parsers.DocumentBuilderFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -22,6 +24,23 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 internal val releaseJson = Json { prettyPrint = true }
+
+internal fun secureDocumentBuilderFactory(
+    namespaceAware: Boolean = false,
+    allowDoctype: Boolean = false,
+) =
+    DocumentBuilderFactory.newInstance().apply {
+        isNamespaceAware = namespaceAware
+        setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+        setFeature("http://apache.org/xml/features/disallow-doctype-decl", !allowDoctype)
+        setFeature("http://xml.org/sax/features/external-general-entities", false)
+        setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+        setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+        setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+        isXIncludeAware = false
+        isExpandEntityReferences = false
+    }
 
 internal fun File.readReleaseObject(): JsonObject = releaseJson.parseToJsonElement(readText()).jsonObject
 

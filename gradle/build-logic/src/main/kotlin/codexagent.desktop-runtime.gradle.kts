@@ -1,14 +1,9 @@
-import java.io.File
-import java.security.MessageDigest
 import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.publish.PublishingExtension
 import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.tasks.bundling.Zip
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
-
-fun File.desktopSha256(): String = MessageDigest.getInstance("SHA-256")
-    .digest(readBytes()).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
 val generateDesktopDistributionSource = tasks.register<GenerateDesktopDistributionSourceTask>(
     "generateDesktopDistributionSource",

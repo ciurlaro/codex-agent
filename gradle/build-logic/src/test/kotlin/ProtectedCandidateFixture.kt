@@ -40,9 +40,7 @@ internal class ProtectedCandidatePayloadFixture(
     val privacy = root.resolve("privacy.json").apply { atomicWriteJson(buildJsonObject {
         put("passed", JsonPrimitive(true)); reviews?.let { put("reviewSha256", JsonPrimitive(it.releaseDigest())) }
     }) }
-    val resources = root.resolve("resources.json").apply {
-        atomicWriteJson(buildJsonObject { put("exitCode", JsonPrimitive(0)) })
-    }
+    val runtimeMetrics = writeTestIosRuntimeMetrics(root.resolve("runtime-metrics.json"))
     val artifactMetrics = root.resolve("artifact-metrics.json").apply { atomicWriteJson(buildJsonObject {
         put("compressedXcframeworkBytes", JsonPrimitive(1)); put("deviceFrameworkBytes", JsonPrimitive(1))
         put("sampleAppInstallBytes", JsonPrimitive(1))
@@ -65,7 +63,7 @@ internal class ProtectedCandidatePayloadFixture(
         central, maven, consumer, ciProvenance, desktop, runtimes.classifiers.values.toList(),
         runtimes.jvmEvidence, runtimes.jvmRunner, runtimes.nodeEvidence, runtimes.nodeRunner,
         runtimes.nodeWasmEvidence, runtimes.nodeWasmRunner, runtimes.androidEvidence,
-        iosNative, privacy, artifactMetrics, listOf(resources), approvals, privacyManifest, dataFlow,
+        iosNative, privacy, artifactMetrics, runtimeMetrics, approvals, privacyManifest, dataFlow,
         reviews, packageSwift, desktopManifest, desktopLicense, desktopNotice,
     )
     val manifest = root.resolve("candidate-manifest.json").apply { atomicWriteJson(buildCandidateManifest(inputs)) }
@@ -74,7 +72,7 @@ internal class ProtectedCandidatePayloadFixture(
         *runtimes.jvmEvidence.toTypedArray(), runtimes.jvmRunner,
         *runtimes.nodeEvidence.toTypedArray(), runtimes.nodeRunner,
         *runtimes.nodeWasmEvidence.toTypedArray(), runtimes.nodeWasmRunner,
-        *runtimes.androidEvidence.toTypedArray(), iosNative, privacy, artifactMetrics, resources,
+        *runtimes.androidEvidence.toTypedArray(), iosNative, privacy, artifactMetrics, runtimeMetrics,
         approvals, privacyManifest, dataFlow, packageSwift, desktopManifest, desktopLicense, desktopNotice,
     ) + listOfNotNull(reviews)
     val payload = root.resolve("payload")

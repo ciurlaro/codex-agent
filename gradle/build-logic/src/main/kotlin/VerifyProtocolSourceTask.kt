@@ -1,6 +1,5 @@
-import groovy.json.JsonSlurper
 import java.io.File
-import java.security.MessageDigest
+import kotlinx.serialization.json.JsonObject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -45,40 +44,30 @@ abstract class VerifyProtocolSourceTask : DefaultTask() {
     fun verifyProtocol() {
         val schema = protocolSchema.get().asFile
         val completeSchema = completeProtocolSchema.get().asFile
-        check(schema.sha256() == expectedSchemaSha256.get()) {
-            "Pinned App Server protocol schema digest changed: ${schema.sha256()}"
+        check(schema.releaseDigest() == expectedSchemaSha256.get()) {
+            "Pinned App Server protocol schema digest changed: ${schema.releaseDigest()}"
         }
-        check(completeSchema.sha256() == expectedCompleteSchemaSha256.get()) {
+        check(completeSchema.releaseDigest() == expectedCompleteSchemaSha256.get()) {
             "Pinned complete App Server protocol schema digest changed"
         }
         val provenanceFile = provenance.get().asFile
         verifyGeneratedOutputs(provenanceFile, provenanceFile.parentFile.parentFile.parentFile)
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun verifyGeneratedOutputs(provenanceFile: File, root: File) {
-        val provenanceData = JsonSlurper().parse(provenanceFile) as Map<String, Any?>
-        val generator = provenanceData["generator"] as? Map<String, Any?>
-            ?: error("Protocol generator provenance is missing")
-        check(generator["version"] == "3") { "Unsupported protocol generator provenance" }
-        val outputs = generator["outputs"] as? List<Map<String, String>>
-            ?: error("Generated protocol outputs are missing from provenance")
+        val generator = provenanceFile.readReleaseObject().releaseObject("generator")
+        check(generator.releaseString("version") == "3") { "Unsupported protocol generator provenance" }
+        val outputs = generator.releaseArray("outputs").map {
+            it as? JsonObject ?: error("Invalid generated protocol output provenance")
+        }
         check(outputs.isNotEmpty()) { "Generated protocol output provenance is empty" }
         outputs.forEach { output ->
-            val file = root.resolve(output.getValue("path"))
-            check(file.isFile) { "Generated protocol output is missing: ${output.getValue("path")}" }
-            check(file.sha256() == output.getValue("sha256")) {
-                "Generated protocol output drifted: ${output.getValue("path")}"
+            val path = output.releaseString("path")
+            val file = root.resolve(path)
+            check(file.isFile) { "Generated protocol output is missing: $path" }
+            check(file.releaseDigest() == output.releaseString("sha256")) {
+                "Generated protocol output drifted: $path"
             }
         }
-    }
-
-    private fun File.sha256(): String = inputStream().use { input ->
-        val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        generateSequence { input.read(buffer).takeIf { it >= 0 } }.forEach { count ->
-            digest.update(buffer, 0, count)
-        }
-        digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 }

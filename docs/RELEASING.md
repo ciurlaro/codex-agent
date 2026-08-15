@@ -73,12 +73,17 @@ Useful local gates while developing are:
 actionlint
 ./gradlew -p gradle/build-logic test
 ./gradlew verifyReleaseMetadata -PcodexAgent.releaseTag=v0.2.0
+export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
+./gradlew :codex-agent-runtime-ios:preflightIosRuntime
+./gradlew verifyIosRuntime
 ./gradlew verifyRepository
-DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
-  ./gradlew verifyIosRuntime
 ```
 
 None of these commands requires a connected Android phone.
+Follow the [iOS development verification order](RUNTIME_IOS.md#verification)
+before starting the expensive Apple gate; it includes the scoped clean,
+simulator-only Swift typecheck, source freeze, disk budget, and exact-evidence
+reuse rules.
 
 ## Manual ChatGPT acceptance
 

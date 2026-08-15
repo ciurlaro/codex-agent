@@ -13,7 +13,7 @@ class NodeRuntimeEvidenceTasksTest {
     fun `Node owns host tests while build logic owns split ARM execution`() {
         nodeRuntimeBackends.forEach { backend ->
             assertEquals(
-                ":build-logic:executeLinuxArm64NodeRuntimeEvidenceBundle",
+                LINUX_ARM64_RUNTIME_EVIDENCE_TASK,
                 nodeRuntimeEvidenceTestTask("linuxArm64", backend),
             )
             val prefix = if (backend == NODE_RUNTIME_JS_BACKEND) "nodeRuntime" else "nodeWasmRuntime"

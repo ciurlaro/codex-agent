@@ -1,4 +1,3 @@
-import groovy.json.JsonSlurper
 import java.io.File
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
@@ -7,9 +6,8 @@ import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeTest
 private val codexRevision = "25af12f7e61572b0bc18ddb1008be543b91519b0"
 private val codexArchiveSha256 = "42f627a7b32db41582c73a8eafd9ec4b35d6c3ff81bd3d4455cfd6224d79d329"
 private val codexCargoLockSha256 = "e0843448b5767ff36a2a3b15212feb480cd4eaafe8a0c0ca08547e3c7da03a05"
-private val resolvedCargoLockSha256 =
-    (JsonSlurper().parse(layout.projectDirectory.file("native/provenance.json").asFile) as Map<*, *>)
-        .get("preparedCargoLockSha256") as String
+private val resolvedCargoLockSha256 = layout.projectDirectory.file("native/provenance.json").asFile
+    .readReleaseObject().releaseString("preparedCargoLockSha256")
 private val libsqlite3SysVersion = "0.37.0"
 private val libsqlite3SysArchiveSha256 = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 private val expectedSqliteSourceSha256 = "9512509b1bccb7461f79bea8aad6280ae4699e925fa4804381b71f59e7efb0c5"
@@ -111,6 +109,32 @@ val verifyAppleToolchain = registerAppleToolchainVerificationTask(
     expectedXcodeBuild,
     expectedSwiftVersion,
 )
+tasks.register<VerifyIosFreeDiskSpaceTask>("preflightIosRuntime") {
+    group = "verification"
+    description = "Requires enough free disk and the pinned Apple toolchain before the full iOS gate."
+    dependsOn(verifyAppleToolchain)
+    minimumFreeGiB.set(
+        providers.gradleProperty("codexAgent.iosMinimumFreeDiskGiB").map { value -> value.toLong() }.orElse(40L),
+    )
+    workspaceDirectory.set(rootProject.layout.projectDirectory)
+    reportFile.set(layout.buildDirectory.file("reports/ios-development/preflight.json"))
+}
+tasks.register<VerifySwiftSimulatorCompilationTask>("verifyCodexAgentSwiftSimulatorCompilation") {
+    group = "verification"
+    description = "Compiles the Swift package and tests against only the simulator framework."
+    dependsOn(verifyAppleToolchain, "linkDebugFrameworkIosSimulatorArm64")
+    packageManifest.set(layout.projectDirectory.file("apple/Package.swift"))
+    sourcesDirectory.set(layout.projectDirectory.dir("apple/Sources"))
+    testsDirectory.set(layout.projectDirectory.dir("apple/Tests"))
+    simulatorFrameworkDirectory.set(
+        layout.buildDirectory.dir("bin/iosSimulatorArm64/debugFramework/CodexAgent.framework"),
+    )
+    this.expectedXcodeVersion.set(expectedXcodeVersion)
+    this.expectedXcodeBuild.set(expectedXcodeBuild)
+    this.expectedSwiftVersion.set(expectedSwiftVersion)
+    derivedDataDirectory.set(layout.buildDirectory.dir("swift-simulator-compilation-derived-data"))
+    reportFile.set(layout.buildDirectory.file("reports/ios-development/swift-simulator-compilation.json"))
+}
 val appleDistributionTasks = registerIosAppleDistributionTasks(expectedSwiftTestCount, pinnedRustToolchain)
 val appleReleaseTasks = registerIosAppleReleaseVerificationTasks(
     appleDistributionTasks,

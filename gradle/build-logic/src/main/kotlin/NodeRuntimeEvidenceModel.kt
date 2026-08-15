@@ -46,7 +46,7 @@ fun nodeRuntimeTestReportFileName(target: String, runtimeBackend: String = NODE_
 
 internal fun nodeRuntimeEvidenceTestTask(target: String, runtimeBackend: String = NODE_RUNTIME_JS_BACKEND): String {
     requireNodeRuntimeBackend(runtimeBackend)
-    if (target == "linuxArm64") return ":build-logic:executeLinuxArm64NodeRuntimeEvidenceBundle"
+    if (target == "linuxArm64") return LINUX_ARM64_RUNTIME_EVIDENCE_TASK
     val prefix = if (runtimeBackend == NODE_RUNTIME_JS_BACKEND) "nodeRuntime" else "nodeWasmRuntime"
     return ":codex-agent-runtime-node:$prefix${target.replaceFirstChar(Char::uppercase)}Test"
 }

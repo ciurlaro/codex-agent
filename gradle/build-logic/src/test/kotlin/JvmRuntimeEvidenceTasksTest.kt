@@ -30,7 +30,7 @@ class JvmRuntimeEvidenceTasksTest {
             val proof = inspectDesktopClassifier(target, readDesktopCodexManifest(fixture.manifest),
                 fixture.classifiers.getValue(target))
             assertEquals(expected.classifier, record.releaseString("classifier"))
-            assertEquals(JVM_RUNTIME_TEST_TASK, record.releaseString("testTask"))
+            assertEquals(jvmRuntimeEvidenceTestTask(target), record.releaseString("testTask"))
             assertEquals(proof.archiveSha256, record.releaseString("classifierArchiveSha256"))
             assertEquals(proof.binarySha256, record.releaseString("appServerBinarySha256"))
             assertEquals(proof.supervisorSha256, record.releaseString("supervisorBinarySha256"))

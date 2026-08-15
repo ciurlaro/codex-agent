@@ -173,60 +173,14 @@ abstract class CopyCandidateFileTask : DefaultTask() {
 }
 
 @DisableCachingByDefault(because = "Final verification must recompute every candidate binding")
-abstract class VerifyProtectedCandidateManifestTask : DefaultTask() {
+abstract class VerifyProtectedCandidateManifestTask : CandidateManifestInputsTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val manifestFile: RegularFileProperty
-    @get:Input abstract val candidateVersion: Property<String>
-    @get:Input abstract val releaseTag: Property<String>
-    @get:Input abstract val candidateCommit: Property<String>
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftZip: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftChecksum: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftPmProof: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val centralBundle: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val centralInventory: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val mavenInventory: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val kmpConsumer: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val ciProvenance: RegularFileProperty
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopEvidence: ConfigurableFileCollection
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val desktopClassifierArchives: ConfigurableFileCollection
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val jvmEvidence: ConfigurableFileCollection
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val jvmRuntimeRunner: RegularFileProperty
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val nodeEvidence: ConfigurableFileCollection
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val nodeRuntimeRunner: RegularFileProperty
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val nodeWasmEvidence: ConfigurableFileCollection
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val nodeWasmRuntimeRunner: RegularFileProperty
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val androidEvidence: ConfigurableFileCollection
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val iosNativeEvidence: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyAudit: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val artifactMetrics: RegularFileProperty
-    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val resourceReports: ConfigurableFileCollection
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val approvalsFile: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyManifest: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val privacyDataFlowReview: RegularFileProperty
-    @get:Optional @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
-    abstract val privacyReviews: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val packageSwift: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopDistributionManifest: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledLicense: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val desktopBundledNotice: RegularFileProperty
 
     init { outputs.upToDateWhen { false } }
 
     @TaskAction
     fun verify() = verifyProtectedCandidateManifest(manifestFile.asFile.get(), candidateInputs())
 
-    internal fun candidateInputs() = CandidateInputFiles(
-        candidateVersion.get(), releaseTag.get(), candidateCommit.get(),
-        swiftZip.asFile.get(), swiftChecksum.asFile.get(), swiftPmProof.asFile.get(),
-        centralBundle.asFile.get(), centralInventory.asFile.get(), mavenInventory.asFile.get(),
-        kmpConsumer.asFile.get(), ciProvenance.asFile.get(), desktopEvidence.sorted(), desktopClassifierArchives.sorted(),
-        jvmEvidence.sorted(), jvmRuntimeRunner.asFile.get(), nodeEvidence.sorted(),
-        nodeRuntimeRunner.asFile.get(), nodeWasmEvidence.sorted(), nodeWasmRuntimeRunner.asFile.get(),
-        androidEvidence.sorted(), iosNativeEvidence.asFile.get(), privacyAudit.asFile.get(),
-        artifactMetrics.asFile.get(), resourceReports.sorted(), approvalsFile.asFile.get(),
-        privacyManifest.asFile.get(), privacyDataFlowReview.asFile.get(), privacyReviews.orNull?.asFile,
-        packageSwift.asFile.get(), desktopDistributionManifest.asFile.get(),
-        desktopBundledLicense.asFile.get(), desktopBundledNotice.asFile.get(),
-    )
 }
 
 internal fun verifyProtectedCandidateManifest(manifest: File, inputs: CandidateInputFiles) {
@@ -234,5 +188,3 @@ internal fun verifyProtectedCandidateManifest(manifest: File, inputs: CandidateI
         "Candidate manifest does not match the exact current artifacts, evidence, and policies"
     }
 }
-
-private fun ConfigurableFileCollection.sorted() = files.sortedBy(File::getName)

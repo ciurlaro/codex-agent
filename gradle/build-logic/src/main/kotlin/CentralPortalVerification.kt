@@ -2,7 +2,6 @@ import java.io.File
 import java.io.InputStream
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets.UTF_8
-import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -34,7 +33,7 @@ internal fun CentralDeployment.verifyRemoteBundle(
             CentralExpectedFile(
                 entry.name,
                 entry.size,
-                archive.getInputStream(entry).use(InputStream::centralSha256),
+                archive.getInputStream(entry).use(InputStream::releaseDigest),
             )
         }
     }
@@ -49,7 +48,7 @@ internal fun CentralDeployment.verifyRemoteBundle(
             responseByteLimit = expected.bytes,
             digestResponse = true,
         ), sleeper)
-        val actualSha256 = response.contentSha256 ?: response.bytes.centralSha256()
+        val actualSha256 = response.contentSha256 ?: response.bytes.inputStream().use(InputStream::releaseDigest)
         check(response.contentLength == expected.bytes && actualSha256 == expected.sha256) {
             "Central deployment file mismatch: ${expected.name}"
         }
@@ -95,19 +94,6 @@ internal fun <T, R> parallelCentralMap(values: List<T>, transform: (T) -> R): Li
     }
     return outcomes.map { it.getOrThrow() }
 }
-
-private fun InputStream.centralSha256(): String {
-    val digest = MessageDigest.getInstance("SHA-256")
-    val buffer = ByteArray(64 * 1024)
-    while (true) {
-        val read = read(buffer)
-        if (read < 0) break
-        digest.update(buffer, 0, read)
-    }
-    return digest.digest().joinToString("") { "%02x".format(it) }
-}
-
-private fun ByteArray.centralSha256(): String = inputStream().use(InputStream::centralSha256)
 
 internal fun File.centralPurls(): Set<String> = ZipFile(this).use { archive ->
     val purls = centralBundleFiles(archive).filter { it.name.endsWith(".pom") }.map { entry ->

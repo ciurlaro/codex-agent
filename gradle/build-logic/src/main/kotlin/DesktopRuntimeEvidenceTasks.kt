@@ -1,6 +1,4 @@
 import java.io.File
-import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -42,7 +40,7 @@ internal val desktopRuntimeTestMethods = sortedSetOf(
 fun desktopRuntimeEvidenceFileName(target: String) = "desktop-runtime-$target.json"
 
 internal fun desktopRuntimeEvidenceTestTask(target: String) = if (target == "linuxArm64") {
-    ":build-logic:executeLinuxArm64DesktopEvidenceBundle"
+    LINUX_ARM64_RUNTIME_EVIDENCE_TASK
 } else {
     ":codex-agent-runtime-desktop:${target}Test"
 }
@@ -203,7 +201,7 @@ internal fun validateDesktopRuntimeEvidence(
 }
 
 internal fun verifyDesktopRuntimeTestReport(file: File, target: String) {
-    val suite = secureDocumentBuilderFactory().newDocumentBuilder().parse(file).documentElement
+    val suite = secureDocumentBuilderFactory(namespaceAware = true).newDocumentBuilder().parse(file).documentElement
     check(suite.tagName == "testsuite") { "Desktop test report has no testsuite root" }
     check(suite.getAttribute("tests").toInt() == desktopRuntimeTestMethods.size &&
         suite.getAttribute("skipped").toInt() == 0 && suite.getAttribute("failures").toInt() == 0 &&
@@ -221,13 +219,4 @@ internal fun verifyDesktopRuntimeTestReport(file: File, target: String) {
     check(cases.map { it.getAttribute("name").substringBefore('[') }.toSet() == desktopRuntimeTestMethods) {
         "Desktop smoke test methods are incomplete or unexpected"
     }
-}
-
-private fun secureDocumentBuilderFactory() = DocumentBuilderFactory.newInstance().apply {
-    isNamespaceAware = true
-    setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-    setFeature("http://xml.org/sax/features/external-general-entities", false)
-    setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-    setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-    setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
 }

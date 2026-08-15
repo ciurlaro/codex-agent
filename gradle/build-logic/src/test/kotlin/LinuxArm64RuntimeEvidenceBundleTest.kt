@@ -65,6 +65,19 @@ class LinuxArm64RuntimeEvidenceBundleTest {
             assertEquals(0, calls.get())
         }
 
+    @Test
+    fun `unexpected native test inventory fails before a test runs`() =
+        withNodeRuntimeEvidenceFixture { fixture ->
+            val inputs = inputs(fixture)
+            stage(inputs)
+            val calls = AtomicInteger()
+            assertFailsWith<IllegalStateException> {
+                execute(inputs, calls, desktopListing() + "  unexpectedTest\n")
+            }
+            assertEquals(1, calls.get())
+            assertFalse(inputs.desktopEvidence.exists())
+        }
+
     private fun inputs(fixture: NodeRuntimeEvidenceFixture): Inputs {
         val root = fixture.root
         val test = root.resolve("linuxArm64-test.kexe").apply { writeText("native-test") }
@@ -91,14 +104,18 @@ class LinuxArm64RuntimeEvidenceBundleTest {
         COMMIT, input.test, input.classifier, input.manifest, input.jvm, input.js, input.wasm, input.bundle,
     )
 
-    private fun execute(input: Inputs, calls: AtomicInteger? = null) = executeLinuxArm64RuntimeEvidenceBundle(
+    private fun execute(
+        input: Inputs,
+        calls: AtomicInteger? = null,
+        nativeListing: String = desktopListing(),
+    ) = executeLinuxArm64RuntimeEvidenceBundle(
         COMMIT, input.bundle, "java", "node", input.desktopEvidence, input.desktopReport, input.jvmEvidence,
         input.fixture.evidence("linuxArm64"), input.fixture.report("linuxArm64"),
         input.fixture.evidence("linuxArm64", NODE_RUNTIME_WASM_BACKEND),
         input.fixture.report("linuxArm64", NODE_RUNTIME_WASM_BACKEND), ARM_ENV,
         desktopRunner = { command, _ ->
             calls?.incrementAndGet()
-            if (command.contains("--ktest_list_tests")) DesktopEvidenceProcessResult(0, desktopListing())
+            if (command.contains("--ktest_list_tests")) DesktopEvidenceProcessResult(0, nativeListing)
             else DesktopEvidenceProcessResult(0, "")
         },
         jvmRunner = { command, _ ->

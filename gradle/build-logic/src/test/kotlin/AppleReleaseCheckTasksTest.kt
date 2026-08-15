@@ -11,6 +11,14 @@ import kotlinx.serialization.json.buildJsonObject
 
 class AppleReleaseCheckTasksTest {
     @Test
+    fun `iOS preflight requires a positive 40 GiB disk budget`() {
+        val gibibyte = 1024L * 1024L * 1024L
+        assertEquals(40L * gibibyte, requireIosFreeDiskSpace(40L * gibibyte, 40))
+        assertFailsWith<IllegalArgumentException> { requireIosFreeDiskSpace(40L * gibibyte, 0) }
+        assertFailsWith<IllegalStateException> { requireIosFreeDiskSpace(39L * gibibyte, 40) }
+    }
+
+    @Test
     fun `toolchain output is checked without shell parsing`() {
         verifyAppleToolchainOutput(
             "Xcode 16.4\nBuild version 16F6\n",

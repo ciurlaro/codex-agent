@@ -11,6 +11,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -26,6 +27,19 @@ internal data class AppleArtifactMetrics(
     val deviceFrameworkBytes: Long,
     val sampleAppInstallBytes: Long,
 )
+
+private const val IOS_GIBIBYTE_BYTES = 1024L * 1024L * 1024L
+
+internal fun requireIosFreeDiskSpace(availableBytes: Long, minimumFreeGiB: Long): Long {
+    require(minimumFreeGiB > 0) { "Minimum iOS free disk space must be positive" }
+    val requiredBytes = Math.multiplyExact(minimumFreeGiB, IOS_GIBIBYTE_BYTES)
+    check(availableBytes >= requiredBytes) {
+        "iOS verification requires $minimumFreeGiB GiB free, but only " +
+            "${availableBytes / IOS_GIBIBYTE_BYTES} GiB is available. " +
+            "Run :codex-agent-runtime-ios:clean before trying again."
+    }
+    return requiredBytes
+}
 
 internal fun verifyAppleToolchainOutput(
     xcode: String,
@@ -152,6 +166,8 @@ abstract class VerifyAppleToolchainTask @Inject constructor(private val processe
     @get:Input abstract val expectedSwiftVersion: Property<String>
     @get:OutputDirectory abstract val reportDirectory: DirectoryProperty
 
+    init { outputs.upToDateWhen { false } }
+
     @TaskAction fun verify() {
         val xcode = processes.captureReleaseProcess(listOf("xcodebuild", "-version"))
         val swift = processes.captureReleaseProcess(listOf("swift", "--version"))
@@ -160,6 +176,30 @@ abstract class VerifyAppleToolchainTask @Inject constructor(private val processe
         )
         reportDirectory.file("xcode.txt").get().asFile.apply { parentFile.mkdirs(); writeText(xcode) }
         reportDirectory.file("swift.txt").get().asFile.writeText(swift)
+    }
+}
+
+@DisableCachingByDefault(because = "Available disk space is live host state")
+abstract class VerifyIosFreeDiskSpaceTask : DefaultTask() {
+    @get:Input abstract val minimumFreeGiB: Property<Long>
+    @get:Internal abstract val workspaceDirectory: DirectoryProperty
+    @get:OutputFile abstract val reportFile: RegularFileProperty
+
+    init { outputs.upToDateWhen { false } }
+
+    @TaskAction fun verify() {
+        val availableBytes = Files.getFileStore(workspaceDirectory.get().asFile.toPath()).usableSpace
+        val minimum = minimumFreeGiB.get()
+        val requiredBytes = Math.multiplyExact(minimum, IOS_GIBIBYTE_BYTES)
+        reportFile.get().asFile.atomicWriteJson(buildJsonObject {
+            put("schemaVersion", JsonPrimitive(1))
+            put("availableBytes", JsonPrimitive(availableBytes))
+            put("requiredBytes", JsonPrimitive(requiredBytes))
+        })
+        requireIosFreeDiskSpace(availableBytes, minimum)
+        logger.lifecycle(
+            "iOS preflight passed: ${availableBytes / IOS_GIBIBYTE_BYTES} GiB free; $minimum GiB required",
+        )
     }
 }
 

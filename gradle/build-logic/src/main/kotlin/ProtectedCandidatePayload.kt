@@ -95,13 +95,5 @@ internal fun stageProtectedCandidatePayload(
     verificationFile.atomicWriteJson(result)
 }
 
-private fun candidatePayloadNames(manifest: JsonObject): List<String> = buildList {
-    manifest.releaseObject("artifacts").values.forEach { add((it as JsonObject).releaseString("fileName")) }
-    val evidence = manifest.releaseObject("evidence")
-    evidence.filterKeys { it !in candidateEvidenceArrayNames }.values
-        .forEach { add((it as JsonObject).releaseString("fileName")) }
-    candidateEvidenceArrayNames.forEach { name ->
-        evidence.releaseArray(name).forEach { add((it as JsonObject).releaseString("fileName")) }
-    }
-    manifest.releaseObject("policies").values.forEach { add((it as JsonObject).releaseString("fileName")) }
-}
+private fun candidatePayloadNames(manifest: JsonObject) =
+    candidatePayloadRecords(manifest).map { it.releaseString("fileName") }

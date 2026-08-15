@@ -1,7 +1,6 @@
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import java.security.MessageDigest
 import javax.inject.Inject
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ArchiveOperations
@@ -54,7 +53,7 @@ abstract class PrepareCodexRuntimeTask @Inject constructor(
             } else {
                 downloadHttps(url, archive)
             }
-            check(archive.toFile().sha256() == archiveSha256.get()) {
+            check(archive.toFile().releaseDigest() == archiveSha256.get()) {
                 "Codex runtime archive SHA-256 mismatch"
             }
             val extracted = temporary.resolve("extracted").toFile().also { it.mkdirs() }
@@ -67,7 +66,7 @@ abstract class PrepareCodexRuntimeTask @Inject constructor(
                 "Codex runtime archive must contain exactly the root executable '$ASSET'"
             }
             val runtime = entries.single()
-            check(runtime.sha256() == binarySha256.get()) { "Codex runtime binary SHA-256 mismatch" }
+            check(runtime.releaseDigest() == binarySha256.get()) { "Codex runtime binary SHA-256 mismatch" }
             installAtomically(runtime)
         } finally {
             temporary.toFile().deleteRecursively()
@@ -96,17 +95,6 @@ abstract class PrepareCodexRuntimeTask @Inject constructor(
 
     private fun requireHash(value: String, label: String) {
         check(value.matches(Regex("[0-9a-f]{64}"))) { "invalid Codex runtime $label SHA-256" }
-    }
-
-    private fun java.io.File.sha256(): String = inputStream().use { input ->
-        val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
-            digest.update(buffer, 0, count)
-        }
-        digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
     companion object {

@@ -40,7 +40,7 @@ internal val protectedCandidatePhaseGatePaths = listOf(
         FIREBASE_ANDROID_VERIFY_TASK_PATH, ":stageProtectedFirebaseAndroidRuntimeEvidence",
     ),
     listOf(":verifyStagedKmpConsumer"),
-    listOf(":packageCentralBundle", ":measureProtectedCandidateResources"),
+    listOf(":packageCentralBundle"),
     listOf(":generateCandidateManifest", ":verifyCandidateManifest"),
 )
 
@@ -89,7 +89,7 @@ fun Project.registerProtectedCandidatePhases(
             generated.map { it.nodeWasmEvidence.files }, generated.flatMap { it.nodeWasmRuntimeRunner },
             generated.map { it.androidEvidence.files }, generated.flatMap { it.iosNativeEvidence },
             generated.flatMap { it.privacyAudit }, generated.flatMap { it.artifactMetrics },
-            generated.map { it.resourceReports }, generated.flatMap { it.approvalsFile },
+            generated.flatMap { it.iosRuntimeMetrics }, generated.flatMap { it.approvalsFile },
             generated.flatMap { it.privacyManifest }, generated.flatMap { it.privacyDataFlowReview },
             generated.map { it.privacyReviews.orNull?.asFile }, generated.flatMap { it.packageSwift },
             generated.flatMap { it.desktopDistributionManifest },

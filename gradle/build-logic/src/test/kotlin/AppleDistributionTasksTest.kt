@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import org.gradle.api.tasks.CacheableTask
 
 class AppleDistributionTasksTest {
     @Test
@@ -88,6 +89,20 @@ class AppleDistributionTasksTest {
         val xcodebuild = swiftAuthenticationXcodebuildCommand("device", root.resolve("derived"), root.resolve("tests.xcresult"))
         assertEquals("xcodebuild", xcodebuild.first())
         assertTrue("platform=iOS Simulator,id=device" in xcodebuild)
+        assertEquals(
+            listOf(
+                "xcodebuild", "-create-xcframework", "-framework", "/tmp/release args/CodexAgent.framework",
+                "-output", "/tmp/release args/CodexAgent.xcframework",
+            ),
+            swiftSimulatorXCFrameworkCommand(
+                root.resolve("CodexAgent.framework"),
+                root.resolve("CodexAgent.xcframework"),
+            ),
+        )
+        val simulatorBuild = swiftSimulatorBuildForTestingCommand(root.resolve("derived"))
+        assertTrue("generic/platform=iOS Simulator" in simulatorBuild)
+        assertEquals("build-for-testing", simulatorBuild.last())
+        assertTrue(VerifySwiftSimulatorCompilationTask::class.java.isAnnotationPresent(CacheableTask::class.java))
         val failure = assertFailsWith<IllegalStateException> {
             requireSuccessfulReleaseProcess(listOf("xcodebuild", "test"), 65, "", "tests failed")
         }

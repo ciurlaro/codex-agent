@@ -50,9 +50,7 @@ internal class CandidateManifestFixture(
         put("mavenInventorySha256", JsonPrimitive(mavenInventory.releaseDigest()))
     }) }
     val ciProvenance = writeTestCandidateCiProvenance(root.resolve(CANDIDATE_CI_PROVENANCE_FILE), commit)
-    val resources = root.resolve("resources.json").apply {
-        atomicWriteJson(buildJsonObject { put("exitCode", JsonPrimitive(0)) })
-    }
+    val runtimeMetrics = writeTestIosRuntimeMetrics(root.resolve("runtime-metrics.json"))
     val artifactMetrics = root.resolve("artifact-metrics.json").apply { atomicWriteJson(buildJsonObject {
         put("compressedXcframeworkBytes", JsonPrimitive(1)); put("deviceFrameworkBytes", JsonPrimitive(1))
         put("sampleAppInstallBytes", JsonPrimitive(1))
@@ -74,7 +72,7 @@ internal class CandidateManifestFixture(
         centralInventory, mavenInventory, consumer, ciProvenance, desktop, runtimes.classifiers.values.toList(),
         jvmEvidence, runtimes.jvmRunner, nodeEvidence, runtimes.nodeRunner,
         nodeWasmEvidence, runtimes.nodeWasmRunner, androidEvidence, iosNative, privacyAudit,
-        artifactMetrics, listOf(resources), approvals, privacyManifest, privacyReview,
+        artifactMetrics, runtimeMetrics, approvals, privacyManifest, privacyReview,
         requiredReasons.takeIf(File::isFile), packageSwift, desktopManifest, desktopLicense, desktopNotice,
     )
     val policyFiles get() = buildMap {
@@ -100,12 +98,29 @@ internal class CandidateManifestFixture(
             *desktop.toTypedArray(), *jvmEvidence.toTypedArray(), runtimes.jvmRunner,
             *nodeEvidence.toTypedArray(), runtimes.nodeRunner,
             *nodeWasmEvidence.toTypedArray(), runtimes.nodeWasmRunner,
-            *androidEvidence.toTypedArray(), iosNative, privacyAudit, artifactMetrics, resources,
+            *androidEvidence.toTypedArray(), iosNative, privacyAudit, artifactMetrics, runtimeMetrics,
         ).plus(policyFiles.values).forEach { it.copyTo(payload.resolve(it.name), overwrite = true) }
     }
 
     private fun File.writePrivacyAudit(reviewHash: String?) = atomicWriteJson(buildJsonObject {
         put("passed", JsonPrimitive(true)); reviewHash?.let { put("reviewSha256", JsonPrimitive(it)) }
+    })
+}
+
+internal fun writeTestIosRuntimeMetrics(file: File, startup: Long = 10): File = file.apply {
+    atomicWriteJson(buildJsonObject {
+        put("warmupCycles", JsonPrimitive(1)); put("measuredCycles", JsonPrimitive(5))
+        put("coldStartupMilliseconds", JsonPrimitive(10))
+        put("startupMilliseconds", buildJsonArray { repeat(5) { add(JsonPrimitive(startup)) } })
+        put("startupMedianMilliseconds", JsonPrimitive(startup))
+        put("startupMaximumMilliseconds", JsonPrimitive(startup))
+        put("shutdownMilliseconds", buildJsonArray { repeat(5) { add(JsonPrimitive(10)) } })
+        put("shutdownMedianMilliseconds", JsonPrimitive(10))
+        put("shutdownMaximumMilliseconds", JsonPrimitive(10))
+        put("memoryMeasurement", JsonPrimitive("mach_task_basic_info.current_resident_size"))
+        put("idleCurrentResidentBytes", JsonPrimitive(1))
+        put("recursiveSearchCurrentResidentBytes", JsonPrimitive(2))
+        put("authenticatedTurnPeakResidentBytes", kotlinx.serialization.json.JsonNull)
     })
 }
 
