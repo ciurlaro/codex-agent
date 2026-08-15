@@ -119,12 +119,23 @@ automation. The iOS configuration forces the upstream file credential store
 into the local Codex home. Secrets are not included in runtime configuration or
 diagnostic strings.
 
+For a complete application lifecycle, `CodexHostCoordinator` in the same Swift
+product wraps the shared `CodexHostSession`. Its `states` `AsyncStream` carries
+the authoritative host, authentication, pending-interaction, MCP OAuth, and
+conversation states. Its `async throws` methods select the document-picker URL,
+open or replace the single conversation, resolve approvals and elicitations,
+start MCP authorization, and cancel or refresh a turn. Swift only bridges
+callbacks, cancellation, and main-actor delivery; all state transitions remain
+in shared Kotlin. Closing or replacing the host releases the conversation,
+browser presentations, observers, client, runtime, and security-scoped lease in
+reverse ownership order.
+
 `assembleCodexAgentReleaseXCFramework` creates the static umbrella framework.
 `packageCodexAgentAppleDistribution` stages its local Swift Package and creates
 `build/distributions/CodexAgentPackage-0.2.0.zip`. The package exports the
-shared client plus iOS runtime as `CodexAgent` and the small native browser
-presenter as `CodexAgentAuthentication`. The facade only adds lifecycle and
-authentication operations. `apple/TestApp` is a standalone SwiftUI consumer
+shared client plus iOS runtime as `CodexAgent` and the native browser/lifecycle
+adapters as `CodexAgentAuthentication`. The adapters add Swift concurrency
+syntax but no second reducer. `apple/TestApp` is a standalone SwiftUI consumer
 project. All Rust binaries, package metadata, and the test app target iOS 15 or
 newer.
 The `0.2.0` binary supports iPhoneOS Arm64 and Apple Silicon Simulator Arm64.

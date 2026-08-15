@@ -142,6 +142,54 @@ shares browser presentation and authentication state on every Kotlin target.
 same ordered events through its own bounded mailbox, so a slow UI observer does
 not consume or block events intended for authentication or another observer.
 
+Applications that do not need to assemble those pieces manually can use the
+shared lifecycle layer on every Kotlin target:
+
+```kotlin
+val host = CodexHostSession(platform, applicationScope, clientVersion = "0.2.0")
+host.start()
+
+if (host.state.value.status == CodexHostStatus.WORKSPACE_REQUIRED) {
+    host.selectWorkspace(selectionFromThePlatformPicker)
+}
+
+val conversation = host.openConversation()
+conversation.state.collect { state -> render(state) }
+```
+
+`CodexHostSession` owns one prepared client, authentication, the durable queue
+of approvals and elicitations, one MCP OAuth attempt, and at most one active
+conversation. `AgentConversationSession` combines live text, reasoning, plan,
+shell, work, and hook updates, then reconciles with one canonical history read
+after completion. `AgentInteractionSession` keeps requests renderable for any
+number of observers instead of letting one event collector consume them. MCP
+browser dismissal remains separate from authorization completion because the
+App Server protocol has no OAuth-cancel route. The low-level client remains
+available for applications that intentionally need a different ownership model.
+
+Swift applications get the same reducers through the existing
+`CodexAgentAuthentication` product. `CodexHostCoordinator` supplies
+main-actor async operations and a newest-value `AsyncStream` without duplicating
+state transitions in Swift:
+
+```swift
+let host = CodexHostCoordinator(
+    sandboxRootPath: sandbox.path,
+    clientVersion: "0.2.0"
+)
+
+Task { @MainActor in
+    for await snapshot in host.states {
+        render(snapshot)
+    }
+}
+
+try await host.start()
+// After WORKSPACE_REQUIRED, pass the document-picker URL:
+try await host.selectWorkspace(folderURL)
+try await host.openConversation()
+```
+
 ## Capability boundary
 
 The process runtimes launch only the verified App Server from their exact local

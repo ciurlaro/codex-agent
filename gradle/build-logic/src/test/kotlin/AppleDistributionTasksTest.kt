@@ -45,12 +45,12 @@ class AppleDistributionTasksTest {
     }
 
     @Test
-    fun `xcresult summary requires exactly 25 nonfailing tests`() {
-        val summary = parseSwiftTestSummary("""{"totalTestCount":25,"failedTests":0}""")
-        assertEquals(SwiftTestSummary(25, 0), summary)
-        verifySwiftTestSummary(summary, 25)
-        assertFailsWith<IllegalStateException> { verifySwiftTestSummary(SwiftTestSummary(24, 0), 25) }
-        assertFailsWith<IllegalStateException> { verifySwiftTestSummary(SwiftTestSummary(25, 1), 25) }
+    fun `xcresult summary requires exactly 26 nonfailing tests`() {
+        val summary = parseSwiftTestSummary("""{"totalTestCount":26,"failedTests":0}""")
+        assertEquals(SwiftTestSummary(26, 0), summary)
+        verifySwiftTestSummary(summary, 26)
+        assertFailsWith<IllegalStateException> { verifySwiftTestSummary(SwiftTestSummary(25, 0), 26) }
+        assertFailsWith<IllegalStateException> { verifySwiftTestSummary(SwiftTestSummary(26, 1), 26) }
         assertFailsWith<IllegalStateException> { verifySwiftTestSummary(SwiftTestSummary(0, 0), 0) }
     }
 
