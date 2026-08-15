@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(kotlinx.cinterop.BetaInteropApi::class, kotlinx.cinterop.ExperimentalForeignApi::class)
 
 package io.github.ciurlaro.codexmobile.app.runtime.ios
 
@@ -15,6 +15,7 @@ import io.github.ciurlaro.codexmobile.appserver.runtime.CodexJsonLine
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeEvent
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
+import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
@@ -31,12 +32,29 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import platform.Foundation.NSError
+import platform.Foundation.NSFileCoordinator
+import platform.Foundation.NSURL
 
 internal suspend fun executeIosWorkspaceTool(
     configuration: IosCodexRuntimeConfiguration,
     tool: String,
     arguments: JsonObject,
 ): BuiltInToolResult = withContext(Dispatchers.Default) {
+    if (configuration.securityScopedWorkspace) {
+        coordinateIosWorkspace(configuration, tool in IOS_MUTATING_TOOLS) { coordinated ->
+            executeIosWorkspaceToolDirect(coordinated, tool, arguments)
+        }
+    } else {
+        executeIosWorkspaceToolDirect(configuration, tool, arguments)
+    }
+}
+
+private fun executeIosWorkspaceToolDirect(
+    configuration: IosCodexRuntimeConfiguration,
+    tool: String,
+    arguments: JsonObject,
+): BuiltInToolResult {
     val response = memScoped {
         val result = alloc<CodexAgentIosBuffer>()
         val error = alloc<CodexAgentIosBuffer>()
@@ -62,7 +80,36 @@ internal suspend fun executeIosWorkspaceTool(
         result.takeString()
     }
     val decoded = RUNTIME_JSON.decodeFromString<NativeWorkspaceToolResult>(response)
-    BuiltInToolResult.text(decoded.text, decoded.success)
+    return BuiltInToolResult.text(decoded.text, decoded.success)
+}
+
+private fun coordinateIosWorkspace(
+    configuration: IosCodexRuntimeConfiguration,
+    mutation: Boolean,
+    operation: (IosCodexRuntimeConfiguration) -> BuiltInToolResult,
+): BuiltInToolResult = memScoped {
+    val error = alloc<ObjCObjectVar<NSError?>>()
+    error.value = null
+    var result: BuiltInToolResult? = null
+    var failure: Throwable? = null
+    val accessor: (NSURL?) -> Unit = { coordinatedUrl ->
+        try {
+            val path = requireNotNull(coordinatedUrl?.path) { "Coordinated workspace URL is unavailable" }
+            result = operation(configuration.copy(workspacePath = path))
+        } catch (caught: Throwable) {
+            failure = caught
+        }
+    }
+    val coordinator = NSFileCoordinator(null)
+    val workspaceUrl = NSURL.fileURLWithPath(configuration.workspacePath)
+    if (mutation) {
+        coordinator.coordinateWritingItemAtURL(workspaceUrl, 0u, error.ptr, accessor)
+    } else {
+        coordinator.coordinateReadingItemAtURL(workspaceUrl, 0u, error.ptr, accessor)
+    }
+    failure?.let { throw it }
+    error.value?.let { throw IosCodexRuntimeException(it.localizedDescription) }
+    checkNotNull(result) { "Workspace coordination did not execute" }
 }
 
 internal fun startNative(configuration: IosCodexRuntimeConfiguration): CPointer<CodexAgentIosRuntime> =
@@ -154,3 +201,5 @@ private val RUNTIME_JSON = Json {
     encodeDefaults = true
     ignoreUnknownKeys = false
 }
+
+private val IOS_MUTATING_TOOLS = setOf("apply_patch", "write_file")

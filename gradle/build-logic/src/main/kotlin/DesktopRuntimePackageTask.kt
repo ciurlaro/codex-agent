@@ -1,6 +1,5 @@
 import java.io.BufferedOutputStream
 import java.io.File
-import java.io.RandomAccessFile
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -10,9 +9,12 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ArchiveOperations
 import org.gradle.api.file.FileSystemOperations
@@ -91,6 +93,10 @@ abstract class PackageDesktopCodexRuntimeTask @Inject constructor(
     private val files: FileSystemOperations,
 ) : DefaultTask() {
     @get:Input abstract val releaseTag: Property<String>
+    @get:Input abstract val libraryVersion: Property<String>
+    @get:Input abstract val appServerVersion: Property<String>
+    @get:Input abstract val target: Property<String>
+    @get:Input abstract val classifier: Property<String>
     @get:Input abstract val asset: Property<String>
     @get:Input abstract val archiveSha256: Property<String>
     @get:Input abstract val archiveEntry: Property<String>
@@ -168,86 +174,53 @@ abstract class PackageDesktopCodexRuntimeTask @Inject constructor(
     }
 
     private fun writePackage(target: File, executable: File) {
-        val members = listOf(
+        val payload = listOf(
             executableName.get() to executable,
             supervisorExecutableName.get() to supervisorExecutable.get().asFile,
             LICENSE_NAME to licenseFile.get().asFile,
             NOTICE_NAME to noticeFile.get().asFile,
         ).sortedBy(Pair<String, File>::first)
+        val manifest = runtimeManifest(payload)
         ZipOutputStream(BufferedOutputStream(target.outputStream())).use { output ->
             output.setLevel(9)
-            members.forEach { (name, source) ->
+            payload.forEach { (name, source) ->
                 check(name == File(name).name) { "Unsafe desktop runtime ZIP member: $name" }
                 output.putNextEntry(ZipEntry(name).apply { setTimeLocal(ZIP_EPOCH) })
                 source.inputStream().use { it.copyTo(output) }
                 output.closeEntry()
             }
+            output.putNextEntry(ZipEntry(RUNTIME_MANIFEST_NAME).apply { setTimeLocal(ZIP_EPOCH) })
+            output.write(manifest)
+            output.closeEntry()
         }
-        patchUnixModes(target)
+        patchDesktopRuntimeUnixModes(
+            target,
+            setOf(executableName.get(), supervisorExecutableName.get()),
+        )
     }
 
-    private fun patchUnixModes(target: File) {
-        unixModes(target) { name ->
-            if (name in setOf(executableName.get(), supervisorExecutableName.get())) EXECUTABLE_MODE else FILE_MODE
-        }
-    }
-
-    private fun unixModes(target: File, replacement: ((String) -> Int)? = null): Map<String, Int> =
-        RandomAccessFile(target, if (replacement == null) "r" else "rw").use { archive ->
-        fun readUnsignedShortLittleEndian(): Int = archive.readUnsignedByte() or (archive.readUnsignedByte() shl 8)
-        fun readUnsignedIntLittleEndian(): Long = (0 until 4).fold(0L) { value, shift ->
-            value or (archive.readUnsignedByte().toLong() shl (shift * 8))
-        }
-        fun writeUnsignedIntLittleEndian(value: Long) {
-            repeat(4) { shift -> archive.write(((value shr (shift * 8)) and 0xff).toInt()) }
-        }
-
-        val searchStart = maxOf(0L, archive.length() - MAX_EOCD_BYTES)
-        var eocd = archive.length() - MIN_EOCD_BYTES
-        while (eocd >= searchStart) {
-            archive.seek(eocd)
-            if (readUnsignedIntLittleEndian() == EOCD_SIGNATURE) break
-            eocd--
-        }
-        check(eocd >= searchStart) { "Desktop runtime ZIP end record is missing" }
-        archive.seek(eocd + 10)
-        val entryCount = readUnsignedShortLittleEndian()
-        archive.seek(eocd + 16)
-        var cursor = readUnsignedIntLittleEndian()
-        buildMap {
-          repeat(entryCount) {
-            archive.seek(cursor)
-            check(readUnsignedIntLittleEndian() == CENTRAL_ENTRY_SIGNATURE) {
-                "Desktop runtime ZIP central directory is invalid"
+    private fun runtimeManifest(members: List<Pair<String, File>>): ByteArray = buildJsonObject {
+        put("schemaVersion", 1)
+        put("libraryVersion", libraryVersion.get())
+        put("appServerVersion", appServerVersion.get())
+        put("target", target.get())
+        put("classifier", classifier.get())
+        putJsonArray("members") {
+            members.forEach { (name, file) ->
+                add(buildJsonObject {
+                    put("name", name)
+                    put("size", file.length())
+                    put("sha256", file.releaseDigest())
+                    put("executable", name in setOf(executableName.get(), supervisorExecutableName.get()))
+                })
             }
-            archive.seek(cursor + 28)
-            val nameBytes = ByteArray(readUnsignedShortLittleEndian())
-            val extraBytes = readUnsignedShortLittleEndian()
-            val commentBytes = readUnsignedShortLittleEndian()
-            archive.seek(cursor + 46)
-            archive.readFully(nameBytes)
-            val name = nameBytes.decodeToString()
-            val mode = if (replacement != null) {
-                replacement(name).also { value ->
-                    archive.seek(cursor + 4)
-                    archive.write(20)
-                    archive.write(3)
-                    archive.seek(cursor + 38)
-                    writeUnsignedIntLittleEndian(value.toLong() shl 16)
-                }
-            } else {
-                archive.seek(cursor + 38)
-                (readUnsignedIntLittleEndian() ushr 16).toInt()
-            }
-            put(name, mode)
-            cursor += 46 + nameBytes.size + extraBytes + commentBytes
-          }
         }
-    }
+    }.toString().encodeToByteArray()
 
     private fun verifyPackage(packageFile: File, expectedSupervisor: File?) = ZipFile(packageFile).use { archive ->
         val members = archive.entries().asSequence().filterNot(ZipEntry::isDirectory).toList()
-        val expected = setOf(executableName.get(), supervisorExecutableName.get(), LICENSE_NAME, NOTICE_NAME)
+        val expectedPayload = setOf(executableName.get(), supervisorExecutableName.get(), LICENSE_NAME, NOTICE_NAME)
+        val expected = expectedPayload + RUNTIME_MANIFEST_NAME
         check(members.map(ZipEntry::getName).toSet() == expected && members.size == expected.size) {
             "Desktop runtime ZIP member set is invalid"
         }
@@ -260,10 +233,44 @@ abstract class PackageDesktopCodexRuntimeTask @Inject constructor(
         }
         check(digest(LICENSE_NAME) == licenseFile.get().asFile.releaseDigest()) { "Packaged license mismatch" }
         check(digest(NOTICE_NAME) == noticeFile.get().asFile.releaseDigest()) { "Packaged notice mismatch" }
+        val manifest = Json.parseToJsonElement(
+            archive.getInputStream(archive.getEntry(RUNTIME_MANIFEST_NAME)).use { it.readBytes().decodeToString() },
+        ).jsonObject
+        check(manifest.keys == setOf(
+            "schemaVersion", "libraryVersion", "appServerVersion", "target", "classifier", "members",
+        ) && !manifest.getValue("schemaVersion").jsonPrimitive.isString &&
+            manifest.getValue("schemaVersion").jsonPrimitive.content == "1" &&
+            manifest.getValue("libraryVersion").jsonPrimitive.content == libraryVersion.get() &&
+            manifest.getValue("appServerVersion").jsonPrimitive.content == appServerVersion.get() &&
+            manifest.getValue("target").jsonPrimitive.content == target.get() &&
+            manifest.getValue("classifier").jsonPrimitive.content == classifier.get()) {
+            "Packaged runtime manifest identity is invalid"
+        }
+        val manifestMemberRecords = manifest.getValue("members").jsonArray
+        check(manifestMemberRecords.size == expectedPayload.size) {
+            "Packaged runtime manifest member count is invalid"
+        }
+        val manifestMembers = manifestMemberRecords.associate { value ->
+            val member = value.jsonObject
+            check(member.keys == setOf("name", "size", "sha256", "executable")) {
+                "Packaged runtime manifest member fields are invalid"
+            }
+            member.getValue("name").jsonPrimitive.content to member
+        }
+        check(manifestMembers.keys == expectedPayload && manifestMembers.all { (name, member) ->
+            !member.getValue("size").jsonPrimitive.isString &&
+                !member.getValue("executable").jsonPrimitive.isString &&
+                member.getValue("size").jsonPrimitive.content.toLong() == archive.getEntry(name).size &&
+                member.getValue("sha256").jsonPrimitive.content == digest(name) &&
+                member.getValue("executable").jsonPrimitive.content.toBooleanStrict() ==
+                (name in setOf(executableName.get(), supervisorExecutableName.get()))
+        }) { "Packaged runtime manifest members are invalid" }
         val expectedModes = expected.associateWith { name ->
             if (name in setOf(executableName.get(), supervisorExecutableName.get())) EXECUTABLE_MODE else FILE_MODE
         }
-        check(unixModes(packageFile) == expectedModes) { "Desktop runtime ZIP Unix modes are invalid" }
+        check(readDesktopRuntimeUnixModes(packageFile) == expectedModes) {
+            "Desktop runtime ZIP Unix modes are invalid"
+        }
     }
 
     private fun installAtomically(source: File, output: File) {
@@ -282,14 +289,11 @@ abstract class PackageDesktopCodexRuntimeTask @Inject constructor(
     }
 
     private companion object {
+        const val RUNTIME_MANIFEST_NAME = "codex-runtime-manifest.json"
         const val LICENSE_NAME = "openai-codex-LICENSE.txt"
         const val NOTICE_NAME = "openai-codex-NOTICE.txt"
         const val EXECUTABLE_MODE = 0x81ed
         const val FILE_MODE = 0x81a4
-        const val EOCD_SIGNATURE = 0x06054b50L
-        const val CENTRAL_ENTRY_SIGNATURE = 0x02014b50L
-        const val MIN_EOCD_BYTES = 22L
-        const val MAX_EOCD_BYTES = MIN_EOCD_BYTES + 65_535L
         val ZIP_EPOCH: LocalDateTime = LocalDateTime.of(1980, 1, 1, 0, 0)
     }
 }

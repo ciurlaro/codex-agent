@@ -23,10 +23,7 @@ class LinuxArm64JvmEvidenceBundleTest {
         val commands = mutableListOf<List<String>>()
         fixture.execute { command, environment ->
             commands += command
-            assertTrue(File(environment.getValue("CODEX_AGENT_APP_SERVER_EXECUTABLE")).isFile)
-            val supervisor = File(environment.getValue("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE"))
-            assertTrue(supervisor.isFile)
-            assertEquals(supervisor.releaseDigest(), environment["CODEX_AGENT_PROCESS_SUPERVISOR_SHA256"])
+            assertRuntimeBundleEnvironment(environment, "linuxArm64")
             if (command.last() == "--list-tests") JvmEvidenceProcessResult(0, exactListing())
             else JvmEvidenceProcessResult(0, "")
         }
@@ -63,12 +60,18 @@ class LinuxArm64JvmEvidenceBundleTest {
         private val appServer = "official app server".encodeToByteArray()
         val manifest = writeTestDesktopDistributionManifest(root.resolve("distributions.json"),
             appServer.inputStream().releaseDigest())
-        val classifier = root.resolve("app-server-linux-arm64.zip").apply { writeZip(linkedMapOf(
-            "codex-app-server" to appServer,
-            "codex-process-supervisor" to "supervisor".encodeToByteArray(),
-            "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
-            "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
-        )) }
+        val classifier = root.resolve("app-server-linux-arm64.zip").apply {
+            val payload = linkedMapOf(
+                "codex-app-server" to appServer,
+                "codex-process-supervisor" to "supervisor".encodeToByteArray(),
+                "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
+                "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
+            )
+            writeZip(payload + ("codex-runtime-manifest.json" to runtimeManifestFixture(
+                "0.2.0", "linuxArm64", "app-server-linux-arm64", payload,
+                setOf("codex-app-server", "codex-process-supervisor"),
+            )))
+        }
         val runner = root.resolve(JVM_RUNTIME_RUNNER_ARCHIVE).apply { writeZip(linkedMapOf(
             "classes/${JVM_RUNTIME_RUNNER_ENTRYPOINT.replace('.', '/')}.class" to "main".encodeToByteArray(),
             "lib/kotlin-stdlib.jar" to "stdlib".encodeToByteArray(),

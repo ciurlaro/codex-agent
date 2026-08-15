@@ -32,24 +32,22 @@ dependencies {
 }
 ```
 
-Extract the matching classifier. It contains the App Server and the process
-supervisor built for that same host. Pass canonical absolute paths, the
-supervisor's SHA-256, and the workspace:
+Ship the matching classifier in a bundle directory. It contains the App Server,
+the process supervisor, licenses, and an internal manifest for that host. The
+platform support verifies and atomically installs it into a versioned data
+cache, persists the selected workspace, and repairs invalid cached files:
 
 ```kotlin
-val factory = NodeCodexRuntimeFactory(
-    NodeCodexRuntimeConfiguration(
-        appServerExecutable = appServerPath.toPath(),
-        processSupervisorExecutable = supervisorPath.toPath(),
-        processSupervisorSha256 = supervisorSha256,
-        workingDirectory = workspacePath.toPath(),
-    ),
-)
-val client = CodexAgentClient(runtimeFactory = factory)
+val platform = NodeCodexPlatformSupport(bundleDirectory.toPath(), dataDirectory.toPath())
+val selected = platform.workspaces.select(CodexPathWorkspaceSelection(workspacePath))
+    as CodexWorkspaceResolution.Available
+val prepared = platform.prepare(selected.workspace)
+val client = prepared.createClient("0.2.0")
 ```
 
-`processSupervisorExecutable` and `processSupervisorSha256` are required on
-every supported host. There is no separate Windows supervisor classifier.
+The low-level `NodeCodexRuntimeFactory` remains source-compatible for hosts that
+already manage verified executable paths. There is no separate Windows
+supervisor classifier.
 
 ## Security and lifecycle
 
@@ -63,9 +61,14 @@ Server child behind. Newline-delimited JSON is forwarded to the shared
 `AppServerConnection`, which remains the sole initialize/initialized handshake
 owner.
 
-The runtime never downloads, discovers, installs, or updates an executable. It
-accepts no arbitrary command, arguments, shell, Git, build-tool, gateway,
+The runtime never downloads an executable or resolves a latest version. A host
+updates by shipping a classifier for the newer library version; versioned
+caches coexist. It accepts no arbitrary command, arguments, shell, gateway,
 remote workspace, cloud runtime, or general process configuration.
+
+Validated authorization URLs open with a direct `open`, `xdg-open`, or
+`explorer.exe` child process using `shell=false`. The shared authentication
+session and multicast event stream behave the same as on the other targets.
 
 Authentication remains owned by the Codex App Server. The Node adapters neither
 receive nor store OAuth tokens and do not require `OPENAI_API_KEY`.
@@ -74,7 +77,8 @@ receive nor store OAuth tokens and do not require `OPENAI_API_KEY`.
 
 One portable evidence bundle is reused by a five-host GitHub Actions matrix.
 Every host executes the native desktop, JVM, Kotlin/JS-on-Node, and
-Kotlin/WasmJS-on-Node lifecycle checks with its matching classifier. Each report
+Kotlin/WasmJS-on-Node lifecycle checks through the bundle installer with its
+matching classifier. Each report
 binds the candidate commit, actual OS and architecture, exact compiled runners,
 classifier ZIP, App Server, supervisor, and test outcomes.
 

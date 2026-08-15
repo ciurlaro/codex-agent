@@ -28,7 +28,7 @@ general-purpose shell.
   Server with its loopback proxy, certificate preparation, and SQLite privacy
   guard.
 - `codex-agent-runtime-ios` embeds the pinned Rust App Server and confines its
-  workspace tools to the application sandbox.
+  workspace tools to the selected sandbox or security-scoped folder.
 - `codex-agent-runtime-desktop` supplies native and JVM desktop adapters for the
   five supported desktop hosts.
 - `codex-agent-runtime-node` supplies the same local lifecycle to Kotlin/JS and
@@ -48,7 +48,7 @@ Version `0.2.0` has not yet been tagged or published.
 
 ## Packaged desktop runtimes
 
-Desktop and Node hosts extract exactly one matching classifier:
+Desktop and Node applications ship exactly one matching classifier per host:
 
 - `app-server-macos-arm64`
 - `app-server-macos-x64`
@@ -56,41 +56,36 @@ Desktop and Node hosts extract exactly one matching classifier:
 - `app-server-linux-x64`
 - `app-server-windows-x64`
 
-Each classifier ZIP contains both the pinned App Server and its matching process
-supervisor. Pass absolute paths, the extracted supervisor's SHA-256, and the
-workspace:
+Each classifier ZIP contains the pinned App Server, its matching process
+supervisor, licenses, and a strict internal runtime manifest. Point the platform
+support at the directory containing the ZIP; it selects the current target,
+verifies every member, installs it atomically into the versioned data cache, and
+repairs a corrupt cache before constructing the runtime:
 
 ```kotlin
-val factory = DesktopCodexRuntimeFactory(
-    DesktopCodexRuntimeConfiguration(
-        appServerExecutable = appServerPath.toPath(),
-        processSupervisorExecutable = supervisorPath.toPath(),
-        processSupervisorSha256 = supervisorSha256,
-        workingDirectory = workspacePath.toPath(),
-    ),
+val platform = DesktopCodexPlatformSupport(
+    bundleDirectory = bundledClassifiers.toPath(),
+    dataDirectory = appData.toPath(),
 )
-val client = CodexAgentClient(factory)
+val selected = platform.workspaces.select(CodexPathWorkspaceSelection(workspacePath))
+    as CodexWorkspaceResolution.Available
+val prepared = platform.prepare(selected.workspace)
+val client = prepared.createClient(clientVersion = "0.2.0")
 ```
 
 Kotlin/JS and Kotlin/WasmJS applications on Node use the equivalent Node
-configuration:
+support:
 
 ```kotlin
-val factory = NodeCodexRuntimeFactory(
-    NodeCodexRuntimeConfiguration(
-        appServerExecutable = appServerPath.toPath(),
-        processSupervisorExecutable = supervisorPath.toPath(),
-        processSupervisorSha256 = supervisorSha256,
-        workingDirectory = workspacePath.toPath(),
-    ),
-)
-val client = CodexAgentClient(factory)
+val platform = NodeCodexPlatformSupport(bundledClassifiers.toPath(), appData.toPath())
 ```
 
-The libraries do not download, discover, install, or update these files. The
-configuration accepts no arbitrary executable, arguments, command, shell, or
-remote transport. The supervisor exists only to own and reliably stop the App
-Server process tree.
+The libraries do not use an update feed or network downloader. An application
+updates the runtime by shipping the classifier for a newer library version; the
+installer keeps versioned caches side by side. Existing low-level desktop and
+Node factories remain available for applications that already manage verified
+paths. Neither layer accepts arbitrary arguments, commands, shells, or remote
+transports.
 
 Android hosts keep the bundled executable extractable so it can be verified and
 launched by path:
@@ -99,7 +94,17 @@ launched by path:
 android { packaging { jniLibs.useLegacyPackaging = true } }
 ```
 
-An iOS host instead provides an explicit sandbox-local workspace:
+Android hosts provide `AndroidCodexPlatformSupport(context)`. The host owns the
+folder picker and storage permission flow; the library persists and revalidates
+canonical shared-storage paths, rejects `Android/data` and `Android/obb`, and
+does not request all-files access.
+
+An iOS host may select either an application-container folder or a folder URL
+returned by its document picker. `IosCodexPlatformSupport` persists a
+security-scoped bookmark, restores and leases it for the runtime, coordinates
+file access, and requests reselection when the bookmark is stale or revoked.
+Codex home and credentials always stay inside the application sandbox. The
+existing low-level factory remains available:
 
 ```kotlin
 val factory = IosCodexRuntimeFactory(
@@ -117,16 +122,30 @@ val client = CodexAgentClient(
 ```
 
 The Apple distribution also contains a static `CodexAgent.xcframework` and a
-Swift Package. Its optional authentication product presents ChatGPT sign-in in
-the secure system browser sheet. The App Server owns PKCE, callback handling,
-tokens, refresh, and completion events; wrappers do not receive or store OAuth
-tokens.
+Swift Package. Its optional authentication product exposes
+`CodexWebAuthenticationBrowser`, an `ASWebAuthenticationSession` presenter for
+any validated `CodexAuthorizationUrl`, while retaining
+`CodexChatGPTAuthenticationSession`. The App Server owns PKCE, callback
+handling, tokens, refresh, and completion events; wrappers do not receive or
+store OAuth tokens.
+
+Every runtime platform exposes a native browser through `CodexPlatformSupport`:
+Android Custom Tabs, Apple `ASWebAuthenticationSession` (when injected from the
+Swift helper), JVM `Desktop.browse`, macOS `NSWorkspace`, Linux `xdg-open`,
+Windows `ShellExecuteW`, and Node's direct `open`/`xdg-open`/`explorer.exe`
+spawn. Use `CodexAuthorizationUrl.chatGpt` for the strict OpenAI/ChatGPT HTTPS
+policy and `CodexAuthorizationUrl.external` for connector, MCP OAuth, and
+elicitation URLs (HTTPS or loopback HTTP only). `AgentAuthenticationSession`
+shares browser presentation and authentication state on every Kotlin target.
+
+`CodexAgentClient.events` is multicast: every active collector receives the
+same ordered events through its own bounded mailbox, so a slow UI observer does
+not consume or block events intended for authentication or another observer.
 
 ## Capability boundary
 
-The process runtimes launch only the verified App Server from explicit local
-paths. They expose no arbitrary process execution, Git, build-tool, remote
-workspace, or process-based MCP configuration.
+The process runtimes launch only the verified App Server from their exact local
+classifier. They expose no arbitrary process configuration or remote runtime.
 
 The iOS runtime additionally limits built-in tools to sandboxed file reads,
 directory listing, text search, atomic writes, and workspace-confined patches.

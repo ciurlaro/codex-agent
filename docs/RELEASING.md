@@ -29,8 +29,8 @@ entries; it is not publication authority.
 2. That same CI run calls the Desktop Runtime Evidence workflow. Its five-host
    matrix covers macOS Arm64/x64, Linux Arm64/x64, and Windows x64. Each host
    runs native desktop, JVM desktop, JS-on-Node, and WasmJS-on-Node lifecycle
-   checks against its exact matching classifier. Linux Arm64 transports one
-   bundle and extracts its App Server and supervisor once.
+   checks through the platform bundle installer against its exact matching
+   classifier. Linux Arm64 transports one combined evidence bundle.
 3. Apple host-native tests run independently on Linux while the device and
    simulator slices build in parallel on macOS. One downstream Apple job
    verifies those five evidence files and exports the complete verified Apple

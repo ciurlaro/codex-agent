@@ -1,7 +1,4 @@
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
-import java.util.zip.ZipFile
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlinx.serialization.json.JsonPrimitive
@@ -77,44 +74,6 @@ internal fun buildDesktopRuntimeEvidence(values: DesktopRuntimeEvidenceValues) =
     put("supervisorSha256", JsonPrimitive(values.supervisorSha256))
     put("classifierArchiveSha256", JsonPrimitive(values.classifierArchiveSha256))
     put("result", JsonPrimitive("passed"))
-}
-
-@CacheableTask
-abstract class ExtractDesktopAppServerTask : DefaultTask() {
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val archiveFile: RegularFileProperty
-    @get:Input abstract val executableName: Property<String>
-    @get:Input abstract val binarySha256: Property<String>
-    @get:Input abstract val supervisorExecutableName: Property<String>
-    @get:OutputFile abstract val outputFile: RegularFileProperty
-    @get:OutputFile abstract val supervisorOutputFile: RegularFileProperty
-
-    @TaskAction
-    fun extract() {
-        val executable = executableName.get()
-        val output = outputFile.get().asFile
-        val supervisor = supervisorExecutableName.get()
-        val supervisorOutput = supervisorOutputFile.get().asFile
-        ZipFile(archiveFile.get().asFile).use { archive ->
-            val entries = archive.entries().asSequence().filterNot { it.isDirectory }.toList()
-            check(entries.map { it.name }.toSet() == setOf(
-                executable,
-                supervisor,
-                "openai-codex-LICENSE.txt",
-                "openai-codex-NOTICE.txt",
-            )) { "Desktop app-server classifier has an unexpected member set" }
-            listOf(executable to output, supervisor to supervisorOutput).forEach { (name, destination) ->
-                destination.parentFile.mkdirs()
-                archive.getInputStream(archive.getEntry(name)).use { input ->
-                    Files.copy(input, destination.toPath(), REPLACE_EXISTING)
-                }
-            }
-        }
-        check(output.releaseDigest() == binarySha256.get()) { "Extracted desktop app-server SHA-256 mismatch" }
-        if (!System.getProperty("os.name").startsWith("Windows")) {
-            check(output.setExecutable(true, false)) { "Could not make desktop app server executable" }
-            check(supervisorOutput.setExecutable(true, false)) { "Could not make process supervisor executable" }
-        }
-    }
 }
 
 @DisableCachingByDefault(because = "Platform smoke evidence must execute for every immutable candidate")

@@ -5,11 +5,11 @@ This inventory covers the iOS runtime and its final static framework.
 ## Required-reason APIs
 
 The static framework uses file metadata APIs while confining and protecting the
-sandbox-local workspace and Codex home. `PrivacyInfo.xcprivacy` therefore
-declares `NSPrivacyAccessedAPICategoryFileTimestamp` reason `C617.1`, for files
-inside the application container. The iOS SQLite build disables its filesystem
-type probes, so the final binary must not import `statfs` or `fstatfs`; no disk
-space reason is declared.
+workspace and Codex home. `PrivacyInfo.xcprivacy` therefore declares
+`NSPrivacyAccessedAPICategoryFileTimestamp` reasons `C617.1` for files inside
+the application container and `3B52.1` for folders the user explicitly grants
+through a document picker. The embedded runtime also declares disk-space reason
+`E174.1`; the value affects local low-space behavior and is not sent off-device.
 
 `verifyIosPrivacyManifest` enumerates every archive member in both static
 XCFramework slices and inspects each object independently. It scans all five

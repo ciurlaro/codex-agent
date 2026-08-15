@@ -20,7 +20,6 @@ internal fun executeNodeRuntimeEvidence(
     compiledNodeTestRuntime: File,
     evidenceFile: File,
     testReport: File,
-    runtimeExecutables: DesktopRuntimeExecutables? = null,
     runner: (List<String>, Map<String, String>) -> NodeEvidenceProcessResult = ::runNodeEvidenceProcess,
 ) {
     evidenceFile.delete()
@@ -52,19 +51,18 @@ internal fun executeNodeRuntimeEvidence(
     val temporary = Files.createTempDirectory("codex-agent-node-evidence-$runtimeBackend-$target")
         .toFile().canonicalFile
     try {
-        val executables = runtimeExecutables ?: extractDesktopRuntimeExecutables(classifier, classifierArchive, temporary)
-        validateDesktopRuntimeExecutables(target, classifier.binarySha256, classifier.supervisorSha256, executables)
+        val runtime = stageRuntimeBundleForEvidence(
+            classifierArchive,
+            target,
+            classifier.classifier,
+            temporary.resolve("runtime"),
+        )
         val runnerEntry = extractNodeRuntimeRunner(
             compiledNodeTestRuntime,
             runtimeBackend,
             temporary.resolve("runner"),
         )
-        val environment = mapOf(
-            "CODEX_AGENT_APP_SERVER_EXECUTABLE" to executables.appServer.absolutePath,
-            "CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE" to executables.supervisor.absolutePath,
-            "CODEX_AGENT_PROCESS_SUPERVISOR_SHA256" to classifier.supervisorSha256,
-            "CODEX_AGENT_DESKTOP_TARGET" to target,
-        )
+        val environment = runtime.environment(target)
         val listing = runner(
             listOf(nodeExecutable, runnerEntry.absolutePath, "--list-tests"),
             environment,

@@ -28,6 +28,8 @@ kotlin {
     sourceSets {
         val webMain by getting {
             kotlin.srcDir(tasks.named("generateNodeDistributionSource"))
+            kotlin.srcDir(rootProject.layout.projectDirectory.dir("runtime-host-shared/src/commonMain/kotlin"))
+            kotlin.exclude("**/PathWorkspaceStore.kt", "**/RuntimeBundleInstaller.kt")
             dependencies {
                 api(project(":codex-agent-client"))
                 implementation(libs.kotlinx.coroutines.core)

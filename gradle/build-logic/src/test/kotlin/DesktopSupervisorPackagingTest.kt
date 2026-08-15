@@ -22,6 +22,7 @@ class DesktopSupervisorPackagingTest {
             ProjectBuilder.builder().withProjectDir(root).build().tasks
                 .register("generate", GenerateDesktopDistributionSourceTask::class.java).get().apply {
                     manifestFile.set(manifest)
+                    libraryVersion.set("0.2.0")
                     outputDirectory.set(output)
                     generate()
                 }
@@ -48,6 +49,10 @@ class DesktopSupervisorPackagingTest {
             ProjectBuilder.builder().withProjectDir(root).build().tasks
                 .register("package", PackageDesktopCodexRuntimeTask::class.java).get().apply {
                     releaseTag.set("rust-v0.145.0")
+                    libraryVersion.set("0.2.0")
+                    appServerVersion.set("0.145.0")
+                    target.set("macosArm64")
+                    classifier.set("app-server-macos-arm64")
                     asset.set(upstream.name)
                     archiveSha256.set(upstream.sha256())
                     archiveEntry.set(runtime.name)
@@ -64,7 +69,10 @@ class DesktopSupervisorPackagingTest {
 
             ZipFile(packaged).use { archive ->
                 assertEquals(
-                    setOf(runtime.name, supervisor.name, "openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt"),
+                    setOf(
+                        runtime.name, supervisor.name, "openai-codex-LICENSE.txt",
+                        "openai-codex-NOTICE.txt", "codex-runtime-manifest.json",
+                    ),
                     archive.entries().asSequence().filterNot(ZipEntry::isDirectory).map(ZipEntry::getName).toSet(),
                 )
             }
@@ -72,11 +80,14 @@ class DesktopSupervisorPackagingTest {
             assertEquals(0x81ed, packaged.unixModes().getValue(supervisor.name))
             assertEquals(0x81a4, packaged.unixModes().getValue("openai-codex-LICENSE.txt"))
             assertEquals(0x81a4, packaged.unixModes().getValue("openai-codex-NOTICE.txt"))
+            assertEquals(0x81a4, packaged.unixModes().getValue("codex-runtime-manifest.json"))
 
             val imported = root.resolve("imported.zip")
             ProjectBuilder.builder().withProjectDir(root).build().tasks
                 .register("importPackage", PackageDesktopCodexRuntimeTask::class.java).get().apply {
                     releaseTag.set("rust-v0.145.0"); asset.set(upstream.name)
+                    libraryVersion.set("0.2.0"); appServerVersion.set("0.145.0")
+                    target.set("macosArm64"); classifier.set("app-server-macos-arm64")
                     archiveSha256.set(upstream.sha256()); archiveEntry.set(runtime.name)
                     binarySha256.set(runtime.sha256()); executableName.set(runtime.name)
                     supervisorExecutableName.set(supervisor.name); prebuiltPackage.set(packaged)

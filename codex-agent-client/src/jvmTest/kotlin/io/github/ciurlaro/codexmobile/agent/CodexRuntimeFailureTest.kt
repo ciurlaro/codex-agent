@@ -69,9 +69,9 @@ class CodexRuntimeFailureTest {
                 while (!process.allClientStreamsClosed()) kotlinx.coroutines.yield()
             }
 
-            val events = withTimeout(1_000) { client.events.take(65).toList() }
-            assertTrue(events.take(64).all { it is AgentEvent.SkillsChanged })
-            assertEquals("protocol_failure", assertIs<AgentEvent.Failure>(events.last()).code)
+            val events = withTimeout(1_000) { client.events.take(2).toList() }
+            assertEquals("event_backlog_overflow", assertIs<AgentEvent.Failure>(events[0]).code)
+            assertEquals("protocol_failure", assertIs<AgentEvent.Failure>(events[1]).code)
         } finally {
             client.close()
         }

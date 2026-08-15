@@ -41,10 +41,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.json.JsonElement
@@ -69,7 +67,25 @@ class CodexAgentClient(
     internal val coroutineDispatcher = coroutineDispatcher
     internal val fileSystem = fileSystem
     internal val scope = CoroutineScope(SupervisorJob() + coroutineDispatcher)
-    internal val eventsChannel = Channel<AgentEvent>(capacity = EVENT_BUFFER_SIZE)
+    internal val eventsChannel = BoundedEventBroadcast<AgentEvent>(
+        capacity = EVENT_BUFFER_SIZE,
+        observerOverflow = {
+            AgentEvent.Failure(
+                sessionId = null,
+                code = "event_observer_overflow",
+                message = "The event observer was closed because its 64-event mailbox overflowed.",
+                recoverable = true,
+            )
+        },
+        backlogOverflow = {
+            AgentEvent.Failure(
+                sessionId = null,
+                code = "event_backlog_overflow",
+                message = "The event backlog overflowed while no observers were registered.",
+                recoverable = true,
+            )
+        },
+    )
     internal val authMutex = Mutex()
     internal val loginStateLock = Mutex()
     internal val stateLock = Mutex()
@@ -146,7 +162,7 @@ class CodexAgentClient(
     internal var loginStarting = false
     internal var loginCompletedDuringStart: LoginCompletion? = null
 
-    override val events: Flow<AgentEvent> = eventsChannel.receiveAsFlow()
+    override val events: Flow<AgentEvent> = eventsChannel.events
 
     override suspend fun authenticate() = authenticateAction(CodexAuthenticationMethod.ChatGptBrowser)
     suspend fun authenticate(method: CodexAuthenticationMethod) = authenticateAction(method)

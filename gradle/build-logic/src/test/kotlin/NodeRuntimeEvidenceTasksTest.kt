@@ -32,17 +32,7 @@ class NodeRuntimeEvidenceTasksTest {
                     fixture.record(target, backend) { command, environment ->
                         commands.getOrPut(target to backend, ::mutableListOf) += command
                         if (command.last() != "--version") {
-                            assertEquals(target, environment["CODEX_AGENT_DESKTOP_TARGET"])
-                            assertTrue(File(environment.getValue("CODEX_AGENT_APP_SERVER_EXECUTABLE")).isFile)
-                            val supervisor = File(environment.getValue(
-                                "CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE",
-                            ))
-                            assertTrue(supervisor.isFile)
-                            assertEquals(supervisor.canonicalFile, supervisor.absoluteFile)
-                            assertEquals(
-                                supervisor.releaseDigest(),
-                                environment["CODEX_AGENT_PROCESS_SUPERVISOR_SHA256"],
-                            )
+                            assertRuntimeBundleEnvironment(environment, target)
                         }
                         successfulNodeEvidenceResult(command)
                     }

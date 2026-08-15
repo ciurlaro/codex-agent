@@ -14,6 +14,7 @@ val generateDesktopDistributionSource = tasks.register<GenerateDesktopDistributi
     "generateDesktopDistributionSource",
 ) {
     manifestFile.set(layout.projectDirectory.file("codex-app-server-distributions.json"))
+    libraryVersion.set(project.version.toString())
     outputDirectory.set(layout.buildDirectory.dir("generated/distributions/kotlin"))
 }
 val desktopManifest = readDesktopCodexManifest(
@@ -58,6 +59,10 @@ val desktopPackageTasks = desktopManifest.distributions.associateWith { distribu
         group = "distribution"
         description = "Packages the verified ${distribution.target} Codex app server."
         releaseTag.set(desktopManifest.releaseTag)
+        libraryVersion.set(project.version.toString())
+        appServerVersion.set(desktopManifest.version)
+        target.set(distribution.target)
+        classifier.set(distribution.classifier)
         asset.set(distribution.asset)
         archiveSha256.set(distribution.archiveSha256)
         archiveEntry.set(distribution.archiveEntry)
@@ -144,9 +149,6 @@ desktopManifest.distributions.forEach { distribution ->
             }
         }
     }
-    val extractedExecutable = layout.buildDirectory.file(
-        "desktop-runtime-evidence/${distribution.target}/${distribution.executableName}",
-    )
     registerJvmRuntimeEvidenceTask(
         distribution,
         packageTask,
@@ -154,25 +156,20 @@ desktopManifest.distributions.forEach { distribution ->
         packageJvmRuntimeEvidenceRunner,
         layout.projectDirectory.file("codex-app-server-distributions.json"),
     )
-    val extractedSupervisor = layout.buildDirectory.file(
-        "desktop-runtime-evidence/${distribution.target}/${distribution.supervisorExecutableName}",
-    )
-    val extractTask = tasks.register<ExtractDesktopAppServerTask>("extract${targetTitle}AppServerForSmoke") {
-        archiveFile.set(packageTask.flatMap { it.outputFile })
-        executableName.set(distribution.executableName)
-        binarySha256.set(distribution.binarySha256)
-        supervisorExecutableName.set(distribution.supervisorExecutableName)
-        outputFile.set(extractedExecutable)
-        supervisorOutputFile.set(extractedSupervisor)
-    }
     val testTaskName = "${distribution.target}Test"
     if (requestedEvidenceTarget == distribution.target) {
+        val evidenceRoot = layout.buildDirectory.dir("desktop-runtime-evidence/${distribution.target}")
         tasks.named<KotlinNativeTest>(testTaskName) {
-            dependsOn(extractTask)
-            environment("CODEX_AGENT_APP_SERVER_EXECUTABLE", extractedExecutable.get().asFile.absolutePath)
-            environment("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE", extractedSupervisor.get().asFile.absolutePath)
+            dependsOn(packageTask)
+            environment(
+                RUNTIME_BUNDLE_DIRECTORY_ENV,
+                packageTask.flatMap { it.outputFile }.get().asFile.parentFile.absolutePath,
+            )
+            environment(RUNTIME_DATA_DIRECTORY_ENV, evidenceRoot.get().dir("data").asFile.absolutePath)
+            environment(RUNTIME_WORKSPACE_ENV, evidenceRoot.get().dir("workspace").asFile.absolutePath)
             doFirst {
-                environment("CODEX_AGENT_PROCESS_SUPERVISOR_SHA256", extractedSupervisor.get().asFile.desktopSha256())
+                evidenceRoot.get().dir("data").asFile.mkdirs()
+                evidenceRoot.get().dir("workspace").asFile.mkdirs()
             }
             outputs.upToDateWhen { false }
         }

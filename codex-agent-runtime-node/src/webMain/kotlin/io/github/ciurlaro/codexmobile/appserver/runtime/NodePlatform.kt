@@ -33,7 +33,19 @@ internal interface NodeHost : NodeProcessLauncher {
     fun joinPath(parent: String, child: String): String
     fun isFile(path: String): Boolean
     fun isDirectory(path: String): Boolean
+    fun isSymbolicLink(path: String): Boolean
+    fun exists(path: String): Boolean
+    fun fileSize(path: String): Long
+    fun readBytes(path: String): ByteArray
+    fun writeBytes(path: String, bytes: ByteArray)
+    fun inflateRaw(bytes: ByteArray, maxOutputLength: Int): ByteArray
+    fun createDirectories(path: String)
+    fun list(path: String): List<String>
+    fun move(source: String, destination: String)
+    fun removePath(path: String)
     fun requireExecutable(path: String)
+    fun makeExecutable(path: String)
+    fun openUrl(url: String)
     fun sha256(path: String): String
     fun environment(name: String): String?
     fun arguments(): List<String>

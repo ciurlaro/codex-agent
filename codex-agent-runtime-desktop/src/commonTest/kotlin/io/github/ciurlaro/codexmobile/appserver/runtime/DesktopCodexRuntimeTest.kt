@@ -4,6 +4,8 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerConnection
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.ClientInfo
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeCapabilities
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeParams
+import io.github.ciurlaro.codexmobile.agent.CodexPathWorkspaceSelection
+import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceResolution
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -83,16 +85,17 @@ class DesktopCodexRuntimeTest {
 
     @Test
     fun initializesAndShutsDownOfficialAppServerWhenProvided(): Unit = runBlocking {
-        val executable = desktopTestEnvironment("CODEX_AGENT_APP_SERVER_EXECUTABLE")
+        val bundle = desktopTestEnvironment("CODEX_AGENT_RUNTIME_BUNDLE_DIRECTORY")
             ?.toPath() ?: return@runBlocking
-        val supervisor = desktopTestEnvironment("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE")
-            ?.toPath() ?: return@runBlocking
-        val supervisorSha256 = desktopTestEnvironment("CODEX_AGENT_PROCESS_SUPERVISOR_SHA256")
-            ?: error("Desktop evidence requires the packaged process-supervisor SHA-256")
+        val data = checkNotNull(desktopTestEnvironment("CODEX_AGENT_RUNTIME_DATA_DIRECTORY")).toPath()
+        val workspace = checkNotNull(desktopTestEnvironment("CODEX_AGENT_WORKSPACE"))
+        val platform = DesktopCodexPlatformSupport(bundle, data)
+        val selected = assertIs<CodexWorkspaceResolution.Available>(
+            platform.workspaces.select(CodexPathWorkspaceSelection(workspace)),
+        )
+        val prepared = platform.prepare(selected.workspace)
         val connection = AppServerConnection(
-            runtimeFactory = DesktopCodexRuntimeFactory(
-                DesktopCodexRuntimeConfiguration(executable, supervisor, supervisorSha256, executable.parent!!),
-            ),
+            runtimeFactory = prepared.runtimeFactory,
             initializeParams = InitializeParams(
                 clientInfo = ClientInfo("codex_agent_runtime_desktop_test", "0.2.0", "Desktop Runtime Test"),
                 capabilities = InitializeCapabilities(

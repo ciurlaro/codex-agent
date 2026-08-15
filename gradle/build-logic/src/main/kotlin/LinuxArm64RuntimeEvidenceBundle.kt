@@ -117,15 +117,15 @@ internal fun executeLinuxArm64RuntimeEvidenceBundle(
         )
         executeJvmRuntimeEvidence(
             candidateCommit, ARM_TARGET, "Linux", "ARM64", javaExecutable, manifest,
-            classifierArchive, jvm, jvmEvidence, executables, jvmRunner,
+            classifierArchive, jvm, jvmEvidence, jvmRunner,
         )
         executeNodeRuntimeEvidence(
             candidateCommit, ARM_TARGET, NODE_RUNTIME_JS_BACKEND, "Linux", "ARM64", nodeExecutable,
-            manifest, classifierArchive, js, nodeEvidence, nodeReport, executables, nodeRunner,
+            manifest, classifierArchive, js, nodeEvidence, nodeReport, nodeRunner,
         )
         executeNodeRuntimeEvidence(
             candidateCommit, ARM_TARGET, NODE_RUNTIME_WASM_BACKEND, "Linux", "ARM64", nodeExecutable,
-            manifest, classifierArchive, wasm, wasmEvidence, wasmReport, executables, nodeRunner,
+            manifest, classifierArchive, wasm, wasmEvidence, wasmReport, nodeRunner,
         )
     } finally { temporary.deleteRecursively() }
 }

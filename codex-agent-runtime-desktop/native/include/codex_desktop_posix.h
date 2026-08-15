@@ -14,6 +14,30 @@ static inline void codex_close_fd(int descriptor) {
     if (descriptor >= 0) close(descriptor);
 }
 
+static inline int codex_make_executable(const char *path) {
+    struct stat status;
+    if (lstat(path, &status) != 0 || !S_ISREG(status.st_mode)) return -1;
+    return chmod(path, status.st_mode | S_IXUSR | S_IXGRP | S_IXOTH);
+}
+
+static inline int codex_open_url(const char *url) {
+    pid_t child = fork();
+    if (child < 0) return -1;
+    if (child == 0) {
+        pid_t opener = fork();
+        if (opener < 0) _exit(126);
+        if (opener == 0) {
+            execlp("xdg-open", "xdg-open", url, (char *)NULL);
+            _exit(127);
+        }
+        _exit(0);
+    }
+    int status = 0;
+    pid_t result;
+    do result = waitpid(child, &status, 0); while (result < 0 && errno == EINTR);
+    return result == child && WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
+}
+
 static inline int codex_process_start(
     const char *executable,
     const char *argument,

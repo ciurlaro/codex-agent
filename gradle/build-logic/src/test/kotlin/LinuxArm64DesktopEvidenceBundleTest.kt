@@ -60,10 +60,7 @@ class LinuxArm64DesktopEvidenceBundleTest {
         fixture.execute { command, environment ->
             commands += command
             assertTrue(File(command.first()).isFile)
-            assertTrue(File(environment.getValue("CODEX_AGENT_APP_SERVER_EXECUTABLE")).isFile)
-            val supervisor = File(environment.getValue("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE"))
-            assertTrue(supervisor.isFile)
-            assertEquals(supervisor.releaseDigest(), environment["CODEX_AGENT_PROCESS_SUPERVISOR_SHA256"])
+            assertRuntimeBundleEnvironment(environment, "linuxArm64")
             if (command.contains("--ktest_list_tests")) DesktopEvidenceProcessResult(0, exactListing())
             else DesktopEvidenceProcessResult(0, "")
         }
@@ -154,12 +151,18 @@ class LinuxArm64DesktopEvidenceBundleTest {
 
     private class Fixture(val root: File) {
         val test = root.resolve("test.kexe").apply { writeText("linked ARM64 test") }
-        val classifier = root.resolve("classifier.zip").apply { writeZip(linkedMapOf(
-            "codex-app-server" to APP_SERVER,
-            "codex-process-supervisor" to SUPERVISOR,
-            "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
-            "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
-        )) }
+        val classifier = root.resolve("classifier.zip").apply {
+            val payload = linkedMapOf(
+                "codex-app-server" to APP_SERVER,
+                "codex-process-supervisor" to SUPERVISOR,
+                "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
+                "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
+            )
+            writeZip(payload + ("codex-runtime-manifest.json" to runtimeManifestFixture(
+                "0.2.0", "linuxArm64", "app-server-linux-arm64", payload,
+                setOf("codex-app-server", "codex-process-supervisor"),
+            )))
+        }
         val bundle = root.resolve("execution.zip")
         val evidence = root.resolve(desktopRuntimeEvidenceFileName("linuxArm64"))
         val report = root.resolve(

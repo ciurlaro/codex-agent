@@ -10,6 +10,7 @@ plugins {
 
 kotlin {
     sourceSets {
+        commonMain { kotlin.srcDir(rootProject.layout.projectDirectory.dir("runtime-host-shared/src/commonMain/kotlin")) }
         commonMain.dependencies {
             api(project(":codex-agent-client"))
             implementation(libs.kotlinx.coroutines.core)

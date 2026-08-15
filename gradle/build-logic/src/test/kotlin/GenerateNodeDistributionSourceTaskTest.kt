@@ -34,6 +34,7 @@ class GenerateNodeDistributionSourceTaskTest {
                 GenerateNodeDistributionSourceTask::class.java,
             ).apply {
                 distributionManifest.set(manifest)
+                libraryVersion.set("0.2.0")
                 outputDirectory.set(output)
             }
             block(task, output)

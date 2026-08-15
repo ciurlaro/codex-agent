@@ -17,6 +17,7 @@ data class IosCodexRuntimeConfiguration(
     val codexHomePath: String = "$sandboxRootPath/Library/Application Support/CodexAgent",
     @Deprecated("Unused compatibility property; temporary files are created beside their destination for atomic replacement")
     val temporaryPath: String = "$sandboxRootPath/tmp/CodexAgent",
+    val securityScopedWorkspace: Boolean = false,
 ) {
     init {
         listOf(sandboxRootPath, workspacePath, codexHomePath).forEach { path ->

@@ -42,10 +42,7 @@ class NodeRuntimeEvidenceLinuxArm64Test {
             ) { command, environment ->
                 commands += command
                 if (command.last() != "--version") {
-                    assertEquals("linuxArm64", environment["CODEX_AGENT_DESKTOP_TARGET"])
-                    assertTrue(environment.containsKey("CODEX_AGENT_APP_SERVER_EXECUTABLE"))
-                    assertTrue(environment.containsKey("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE"))
-                    assertTrue(environment.containsKey("CODEX_AGENT_PROCESS_SUPERVISOR_SHA256"))
+                    assertRuntimeBundleEnvironment(environment, "linuxArm64")
                 }
                 successfulNodeEvidenceResult(command)
             }

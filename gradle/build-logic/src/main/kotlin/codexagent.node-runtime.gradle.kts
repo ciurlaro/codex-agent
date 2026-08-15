@@ -5,6 +5,7 @@ val desktopManifest = rootProject.layout.projectDirectory.file(
 )
 tasks.register<GenerateNodeDistributionSourceTask>("generateNodeDistributionSource") {
     distributionManifest.set(desktopManifest)
+    libraryVersion.set(project.version.toString())
     outputDirectory.set(layout.buildDirectory.dir("generated/distributions/kotlin"))
 }
 

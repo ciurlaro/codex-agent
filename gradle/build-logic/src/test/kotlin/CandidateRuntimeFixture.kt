@@ -3,9 +3,13 @@ import java.io.File
 import java.time.LocalDateTime
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 internal val FIXTURE_ANDROID_RUNTIME_BYTES = "Android ARM64 runtime".encodeToByteArray()
 
@@ -25,12 +29,17 @@ internal class CandidateRuntimeReleaseFixture(
         root.resolve("codex-agent-runtime-desktop-$version-${spec.classifier}.zip").apply {
             parentFile.mkdirs()
             val windows = target == "mingwX64"
-            nodeEvidenceWriteZip(linkedMapOf(
-                (if (windows) "codex-app-server.exe" else "codex-app-server") to appServer,
-                (if (windows) "codex-process-supervisor.exe" else "codex-process-supervisor") to supervisor,
+            val executable = if (windows) "codex-app-server.exe" else "codex-app-server"
+            val supervisorExecutable = if (windows) "codex-process-supervisor.exe" else "codex-process-supervisor"
+            val payload = linkedMapOf(
+                executable to appServer,
+                supervisorExecutable to supervisor,
                 "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
                 "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
-            ))
+            )
+            nodeEvidenceWriteZip(payload + ("codex-runtime-manifest.json" to runtimeManifestFixture(
+                version, target, spec.classifier, payload, setOf(executable, supervisorExecutable),
+            )))
         }
     }
     private val classifierProofs = desktopRuntimeEvidenceTargets.keys.associateWith { target ->
@@ -129,6 +138,52 @@ internal class CandidateRuntimeReleaseFixture(
             put("sha256", JsonPrimitive(archive.releaseDigest()))
         }
     }
+}
+
+internal fun runtimeManifestFixture(
+    libraryVersion: String,
+    target: String,
+    classifier: String,
+    payload: Map<String, ByteArray>,
+    executables: Set<String>,
+): ByteArray = buildJsonObject {
+    put("schemaVersion", 1)
+    put("libraryVersion", libraryVersion)
+    put("appServerVersion", "0.145.0")
+    put("target", target)
+    put("classifier", classifier)
+    putJsonArray("members") {
+        payload.forEach { (name, bytes) ->
+            add(buildJsonObject {
+                put("name", name)
+                put("size", bytes.size)
+                put("sha256", bytes.inputStream().releaseDigest())
+                put("executable", name in executables)
+            })
+        }
+    }
+}.toString().encodeToByteArray()
+
+internal fun assertRuntimeBundleEnvironment(environment: Map<String, String>, target: String) {
+    assertEquals(
+        setOf(
+            RUNTIME_BUNDLE_DIRECTORY_ENV,
+            RUNTIME_DATA_DIRECTORY_ENV,
+            RUNTIME_WORKSPACE_ENV,
+            "CODEX_AGENT_DESKTOP_TARGET",
+        ),
+        environment.keys,
+    )
+    assertEquals(target, environment["CODEX_AGENT_DESKTOP_TARGET"])
+    val bundle = File(environment.getValue(RUNTIME_BUNDLE_DIRECTORY_ENV))
+    assertTrue(bundle.isDirectory)
+    assertTrue(File(environment.getValue(RUNTIME_DATA_DIRECTORY_ENV)).isDirectory)
+    assertTrue(File(environment.getValue(RUNTIME_WORKSPACE_ENV)).isDirectory)
+    assertTrue(
+        bundle.resolve(
+            "codex-agent-runtime-desktop-0.2.0-${desktopRuntimeEvidenceTargets.getValue(target).classifier}.zip",
+        ).isFile,
+    )
 }
 
 internal fun zipBytes(entries: Map<String, ByteArray>): ByteArray = ByteArrayOutputStream().use { output ->

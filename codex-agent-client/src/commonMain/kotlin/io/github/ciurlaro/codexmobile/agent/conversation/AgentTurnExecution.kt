@@ -96,7 +96,7 @@ internal suspend fun CodexAgentClient.sendTurnAction(sessionId: SessionId, reque
     require(snapshot.model?.isNotBlank() != false) { "Model must not be blank" }
     require(snapshot.effort?.isNotBlank() != false) { "Effort must not be blank" }
     require(snapshot.serviceTier?.isNotBlank() != false) { "Service tier must not be blank" }
-    require(snapshot.workingDirectory?.startsWith('/') != false) {
+    require(snapshot.workingDirectory?.isAbsoluteHostPath() != false) {
         "Working directory must be absolute"
     }
     turnStateLock.withLock {

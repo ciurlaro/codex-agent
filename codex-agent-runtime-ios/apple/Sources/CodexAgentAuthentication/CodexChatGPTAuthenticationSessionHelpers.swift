@@ -99,8 +99,7 @@ extension CodexChatGPTAuthenticationSession {
         guard browserSession == nil, activeAttempt?.id == attempt else { return }
         guard
             let url = URL(string: signInUrl),
-            url.scheme?.lowercased() == "https",
-            url.host != nil
+            isTrustedChatGPTURL(url)
         else {
             cancelFailedPresentation(attempt: attempt, message: "App Server returned an invalid ChatGPT sign-in URL.")
             return
@@ -261,12 +260,16 @@ extension CodexChatGPTAuthenticationSession {
     }
 
     func foregroundWindow() -> UIWindow? {
-        let scenes = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .filter { $0.activationState == .foregroundActive }
-        return scenes.lazy.compactMap { scene in
-            scene.windows.first(where: \.isKeyWindow)
-                ?? scene.windows.first(where: { !$0.isHidden })
-        }.first
+        codexForegroundWindow()
     }
+}
+
+func isTrustedChatGPTURL(_ url: URL) -> Bool {
+    guard url.scheme?.lowercased() == "https",
+        url.user == nil,
+        url.password == nil,
+        url.port == nil || url.port == 443,
+        let host = url.host?.lowercased()
+    else { return false }
+    return ["openai.com", "chatgpt.com"].contains { host == $0 || host.hasSuffix(".\($0)") }
 }

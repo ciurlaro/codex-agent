@@ -16,7 +16,6 @@ internal fun executeJvmRuntimeEvidence(
     classifierArchive: File,
     compiledJvmTestRuntime: File,
     evidenceFile: File,
-    runtimeExecutables: DesktopRuntimeExecutables? = null,
     runner: (List<String>, Map<String, String>) -> JvmEvidenceProcessResult = ::runJvmEvidenceProcess,
 ) {
     evidenceFile.delete()
@@ -37,19 +36,18 @@ internal fun executeJvmRuntimeEvidence(
     inspectJvmRuntimeRunnerArchive(compiledJvmTestRuntime)
     val temporary = Files.createTempDirectory("codex-agent-jvm-evidence-$target").toFile().canonicalFile
     try {
-        val executables = runtimeExecutables ?: extractDesktopRuntimeExecutables(classifier, classifierArchive, temporary)
-        validateDesktopRuntimeExecutables(target, classifier.binarySha256, classifier.supervisorSha256, executables)
+        val runtime = stageRuntimeBundleForEvidence(
+            classifierArchive,
+            target,
+            classifier.classifier,
+            temporary.resolve("runtime"),
+        )
         val runnerRoot = temporary.resolve("runner")
         extractJvmRunner(compiledJvmTestRuntime, runnerRoot)
         val separator = if (target == "mingwX64") ";" else ":"
         val classpath = "${runnerRoot.resolve("classes")}$separator${runnerRoot.resolve("lib/*")}"
         val baseCommand = listOf(javaExecutable, "-cp", classpath, JVM_RUNTIME_RUNNER_ENTRYPOINT)
-        val environment = mapOf(
-            "CODEX_AGENT_APP_SERVER_EXECUTABLE" to executables.appServer.absolutePath,
-            "CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE" to executables.supervisor.absolutePath,
-            "CODEX_AGENT_PROCESS_SUPERVISOR_SHA256" to classifier.supervisorSha256,
-            "CODEX_AGENT_DESKTOP_TARGET" to target,
-        )
+        val environment = runtime.environment(target)
         val listing = runner(baseCommand + "--list-tests", environment)
         check(listing.exitCode == 0) { "JVM test discovery failed: ${listing.output}" }
         verifyJvmTestListing(listing.output)

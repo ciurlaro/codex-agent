@@ -106,8 +106,26 @@ use super::*;
             sandbox_root_path: sandbox.path().to_path_buf(),
             workspace_path: workspace,
             codex_home_path: outside.clone(),
+            security_scoped_workspace: false,
         };
 
         assert!(configuration.validate().is_err());
         assert!(!outside.exists());
+    }
+
+    #[test]
+    fn configuration_accepts_an_explicit_security_scoped_workspace() {
+        let sandbox = TempDir::new().expect("sandbox");
+        let outside = TempDir::new().expect("security scoped workspace");
+        let home = sandbox.path().join("state");
+        let configuration = RuntimeConfiguration {
+            sandbox_root_path: sandbox.path().to_path_buf(),
+            workspace_path: outside.path().to_path_buf(),
+            codex_home_path: home,
+            security_scoped_workspace: true,
+        };
+
+        let paths = configuration.validate().expect("security scoped workspace");
+        assert_eq!(paths.workspace, outside.path().canonicalize().unwrap());
+        assert!(paths.codex_home.starts_with(sandbox.path().canonicalize().unwrap()));
     }

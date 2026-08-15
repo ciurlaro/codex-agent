@@ -85,14 +85,17 @@ class CodexRuntimeEventTest {
         }
         val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
         try {
+            val overflow = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeout(5_000) {
+                    client.events
+                        .onEach { delay(5) }
+                        .filterIsInstance<AgentEvent.Failure>()
+                        .first()
+                }
+            }
             client.sendTurn(SessionId("thread-1"), AgentTurnRequest("hello"))
-            withTimeout(2_000) {
-                while (process.isAlive) kotlinx.coroutines.yield()
-            }
-            val failure = withTimeout(5_000) {
-                client.events.filterIsInstance<AgentEvent.Failure>().first()
-            }
-            assertTrue(failure.message.contains("event buffer exceeded"))
+            assertEquals("event_observer_overflow", overflow.await().code)
+            assertTrue(process.isAlive)
         } finally {
             client.close()
         }
@@ -180,12 +183,11 @@ class CodexRuntimeEventTest {
         }
         val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
         try {
-            suspend fun nextEvent(): AgentEvent = withTimeout(5_000) { client.events.first() }
+            val events = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeout(5_000) { client.events.take(6).toList() }
+            }
 
             client.authenticate()
-            val required = assertIs<AgentEvent.AuthenticationRequired>(nextEvent())
-            assertEquals("https://auth.openai.com/oauth/authorize?state=test", required.signInUrl)
-
             process.notify(
                 "account/login/completed",
                 buildJsonObject {
@@ -194,18 +196,19 @@ class CodexRuntimeEventTest {
                     put("error", JsonNull)
                 },
             )
-            assertIs<AgentEvent.Authenticated>(nextEvent())
-
             val session = client.openSession()
-            assertEquals(AgentEvent.SessionOpened(SessionId("thread-1"), model = "test"), nextEvent())
-
             client.sendTurn(session, AgentTurnRequest("hello"))
+            val received = events.await()
+            val required = assertIs<AgentEvent.AuthenticationRequired>(received[0])
+            assertEquals("https://auth.openai.com/oauth/authorize?state=test", required.signInUrl)
+            assertIs<AgentEvent.Authenticated>(received[1])
+            assertEquals(AgentEvent.SessionOpened(SessionId("thread-1"), model = "test"), received[2])
             assertEquals(
                 AgentEvent.TextDelta(SessionId("thread-1"), "Hello", "item-1", isCommentary = true),
-                nextEvent(),
+                received[3],
             )
-            assertEquals(AgentEvent.TurnCompleted(SessionId("thread-1")), nextEvent())
-            assertIs<AgentEvent.Failure>(nextEvent())
+            assertEquals(AgentEvent.TurnCompleted(SessionId("thread-1")), received[4])
+            assertIs<AgentEvent.Failure>(received[5])
         } finally {
             client.close()
         }

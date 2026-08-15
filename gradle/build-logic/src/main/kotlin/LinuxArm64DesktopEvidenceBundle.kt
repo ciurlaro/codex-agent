@@ -34,6 +34,7 @@ internal fun stageLinuxArm64DesktopEvidenceBundle(
         val entries = classifier.safeFiles()
         check(entries.map(ZipEntry::getName).toSet() == setOf(
             APP_SERVER_PATH, SUPERVISOR_PATH, "openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt",
+            "codex-runtime-manifest.json",
         )) { "Linux ARM64 classifier member set is invalid" }
         val appServer = classifier.getEntry(APP_SERVER_PATH)
         val supervisor = classifier.getEntry(SUPERVISOR_PATH)
@@ -128,19 +129,25 @@ internal fun executeLinuxArm64DesktopEvidenceInputs(
     check(report.name == desktopRuntimeTestReportName()) { "Desktop test report filename mismatch" }
     check(test.isFile && test.setExecutable(true, false)) { "Linux ARM64 test executable could not be enabled" }
     validateDesktopRuntimeExecutables(LINUX_ARM64_TARGET, binarySha256, supervisorSha256, executables)
-    val processEnvironment = mapOf(
-        "CODEX_AGENT_APP_SERVER_EXECUTABLE" to executables.appServer.absolutePath,
-        "CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE" to executables.supervisor.absolutePath,
-        "CODEX_AGENT_PROCESS_SUPERVISOR_SHA256" to supervisorSha256,
-    )
-    val listing = runner(listOf(test.absolutePath, "--ktest_list_tests"), processEnvironment)
-    check(listing.exitCode == 0) { "Linux ARM64 test discovery failed: ${listing.output}" }
-    verifyTestListing(listing.output)
-    desktopRuntimeTestMethods.forEach { method ->
-        val result = runner(listOf(
-            test.absolutePath, "--ktest_filter=$DESKTOP_RUNTIME_TEST_CLASS.$method", "--ktest_logger=SILENT",
-        ), processEnvironment)
-        check(result.exitCode == 0) { "Linux ARM64 desktop test failed ($method): ${result.output}" }
+    val runtimeRoot = Files.createTempDirectory("codex-agent-linux-arm64-platform-evidence").toFile()
+    try {
+        val processEnvironment = stageRuntimeBundleForEvidence(
+            classifier,
+            LINUX_ARM64_TARGET,
+            LINUX_ARM64_CLASSIFIER,
+            runtimeRoot,
+        ).environment(LINUX_ARM64_TARGET)
+        val listing = runner(listOf(test.absolutePath, "--ktest_list_tests"), processEnvironment)
+        check(listing.exitCode == 0) { "Linux ARM64 test discovery failed: ${listing.output}" }
+        verifyTestListing(listing.output)
+        desktopRuntimeTestMethods.forEach { method ->
+            val result = runner(listOf(
+                test.absolutePath, "--ktest_filter=$DESKTOP_RUNTIME_TEST_CLASS.$method", "--ktest_logger=SILENT",
+            ), processEnvironment)
+            check(result.exitCode == 0) { "Linux ARM64 desktop test failed ($method): ${result.output}" }
+        }
+    } finally {
+        runtimeRoot.deleteRecursively()
     }
     writeTestReport(report)
     verifyDesktopRuntimeTestReport(report, LINUX_ARM64_TARGET)
@@ -182,7 +189,7 @@ private fun verifyClassifier(classifier: File, metadata: LinuxArmExecutionMetada
     val entries = zip.safeFiles()
     check(entries.map(ZipEntry::getName).toSet() == setOf(
         metadata.executableName, metadata.supervisorExecutableName,
-        "openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt",
+        "openai-codex-LICENSE.txt", "openai-codex-NOTICE.txt", "codex-runtime-manifest.json",
     )) { "Linux ARM64 classifier member set is invalid" }
     check(zip.getInputStream(zip.getEntry(metadata.executableName)).use { it.releaseDigest() } == metadata.appServer.sha256) {
         "Linux ARM64 classifier executable mismatch"

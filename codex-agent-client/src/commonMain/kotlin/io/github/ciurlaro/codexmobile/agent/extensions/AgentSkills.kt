@@ -106,7 +106,7 @@ internal suspend fun CodexAgentClient.listSkillsAction(
     workingDirectory: String,
     forceReload: Boolean,
 ): AgentSkillCatalog {
-    require(workingDirectory.startsWith('/')) { "Working directory must be absolute" }
+    require(workingDirectory.isAbsoluteHostPath()) { "Working directory must be absolute" }
     val result = connection.request(
         AppServerClientMethods.SkillsList,
         SkillsListParams(cwds = listOf(workingDirectory), forceReload = forceReload),
@@ -148,7 +148,7 @@ internal suspend fun CodexAgentClient.readSkillAction(path: String, offset: Long
 }
 
 internal suspend fun CodexAgentClient.setSkillEnabledAction(path: String, enabled: Boolean) {
-    require(path.startsWith('/')) { "Skill path must be absolute" }
+    require(path.isAbsoluteHostPath()) { "Skill path must be absolute" }
     connection.request(
         AppServerClientMethods.SkillsConfigWrite,
         SkillsConfigWriteParams(path = path, enabled = enabled),

@@ -243,7 +243,7 @@ internal fun <T> CodexAgentClient.writePluginCacheAction(file: Path?, serializer
 }
 
 internal fun CodexAgentClient.validateWorkingDirectoryAction(workingDirectory: String?) {
-    require(workingDirectory == null || workingDirectory.startsWith('/')) {
+    require(workingDirectory == null || workingDirectory.isAbsoluteHostPath()) {
         "Working directory must be absolute"
     }
 }

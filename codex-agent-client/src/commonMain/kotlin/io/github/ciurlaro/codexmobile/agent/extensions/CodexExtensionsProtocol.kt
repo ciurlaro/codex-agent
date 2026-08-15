@@ -138,7 +138,7 @@ internal fun parseConnector(item: AppInfo) = AgentConnector(
     id = item.id,
     name = item.name,
     description = item.description.orEmpty(),
-    installUrl = item.installUrl,
+    installUrl = item.installUrl?.also(::requireSafeAuthUrl),
     isAccessible = item.isAccessible ?: false,
     isEnabled = item.isEnabled ?: true,
     pluginNames = item.pluginDisplayNames.orEmpty(),
@@ -148,7 +148,7 @@ internal fun parseConnector(item: AppSummary) = AgentConnector(
     id = item.id,
     name = item.name,
     description = item.description.orEmpty(),
-    installUrl = item.installUrl,
+    installUrl = item.installUrl?.also(::requireSafeAuthUrl),
     isAccessible = false,
     isEnabled = true,
     pluginNames = emptyList(),
@@ -178,24 +178,6 @@ internal fun parseInvocation(item: JsonObject): AgentInvocation? = when (item.op
     "mention" -> item.requiredString("path").takeIf { it.startsWith("plugin://") }
         ?.let { AgentInvocation.Plugin(item.requiredString("name"), it) }
     else -> null
-}
-
-internal fun requireSafeAuthUrl(value: String): String {
-    val scheme = value.substringBefore("://", "").lowercase()
-    val remainder = value.substringAfter("://", "")
-    val authority = remainder.substringBefore('/').substringBefore('?').substringBefore('#')
-    require(authority.isNotBlank() && '@' !in authority && authority.none(Char::isWhitespace)) {
-        "Authorization URL is invalid"
-    }
-    val host = when {
-        authority.startsWith('[') -> authority.substringAfter('[').substringBefore(']')
-        authority.count { it == ':' } <= 1 -> authority.substringBefore(':')
-        else -> ""
-    }
-    val secure = scheme == "https" && host.isNotBlank()
-    val loopback = scheme == "http" && host.lowercase() in setOf("localhost", "127.0.0.1", "::1")
-    require(secure || loopback) { "Authorization URL is not HTTPS or loopback HTTP" }
-    return value
 }
 
 internal fun JsonObject.optionalObject(name: String): JsonObject? =

@@ -17,12 +17,7 @@ class JvmRuntimeEvidenceTasksTest {
         desktopRuntimeEvidenceTargets.keys.forEach { target ->
             fixture.record(target) { command, environment ->
                 commands.getOrPut(target, ::mutableListOf) += command
-                assertTrue(File(environment.getValue("CODEX_AGENT_APP_SERVER_EXECUTABLE")).isFile)
-                val supervisor = File(environment.getValue("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE"))
-                assertTrue(supervisor.isFile)
-                assertEquals(supervisor.canonicalFile, supervisor.absoluteFile)
-                assertEquals(supervisor.releaseDigest(), environment["CODEX_AGENT_PROCESS_SUPERVISOR_SHA256"])
-                assertEquals(target, environment["CODEX_AGENT_DESKTOP_TARGET"])
+                assertRuntimeBundleEnvironment(environment, target)
                 if (command.last() == "--list-tests") JvmEvidenceProcessResult(0, exactListing())
                 else JvmEvidenceProcessResult(0, "")
             }
@@ -136,12 +131,27 @@ class JvmRuntimeEvidenceTasksTest {
         ) = validateJvmRuntimeEvidence(evidenceFiles, COMMIT, manifest, classifiers.values.toList(), runner)
 
         fun writeClassifier(target: String) = writeClassifier(target, classifiers.getValue(target))
-        private fun writeClassifier(target: String, output: File) = output.writeZip(linkedMapOf(
-            (if (target == "mingwX64") "codex-app-server.exe" else "codex-app-server") to appServer,
-            (if (target == "mingwX64") "codex-process-supervisor.exe" else "codex-process-supervisor") to supervisor,
-            "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
-            "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
-        ))
+        private fun writeClassifier(target: String, output: File) {
+            val executable = if (target == "mingwX64") "codex-app-server.exe" else "codex-app-server"
+            val supervisorExecutable = if (target == "mingwX64") {
+                "codex-process-supervisor.exe"
+            } else {
+                "codex-process-supervisor"
+            }
+            val payload = linkedMapOf(
+                executable to appServer,
+                supervisorExecutable to supervisor,
+                "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
+                "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
+            )
+            output.writeZip(payload + ("codex-runtime-manifest.json" to runtimeManifestFixture(
+                "0.2.0",
+                target,
+                desktopRuntimeEvidenceTargets.getValue(target).classifier,
+                payload,
+                setOf(executable, supervisorExecutable),
+            )))
+        }
     }
 
     private companion object {

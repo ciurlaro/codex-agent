@@ -6,7 +6,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
+import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
@@ -15,6 +17,9 @@ import org.gradle.api.tasks.TaskAction
 
 @CacheableTask
 abstract class GenerateDesktopDistributionSourceTask : DefaultTask() {
+    @get:Input
+    abstract val libraryVersion: Property<String>
+
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val manifestFile: RegularFileProperty
@@ -44,7 +49,10 @@ abstract class GenerateDesktopDistributionSourceTask : DefaultTask() {
             appendLine("package io.github.ciurlaro.codexmobile.appserver.runtime")
             appendLine()
             appendLine("internal data class DesktopCodexDistribution(")
+            appendLine("    val libraryVersion: String,")
+            appendLine("    val appServerVersion: String,")
             appendLine("    val target: String,")
+            appendLine("    val classifier: String,")
             appendLine("    val binarySha256: String,")
             appendLine("    val executableName: String,")
             appendLine("    val supervisorExecutableName: String,")
@@ -53,7 +61,10 @@ abstract class GenerateDesktopDistributionSourceTask : DefaultTask() {
             appendLine("internal fun desktopCodexDistribution(target: String): DesktopCodexDistribution = when (target) {")
             expectedTargets.forEach { target ->
                 appendLine("    \"$target\" -> DesktopCodexDistribution(")
+                appendLine("        libraryVersion = \"${libraryVersion.get()}\",")
+                appendLine("        appServerVersion = \"${manifest.getValue("version").jsonPrimitive.content}\",")
                 appendLine("        target = \"$target\",")
+                appendLine("        classifier = \"${value(target, "classifier")}\",")
                 appendLine("        binarySha256 = \"${value(target, "binarySha256")}\",")
                 appendLine("        executableName = \"${value(target, "executableName")}\",")
                 appendLine("        supervisorExecutableName = \"${value(target, "supervisorExecutableName")}\",")

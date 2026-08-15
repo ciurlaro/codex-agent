@@ -22,7 +22,7 @@ class IosPrivacyAuditTest {
     }
     @Test
     fun `complete evidence verifies the reviewed manifest and archive placement`() = withFixture(
-        manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1"))),
+        manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1", "3B52.1"))),
         IosPrivacySignals(setOf("_stat"), emptySet()),
     ) { fixture ->
         verifyIosPrivacyAudit(fixture.policy, fixture.evidence, null, fixture.audit)
@@ -33,7 +33,7 @@ class IosPrivacyAuditTest {
     }
     @Test
     fun `ambiguous finding requires an exact hash-bound review`() = withFixture(
-        manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1"))),
+        manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1", "3B52.1"))),
         IosPrivacySignals(setOf("_stat", "_getattrlist"), emptySet()),
     ) { fixture ->
         assertFailsWith<IllegalStateException> {
@@ -181,7 +181,7 @@ class IosPrivacyAuditTest {
 
     @Test
     fun `rejects duplicate and extra review findings`() = withFixture(
-        manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1"))),
+        manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1", "3B52.1"))),
         IosPrivacySignals(setOf("_stat", "_getattrlist"), emptySet()),
     ) { fixture ->
         val review = fixture.root.resolve("review.json")
@@ -213,7 +213,7 @@ class IosPrivacyAuditTest {
 
     @Test
     fun `rejects unnecessary declarations and missing archived placement`() = withFixture(
-        manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1"), SYSTEM_BOOT to listOf("35F9.1"))),
+        manifest(mapOf(FILE_TIMESTAMP to listOf("C617.1", "3B52.1"), SYSTEM_BOOT to listOf("35F9.1"))),
         IosPrivacySignals(setOf("_stat"), emptySet()),
         copyArchivedManifest = false,
     ) { fixture ->

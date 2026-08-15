@@ -33,9 +33,24 @@ private object WasmNodeHost : NodeHost {
     override fun joinPath(parent: String, child: String): String = wasmPathJoin(parent, child)
     override fun isFile(path: String): Boolean = wasmFsStatSync(path).isFile()
     override fun isDirectory(path: String): Boolean = wasmFsStatSync(path).isDirectory()
+    override fun isSymbolicLink(path: String): Boolean = wasmFsLstatSync(path).isSymbolicLink()
+    override fun exists(path: String): Boolean = wasmFsExistsSync(path)
+    override fun fileSize(path: String): Long = wasmFsSize(path).toLong()
+    override fun readBytes(path: String): ByteArray = wasmToByteArray(wasmFsReadFileSync(path))
+    override fun writeBytes(path: String, bytes: ByteArray): Unit = wasmFsWriteBytes(path, bytes.toWasmBuffer())
+    override fun inflateRaw(bytes: ByteArray, maxOutputLength: Int): ByteArray =
+        wasmToByteArray(wasmInflateRaw(bytes.toWasmBuffer(), maxOutputLength))
+    override fun createDirectories(path: String): Unit = wasmFsMkdirRecursive(path)
+    override fun list(path: String): List<String> = List(wasmFsListSize(path)) { wasmFsListEntry(path, it) }
+    override fun move(source: String, destination: String): Unit = wasmFsRenameSync(source, destination)
+    override fun removePath(path: String): Unit = wasmFsRmSync(path, wasmRemoveOptions())
     override fun requireExecutable(path: String) {
         if (platform != "win32") wasmFsAccessSync(path, 1)
     }
+    override fun makeExecutable(path: String) {
+        if (platform != "win32") wasmFsChmodSync(path, 0x1ED)
+    }
+    override fun openUrl(url: String): Unit = wasmOpenUrl(url, platform)
     override fun sha256(path: String): String = wasmCreateHash("sha256")
         .update(wasmFsReadFileSync(path)).digest("hex")
     override fun environment(name: String): String? = wasmProcessEnvironment(name)
@@ -47,7 +62,7 @@ private object WasmNodeHost : NodeHost {
     )
     override fun writeExecutableFile(path: String, value: String) {
         wasmFsWriteFileSync(path, value)
-        if (platform != "win32") wasmFsChmodSync(path, 0x1ED)
+        makeExecutable(path)
     }
     override fun removeDirectory(path: String): Unit = wasmFsRmSync(path, wasmRemoveOptions())
 
@@ -167,3 +182,7 @@ private fun signalWasmNodeChild(child: JsAny, detached: Boolean, name: String) {
 
 private fun wasmToByteArray(value: JsAny): ByteArray =
     ByteArray(wasmBufferLength(value)) { index -> wasmBufferByte(value, index).toByte() }
+
+private fun ByteArray.toWasmBuffer(): JsAny = wasmBufferAllocate(size).also { buffer ->
+    forEachIndexed { index, byte -> wasmBufferSet(buffer, index, byte.toInt() and 0xff) }
+}

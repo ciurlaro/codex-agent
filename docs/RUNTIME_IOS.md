@@ -33,13 +33,20 @@ the shared client's `initialize` request.
 
 ## Local capability profile
 
-The selected workspace must already be an absolute directory below the
-application sandbox root. Conversation state, credentials, and App Server state
-are stored below the configured sandbox-local Codex home. Those are the only
-runtime path settings. The former unused `temporaryPath` property remains as a
-deprecated, inert source-compatibility property and no longer creates an unused
-directory. Equivalent workspace spellings are compared through normalized real
-paths.
+The selected workspace may be an absolute directory below the application
+sandbox or a folder URL granted by the user through the host application's
+document picker. `IosCodexPlatformSupport` stores an atomic security-scoped
+bookmark, resolves it on later launches, holds access for the runtime lifetime,
+and reports `ACCESS_REVOKED` when a bookmark is stale or unavailable. The host
+owns picker presentation; construct `IosCodexWorkspaceSelection` from the URL it
+returns. Workspace tool reads and writes use `NSFileCoordinator` while the grant
+is active.
+
+Conversation state, credentials, and App Server state remain below the
+configured sandbox-local Codex home even when the workspace is external. The
+former unused `temporaryPath` property remains as a deprecated, inert
+source-compatibility property and no longer creates an unused directory.
+Equivalent workspace spellings are compared through normalized real paths.
 Only one active local runtime may own a canonical Codex home in a process. A
 second runtime is rejected until the first has shut down or failed cleanly.
 
@@ -73,8 +80,11 @@ environment list is empty, so process-backed tools cannot be planned.
 The shared client uses the existing App Server authentication routes. The
 supported iOS end-user path is Codex-managed ChatGPT browser login presented by
 the `CodexAgentAuthentication` SwiftPM product through
-`CodexChatGPTAuthenticationSession`. It uses `ASWebAuthenticationSession` with
-the user's normal Safari session. The embedded App Server still generates PKCE,
+`CodexChatGPTAuthenticationSession`. The product also provides
+`CodexWebAuthenticationBrowser`, which implements the shared browser contract
+for ChatGPT, connector, MCP OAuth, and elicitation URLs. It uses
+`ASWebAuthenticationSession` with the user's normal Safari session. The
+embedded App Server still generates PKCE,
 hosts the temporary `127.0.0.1:1455` (or registered fallback-port) callback,
 exchanges the code, persists and refreshes the ChatGPT credential, and emits
 `account/login/completed`. The Swift wrapper sees only the authorization URL and
@@ -100,12 +110,14 @@ authentication.authenticate { error in
 }
 ```
 
-ChatGPT browser OAuth is the only authentication flow exposed by the iOS
-facade and Swift application. API-key login remains an optional shared-client
-capability, but no API key or persisted interactive credential is required by
-CI or release automation. The iOS configuration forces the upstream file
-credential store into the local Codex home. Secrets are not included in runtime
-configuration or diagnostic strings.
+The ChatGPT convenience session remains source-compatible. Generic URLs must be
+constructed through `CodexAuthorizationUrl`: ChatGPT uses strict HTTPS
+OpenAI/ChatGPT host validation, while external authentication accepts HTTPS or
+loopback HTTP. API-key login remains an optional shared-client capability, but
+no API key or persisted interactive credential is required by CI or release
+automation. The iOS configuration forces the upstream file credential store
+into the local Codex home. Secrets are not included in runtime configuration or
+diagnostic strings.
 
 `assembleCodexAgentReleaseXCFramework` creates the static umbrella framework.
 `packageCodexAgentAppleDistribution` stages its local Swift Package and creates
@@ -139,10 +151,10 @@ DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer \
 
 This credential-free gate verifies the native bridge, iPhoneOS and Simulator
 compilation/linking, real embedded App Server startup and shared JSON-RPC
-handshake, deterministic restart, workspace confinement, exact tool
-advertisement/dispatch, XCFramework creation, Swift Package staging, checksum
-metadata, and a clean Swift app build. It does not authenticate or claim a real
-model call.
+handshake, deterministic restart, bookmark restoration and workspace
+confinement, exact tool advertisement/dispatch, XCFramework creation, Swift
+Package staging, checksum metadata, and a clean Swift app build. It does not
+authenticate or claim a real model call.
 
 Follow the [manual release acceptance procedure](RELEASING.md) to use the
 ChatGPT browser sheet and prove a real model reads and patches a local sandbox

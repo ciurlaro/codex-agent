@@ -40,7 +40,7 @@ internal object IosPrivacyPolicy {
         IosPrivacyCategory(
             "NSPrivacyAccessedAPICategoryFileTimestamp",
             setOf("DDA9.1", "C617.1", "3B52.1", "0A2A.1"),
-            approvedReasons = setOf("C617.1"),
+            approvedReasons = setOf("C617.1", "3B52.1"),
             symbols = setOf("_fstat", "_fstatat", "_lstat", "_stat"),
             strings = setOf(
                 "creationDate", "modificationDate", "contentModificationDate", "fileModificationDate",

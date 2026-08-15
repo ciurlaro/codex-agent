@@ -26,13 +26,21 @@ internal class NodeRuntimeEvidenceFixture(val root: File) {
     }
     val classifiers = desktopRuntimeEvidenceTargets.mapValues { (target, spec) ->
         root.resolve("codex-agent-runtime-desktop-0.2.0-${spec.classifier}.zip").apply {
-            nodeEvidenceWriteZip(linkedMapOf(
-                (if (target == "mingwX64") "codex-app-server.exe" else "codex-app-server") to appServer,
-                (if (target == "mingwX64") "codex-process-supervisor.exe" else "codex-process-supervisor") to
-                    embeddedSupervisor,
+            val executable = if (target == "mingwX64") "codex-app-server.exe" else "codex-app-server"
+            val supervisor = if (target == "mingwX64") {
+                "codex-process-supervisor.exe"
+            } else {
+                "codex-process-supervisor"
+            }
+            val payload = linkedMapOf(
+                executable to appServer,
+                supervisor to embeddedSupervisor,
                 "openai-codex-LICENSE.txt" to "license".encodeToByteArray(),
                 "openai-codex-NOTICE.txt" to "notice".encodeToByteArray(),
-            ))
+            )
+            nodeEvidenceWriteZip(payload + ("codex-runtime-manifest.json" to runtimeManifestFixture(
+                "0.2.0", target, spec.classifier, payload, setOf(executable, supervisor),
+            )))
         }
     }
 

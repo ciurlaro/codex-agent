@@ -1,5 +1,7 @@
 package io.github.ciurlaro.codexmobile.appserver.runtime
 
+import io.github.ciurlaro.codexmobile.agent.CodexPathWorkspaceSelection
+import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceResolution
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerConnection
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.ClientInfo
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeCapabilities
@@ -96,20 +98,17 @@ private suspend fun wrongChecksumProof() {
 }
 
 private suspend fun officialAppServerProof() {
-    val executable = nodeEnvironment("CODEX_AGENT_APP_SERVER_EXECUTABLE") ?: return
-    val supervisor = nodeEnvironment("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE")
-        ?: error("Node evidence requires the packaged process supervisor")
-    val supervisorSha256 = nodeEnvironment("CODEX_AGENT_PROCESS_SUPERVISOR_SHA256")
-        ?: error("Node evidence requires the packaged process-supervisor SHA-256")
+    val bundle = nodeEnvironment("CODEX_AGENT_RUNTIME_BUNDLE_DIRECTORY") ?: return
+    val data = nodeEnvironment("CODEX_AGENT_RUNTIME_DATA_DIRECTORY")
+        ?: error("Node evidence requires a runtime data directory")
+    val workspace = nodeEnvironment("CODEX_AGENT_WORKSPACE")
+        ?: error("Node evidence requires a workspace")
+    val platform = NodeCodexPlatformSupport(bundle.toPath(), data.toPath())
+    val selected = platform.workspaces.select(CodexPathWorkspaceSelection(workspace))
+    check(selected is CodexWorkspaceResolution.Available) { "Node evidence workspace is unavailable" }
+    val prepared = platform.prepare(selected.workspace)
     val connection = AppServerConnection(
-        runtimeFactory = NodeCodexRuntimeFactory(
-            NodeCodexRuntimeConfiguration(
-                executable.toPath(),
-                nodeDirectoryName(executable).toPath(),
-                supervisor.toPath(),
-                supervisorSha256,
-            ),
-        ),
+        runtimeFactory = prepared.runtimeFactory,
         initializeParams = InitializeParams(
             clientInfo = ClientInfo("codex_agent_runtime_node_test", "0.2.0", "Node Runtime Test"),
             capabilities = InitializeCapabilities(
