@@ -6,7 +6,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -15,6 +17,11 @@ import kotlinx.coroutines.withTimeout
 import okio.Path.Companion.toPath
 
 class JvmDesktopLifecycleOrderingTest {
+    @Test
+    fun `blocking process IO uses the elastic dispatcher`() {
+        assertSame(Dispatchers.IO, desktopProcessDispatcher)
+    }
+
     @Test
     fun `exit waits for stdout to drain`(): Unit = runBlocking {
         val process = BlockingStdoutProcess()

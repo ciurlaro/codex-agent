@@ -4,7 +4,6 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 
 import kotlin.concurrent.atomics.AtomicReference
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -20,7 +19,7 @@ internal class DesktopCodexRuntime(
     private val validateConfiguration: (DesktopCodexRuntimeConfiguration) -> Unit,
     private val startProcess: suspend (DesktopCodexRuntimeConfiguration) -> DesktopProcess,
 ) : CodexRuntime {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + desktopProcessDispatcher)
     private val eventChannel = Channel<CodexRuntimeEvent>(EVENT_BUFFER_SIZE)
     private val sendMutex = Mutex()
     private val ownership = AtomicReference<ProcessOwnership>(ProcessOwnership.NotStarted)
@@ -33,7 +32,7 @@ internal class DesktopCodexRuntime(
             else "Codex runtime was already started"
         }
         try {
-            val current = withContext(Dispatchers.Default) {
+            val current = withContext(desktopProcessDispatcher) {
                 validateConfiguration(configuration)
                 startProcess(configuration)
             }
@@ -53,7 +52,7 @@ internal class DesktopCodexRuntime(
         val current = (ownership.load() as? ProcessOwnership.Running)?.process
         check(current != null) { "Codex App Server is not running" }
         try {
-            withContext(Dispatchers.Default) { current.write((line.value + '\n').encodeToByteArray()) }
+            withContext(desktopProcessDispatcher) { current.write((line.value + '\n').encodeToByteArray()) }
         } catch (error: Exception) {
             eventChannel.trySend(CodexRuntimeEvent.IoFailure(error.visibleMessage()))
             throw error

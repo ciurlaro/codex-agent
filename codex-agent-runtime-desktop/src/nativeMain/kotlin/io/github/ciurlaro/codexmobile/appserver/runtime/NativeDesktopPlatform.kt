@@ -5,6 +5,10 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 import kotlin.native.CpuArchitecture
 import kotlin.native.OsFamily
 import kotlin.native.Platform
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+
+internal actual val desktopProcessDispatcher: CoroutineDispatcher = Dispatchers.Default
 
 internal actual fun currentDesktopTarget(): String = when (
     Platform.osFamily to Platform.cpuArchitecture

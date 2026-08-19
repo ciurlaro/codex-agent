@@ -1,5 +1,6 @@
 package io.github.ciurlaro.codexmobile.appserver.runtime
 
+import kotlinx.coroutines.CoroutineDispatcher
 import okio.FileSystem
 import okio.HashingSource
 import okio.Path
@@ -49,6 +50,8 @@ internal expect suspend fun startDesktopProcess(
 ): DesktopProcess
 
 internal expect fun currentDesktopTarget(): String
+
+internal expect val desktopProcessDispatcher: CoroutineDispatcher
 
 private fun validateDesktopConfiguration(configuration: DesktopCodexRuntimeConfiguration) {
     val executable = configuration.appServerExecutable
