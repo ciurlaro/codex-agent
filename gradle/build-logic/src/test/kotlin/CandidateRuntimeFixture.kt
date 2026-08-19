@@ -170,6 +170,8 @@ internal fun assertRuntimeBundleEnvironment(environment: Map<String, String>, ta
             RUNTIME_BUNDLE_DIRECTORY_ENV,
             RUNTIME_DATA_DIRECTORY_ENV,
             RUNTIME_WORKSPACE_ENV,
+            "CODEX_HOME",
+            "CODEX_SQLITE_HOME",
             "CODEX_AGENT_DESKTOP_TARGET",
         ),
         environment.keys,
@@ -177,7 +179,10 @@ internal fun assertRuntimeBundleEnvironment(environment: Map<String, String>, ta
     assertEquals(target, environment["CODEX_AGENT_DESKTOP_TARGET"])
     val bundle = File(environment.getValue(RUNTIME_BUNDLE_DIRECTORY_ENV))
     assertTrue(bundle.isDirectory)
-    assertTrue(File(environment.getValue(RUNTIME_DATA_DIRECTORY_ENV)).isDirectory)
+    val data = File(environment.getValue(RUNTIME_DATA_DIRECTORY_ENV))
+    assertTrue(data.isDirectory)
+    assertEquals(data.absolutePath, environment["CODEX_HOME"])
+    assertEquals(data.absolutePath, environment["CODEX_SQLITE_HOME"])
     assertTrue(File(environment.getValue(RUNTIME_WORKSPACE_ENV)).isDirectory)
     assertTrue(
         bundle.resolve(

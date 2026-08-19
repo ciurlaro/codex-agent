@@ -19,6 +19,8 @@ internal data class RuntimeEvidenceDirectories(
         RUNTIME_BUNDLE_DIRECTORY_ENV to bundle.absolutePath,
         RUNTIME_DATA_DIRECTORY_ENV to data.absolutePath,
         RUNTIME_WORKSPACE_ENV to workspace.absolutePath,
+        "CODEX_HOME" to data.absolutePath,
+        "CODEX_SQLITE_HOME" to data.absolutePath,
         "CODEX_AGENT_DESKTOP_TARGET" to target,
     )
 }

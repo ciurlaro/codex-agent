@@ -120,7 +120,7 @@ jobs:
           -PcodexAgent.nodeRuntimeEvidenceRunnerArchive="$PWD/build/portable-runtime-artifacts/codex-agent-node-runtime-evidence-runner.zip"
           -PcodexAgent.nodeWasmRuntimeEvidenceRunnerArchive="$PWD/build/portable-runtime-artifacts/codex-agent-node-wasm-runtime-evidence-runner.zip"
           -PcodexAgent.desktopDistributionManifest="$PWD/codex-agent-runtime-desktop/codex-app-server-distributions.json"
-          --parallel --stacktrace
+          --no-parallel --stacktrace
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           if-no-files-found: error
