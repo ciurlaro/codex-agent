@@ -31,6 +31,7 @@ class NodeWasmPlatformTest {
             nodeWriteFile(file, "probe")
 
             assertTrue(nodeHost.isFile(file))
+            assertEquals(setOf("probe"), nodeHost.list(directory).toSet())
             assertEquals("probe", nodeHost.baseName(file))
             assertEquals(nodeHost.resolvePath(file), nodeHost.realPath(file))
             assertEquals(64, nodeHost.sha256(file).length)

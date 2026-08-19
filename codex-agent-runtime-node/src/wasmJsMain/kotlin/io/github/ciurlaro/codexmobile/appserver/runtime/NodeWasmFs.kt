@@ -11,7 +11,7 @@ internal external fun lstatSync(path: String): WasmNodeStats
 internal external fun existsSync(path: String): Boolean
 internal external fun accessSync(path: String, mode: Int)
 internal external fun readFileSync(path: String): JsAny
-internal external fun writeFileSync(path: String, value: String)
+internal external fun writeFileSync(path: String, value: JsAny)
 internal external fun chmodSync(path: String, mode: Int)
 internal external fun mkdtempSync(prefix: String): String
 internal external fun rmSync(path: String, options: JsAny)

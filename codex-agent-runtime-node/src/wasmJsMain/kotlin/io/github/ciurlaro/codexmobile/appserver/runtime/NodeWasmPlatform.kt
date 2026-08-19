@@ -41,7 +41,9 @@ private object WasmNodeHost : NodeHost {
     override fun inflateRaw(bytes: ByteArray, maxOutputLength: Int): ByteArray =
         wasmToByteArray(wasmInflateRaw(bytes.toWasmBuffer(), maxOutputLength))
     override fun createDirectories(path: String): Unit = wasmFsMkdirRecursive(path)
-    override fun list(path: String): List<String> = List(wasmFsListSize(path)) { wasmFsListEntry(path, it) }
+    override fun list(path: String): List<String> = wasmFsReadDirectory(path).let { entries ->
+        List(wasmArrayLength(entries)) { wasmArrayString(entries, it) }
+    }
     override fun move(source: String, destination: String): Unit = wasmFsRenameSync(source, destination)
     override fun removePath(path: String): Unit = wasmFsRmSync(path, wasmRemoveOptions())
     override fun requireExecutable(path: String) {
