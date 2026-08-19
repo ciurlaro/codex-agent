@@ -7,8 +7,10 @@ import kotlin.native.OsFamily
 import kotlin.native.Platform
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import okio.FileSystem
 
 internal actual val desktopProcessDispatcher: CoroutineDispatcher = Dispatchers.Default
+internal actual val desktopFileSystem: FileSystem = FileSystem.SYSTEM
 
 internal actual fun currentDesktopTarget(): String = when (
     Platform.osFamily to Platform.cpuArchitecture

@@ -53,6 +53,8 @@ internal expect fun currentDesktopTarget(): String
 
 internal expect val desktopProcessDispatcher: CoroutineDispatcher
 
+internal expect val desktopFileSystem: FileSystem
+
 private fun validateDesktopConfiguration(configuration: DesktopCodexRuntimeConfiguration) {
     val executable = configuration.appServerExecutable
     val supervisor = configuration.processSupervisorExecutable
@@ -62,13 +64,13 @@ private fun validateDesktopConfiguration(configuration: DesktopCodexRuntimeConfi
     check(workingDirectory.isAbsolute) { "Desktop working-directory path must be absolute" }
     check(executable.isRegularFile()) { "Codex app server does not exist" }
     check(supervisor.isRegularFile()) { "Codex process supervisor does not exist" }
-    check(FileSystem.SYSTEM.metadataOrNull(supervisor)?.symlinkTarget == null) {
+    check(desktopFileSystem.metadataOrNull(supervisor)?.symlinkTarget == null) {
         "Codex process supervisor must not be a symbolic link"
     }
-    check(runCatching { FileSystem.SYSTEM.canonicalize(supervisor) }.getOrNull() == supervisor) {
+    check(runCatching { desktopFileSystem.canonicalize(supervisor) }.getOrNull() == supervisor) {
         "Codex process-supervisor path must be canonical"
     }
-    check(FileSystem.SYSTEM.metadataOrNull(workingDirectory)?.isDirectory == true) {
+    check(desktopFileSystem.metadataOrNull(workingDirectory)?.isDirectory == true) {
         "Desktop working directory does not exist"
     }
     val distribution = desktopCodexDistribution(currentDesktopTarget())
@@ -86,10 +88,10 @@ private fun validateDesktopConfiguration(configuration: DesktopCodexRuntimeConfi
     }
 }
 
-private fun Path.isRegularFile(): Boolean = FileSystem.SYSTEM.metadataOrNull(this)?.isRegularFile == true
+private fun Path.isRegularFile(): Boolean = desktopFileSystem.metadataOrNull(this)?.isRegularFile == true
 
 internal fun Path.sha256(): String {
-    val hashingSource = HashingSource.sha256(FileSystem.SYSTEM.source(this))
+    val hashingSource = HashingSource.sha256(desktopFileSystem.source(this))
     val buffered = hashingSource.buffer()
     try {
         buffered.readAll(blackholeSink())

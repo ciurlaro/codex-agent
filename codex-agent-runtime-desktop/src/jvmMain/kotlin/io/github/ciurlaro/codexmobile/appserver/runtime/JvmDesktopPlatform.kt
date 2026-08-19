@@ -3,8 +3,10 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 import java.util.Locale
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import okio.FileSystem
 
 internal actual val desktopProcessDispatcher: CoroutineDispatcher = Dispatchers.IO
+internal actual val desktopFileSystem: FileSystem = FileSystem.SYSTEM
 
 internal actual fun currentDesktopTarget(): String {
     val os = System.getProperty("os.name").orEmpty().lowercase(Locale.ROOT)

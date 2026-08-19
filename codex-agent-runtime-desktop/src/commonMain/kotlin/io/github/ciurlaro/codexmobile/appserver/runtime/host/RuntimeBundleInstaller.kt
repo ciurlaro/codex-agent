@@ -1,5 +1,6 @@
 package io.github.ciurlaro.codexmobile.appserver.runtime.host
 
+import io.github.ciurlaro.codexmobile.appserver.runtime.desktopFileSystem
 import kotlin.random.Random
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,7 +16,7 @@ internal class RuntimeBundleInstaller(
     private val bundleDirectory: Path,
     private val dataDirectory: Path,
     private val descriptor: RuntimeBundleDescriptor,
-    private val fileSystem: FileSystem = FileSystem.SYSTEM,
+    private val fileSystem: FileSystem = desktopFileSystem,
     private val makeExecutable: (Path) -> Unit,
 ) {
     suspend fun install(): InstalledRuntime = installationLock.withLock {

@@ -6,6 +6,7 @@ import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceResolution
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceSelection
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceSelectionReason
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceStore
+import io.github.ciurlaro.codexmobile.appserver.runtime.desktopFileSystem
 import kotlin.random.Random
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -17,7 +18,7 @@ import okio.buffer
 
 internal class PathWorkspaceStore(
     private val dataDirectory: Path,
-    private val fileSystem: FileSystem = FileSystem.SYSTEM,
+    private val fileSystem: FileSystem = desktopFileSystem,
 ) : CodexWorkspaceStore {
     private val selectionFile get() = dataDirectory / "workspace.json"
 
