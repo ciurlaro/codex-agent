@@ -221,9 +221,11 @@ internal fun executeLinuxArm64DesktopEvidenceInputs(
         ).environment(ARM_TARGET)
         val listing = runner(listOf(test.absolutePath, "--ktest_list_tests"), processEnvironment)
         check(listing.exitCode == 0) { "Linux ARM64 test discovery failed: ${listing.output}" }
-        val tests = listing.output.lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
-        check(tests.firstOrNull() == "$DESKTOP_RUNTIME_TEST_CLASS." &&
-            tests.drop(1).toSet() == desktopRuntimeTestMethods && tests.size == desktopRuntimeTestMethods.size + 1) {
+        val lines = listing.output.lineSequence().filter(String::isNotBlank).toList()
+        val classIndex = lines.indexOf("$DESKTOP_RUNTIME_TEST_CLASS.")
+        val tests = lines.drop(classIndex + 1).takeWhile { it.startsWith("  ") }.map(String::trim)
+        check(classIndex >= 0 && tests.toSet() == desktopRuntimeTestMethods &&
+            tests.size == desktopRuntimeTestMethods.size) {
             "Linux ARM64 test executable has an unexpected test set"
         }
         desktopRuntimeTestMethods.forEach { method ->
@@ -237,7 +239,8 @@ internal fun executeLinuxArm64DesktopEvidenceInputs(
     }
     report.parentFile.mkdirs()
     report.writeText(buildString {
-        append("<testsuite tests=\"4\" skipped=\"0\" failures=\"0\" errors=\"0\">\n")
+        append("<testsuite tests=\"").append(desktopRuntimeTestMethods.size)
+            .append("\" skipped=\"0\" failures=\"0\" errors=\"0\">\n")
         desktopRuntimeTestMethods.forEach { method ->
             append("  <testcase classname=\"linuxArm64Test.$DESKTOP_RUNTIME_TEST_CLASS\" name=\"")
                 .append(method).append("\"/>\n")

@@ -78,6 +78,7 @@ val nodeWasmRunnerMembers = setOf(
     "$nodeWasmRunnerBaseName.mjs",
     "$nodeWasmRunnerBaseName.uninstantiated.mjs",
     "$nodeWasmRunnerBaseName.wasm",
+    "custom-formatters.js",
 )
 val packageNodeWasmRuntimeEvidenceRunner = tasks.register<Zip>(
     "packageNodeWasmRuntimeEvidenceRunner",
@@ -96,14 +97,9 @@ val packageNodeWasmRuntimeEvidenceRunner = tasks.register<Zip>(
     doLast {
         ZipFile(archiveFile.get().asFile).use { zip ->
             val members = zip.entries().asSequence().toList()
-            val expectedMembers = setOf(
-                "codex-agent-codex-agent-runtime-node.mjs",
-                "codex-agent-codex-agent-runtime-node.uninstantiated.mjs",
-                "codex-agent-codex-agent-runtime-node.wasm",
-            )
             check(
                 members.none { it.isDirectory } &&
-                    members.map { it.name }.toSet() == expectedMembers &&
+                    members.map { it.name }.toSet() == nodeWasmRunnerMembers &&
                     members.all { it.name == File(it.name).name && it.size > 0 }
             ) { "Node Wasm evidence runner package has an incomplete or unsafe module set" }
         }

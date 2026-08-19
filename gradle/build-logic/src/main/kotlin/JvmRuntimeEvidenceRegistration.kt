@@ -1,3 +1,4 @@
+import java.io.File
 import org.gradle.api.Project
 import org.gradle.api.Task
 import org.gradle.api.file.RegularFile
@@ -13,8 +14,8 @@ fun Project.registerJvmRuntimeEvidenceTask(
     distributionManifest: RegularFile,
 ) {
     if (distribution.target == "linuxArm64") return
-    val externalClassifier = providers.gradleProperty("codexAgent.jvmClassifierArchive").map(::file)
-    val externalRunner = providers.gradleProperty("codexAgent.jvmRuntimeEvidenceRunner").map(::file)
+    val externalClassifier = providers.gradleProperty("codexAgent.jvmClassifierArchive").map(::File)
+    val externalRunner = providers.gradleProperty("codexAgent.jvmRuntimeEvidenceRunner").map(::File)
     val classifier = layout.file(externalClassifier).orElse(packagedClassifier.flatMap { it.outputFile })
     val runner = layout.file(externalRunner).orElse(packagedRunner.flatMap { it.archiveFile })
     tasks.register<RecordJvmRuntimeEvidenceTask>(
