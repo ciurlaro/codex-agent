@@ -78,6 +78,18 @@ class LinuxArm64RuntimeEvidenceBundleTest {
             assertFalse(inputs.desktopEvidence.exists())
         }
 
+    @Test
+    fun `unrelated native test classes do not change the evidence inventory`() =
+        withNodeRuntimeEvidenceFixture { fixture ->
+            val inputs = inputs(fixture)
+            stage(inputs)
+            execute(
+                inputs,
+                nativeListing = "example.Before.\n  before\n" + desktopListing() + "example.After.\n  after\n",
+            )
+            assertTrue(inputs.desktopEvidence.isFile)
+        }
+
     private fun inputs(fixture: NodeRuntimeEvidenceFixture): Inputs {
         val root = fixture.root
         val test = root.resolve("linuxArm64-test.kexe").apply { writeText("native-test") }

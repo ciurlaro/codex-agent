@@ -21,6 +21,7 @@ internal val nodeWasmRuntimeRunnerEntries = setOf(
     NODE_WASM_RUNTIME_RUNNER_ENTRY,
     "codex-agent-codex-agent-runtime-node.uninstantiated.mjs",
     "codex-agent-codex-agent-runtime-node.wasm",
+    "custom-formatters.js",
 )
 internal val nodeRuntimeTestMethods = sortedSetOf(
     "closeDuringStartClosesNewProcessExactlyOnce",
