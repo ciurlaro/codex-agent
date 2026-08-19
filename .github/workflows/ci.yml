@@ -68,7 +68,7 @@ jobs:
           :codex-agent-runtime-node:packageNodeWasmRuntimeEvidenceRunner
           :tooling:android-runtime-evidence:assembleDebug
           :tooling:android-runtime-evidence:assembleDebugAndroidTest
-          :codex-agent-runtime-android:testReleaseUnitTest
+          :codex-agent-runtime-android:testDebugUnitTest
           :codex-agent-runtime-android:lintRelease
           :codex-agent-runtime-android:assembleRelease
           --parallel --stacktrace
