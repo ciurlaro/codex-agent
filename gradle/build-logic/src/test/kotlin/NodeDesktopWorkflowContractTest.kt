@@ -19,6 +19,8 @@ class NodeDesktopWorkflowContractTest {
             assertEquals(1, Regex(task).findAll(combined).count(), task)
             assertFalse(task in desktop)
         }
+        assertTrue(":codex-agent-runtime-android:testDebugUnitTest" in ci)
+        assertFalse(":codex-agent-runtime-android:testReleaseUnitTest" in ci)
         assertTrue("needs: [workflow-lint, android-jvm]" in ci)
         assertTrue("codex-agent-ci-portable-runtime-artifacts-${'$'}{{ github.sha }}" in ci)
         assertTrue("path: build/portable-runtime-artifacts" in desktop)
