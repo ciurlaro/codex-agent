@@ -54,7 +54,6 @@ public class IosCodexPlatform(
         codexHomePath = codexHomePath,
     )
 
-    @Throws(Exception::class)
     public override suspend fun prepare(workspace: CodexWorkspace): PreparedCodexRuntime {
         val validation = iosWorkspaceStore.acquire(workspace.path)
         val securityScoped = validation.securityScoped
