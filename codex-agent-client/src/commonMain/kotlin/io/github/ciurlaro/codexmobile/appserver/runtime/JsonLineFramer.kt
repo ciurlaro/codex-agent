@@ -2,9 +2,10 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 
 import okio.Buffer
 
-const val MAX_RECEIVED_MESSAGE_BYTES = 32 * 1024 * 1024
+public const val MAX_RECEIVED_MESSAGE_BYTES: Int = 32 * 1024 * 1024
 
-class JsonLineFramer(
+/** Bounded newline framing for implementations of [CodexRuntime]. */
+public class JsonLineFramer(
     private val maxBytes: Int = MAX_RECEIVED_MESSAGE_BYTES,
 ) {
     private val pending = Buffer()
@@ -14,7 +15,8 @@ class JsonLineFramer(
         require(maxBytes > 0)
     }
 
-    suspend fun accept(
+    @Throws(Exception::class)
+    public suspend fun accept(
         bytes: ByteArray,
         count: Int = bytes.size,
         onLine: suspend (String) -> Unit,
@@ -39,7 +41,8 @@ class JsonLineFramer(
         }
     }
 
-    suspend fun finish(onLine: suspend (String) -> Unit) {
+    @Throws(Exception::class)
+    public suspend fun finish(onLine: suspend (String) -> Unit) {
         if (failed || pending.size == 0L) return
         try {
             emit(onLine)

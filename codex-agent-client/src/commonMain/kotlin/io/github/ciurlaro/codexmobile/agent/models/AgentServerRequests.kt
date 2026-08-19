@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -76,6 +74,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.KSerializer
+import kotlin.text.CharCategory
 
 
 internal suspend fun CodexAgentClient.handleConnectionEventAction(event: AppServerEvent) {
@@ -124,8 +123,10 @@ internal suspend fun CodexAgentClient.handleElicitationRequestAction(
     val elicitation = runCatching {
         val requestId = id.toString()
         val parsed = parseElicitation(requestId, params)
-        check(parsed.sessionId in openedSessions) { "Elicitation session is not open" }
-        check(pendingElicitationRequests.putIfMissing(requestId, PendingElicitation.Mcp(id)) == null) {
+        check(stateLock.withLock {
+            check(parsed.conversationId in openedConversations) { "Elicitation conversation is not open" }
+            pendingElicitationRequests.putIfMissing(requestId, PendingElicitation.Mcp(id, parsed))
+        } == null) {
             "Elicitation request ID is already pending"
         }
         parsed
@@ -144,13 +145,13 @@ internal suspend fun CodexAgentClient.handleUserInputRequestAction(id: JsonEleme
     val elicitation = runCatching {
         val requestId = id.toString()
         val parsed = parseUserInputRequest(requestId, params)
-        check(parsed.sessionId in openedSessions) { "Plan session is not open" }
-        check(
+        check(stateLock.withLock {
+            check(parsed.conversationId in openedConversations) { "Plan conversation is not open" }
             pendingElicitationRequests.putIfMissing(
                 requestId,
-                PendingElicitation.UserInput(id),
-            ) == null,
-        ) { "Plan input request ID is already pending" }
+                PendingElicitation.UserInput(id, parsed),
+            )
+        } == null) { "Plan input request ID is already pending" }
         parsed
     }.getOrElse {
         connection.respond(
@@ -171,10 +172,12 @@ internal suspend fun CodexAgentClient.handleApprovalRequestAction(
     type: ApprovalType,
 ) {
     val event = runCatching {
-        val sessionId = SessionId(threadId)
-        check(sessionId in openedSessions) { "Approval session is not open" }
+        val conversationId = ConversationId(threadId)
         val requestId = id.toString()
-        check(pendingApprovalRequests.putIfMissing(requestId, PendingApproval(id, type)) == null) {
+        check(stateLock.withLock {
+            check(conversationId in openedConversations) { "Approval conversation is not open" }
+            pendingApprovalRequests.putIfMissing(requestId, PendingApproval(id, type, conversationId))
+        } == null) {
             "Approval request ID is already pending"
         }
         val title = if (type == ApprovalType.FILE_CHANGE) {
@@ -186,13 +189,69 @@ internal suspend fun CodexAgentClient.handleApprovalRequestAction(
             reason?.let(::add)
             addAll(detailLines)
         }.joinToString("\n").ifBlank { "Codex requested permission to continue." }
-        AgentEvent.ApprovalRequested(sessionId, requestId, title, details)
+        AgentEvent.ApprovalRequested(
+            conversationId,
+            requestId,
+            title.safeApprovalText(),
+            details.safeApprovalText(),
+        )
     }.getOrElse {
         respondServerError(id, -32602, "Invalid approval request")
         return
     }
     eventsChannel.send(event)
 }
+
+internal fun String.safeApprovalText(): String = buildString(length) {
+    var index = 0
+    while (index < this@safeApprovalText.length) {
+        val character = this@safeApprovalText[index]
+        if (character.isHighSurrogate() &&
+            index + 1 < this@safeApprovalText.length &&
+            this@safeApprovalText[index + 1].isLowSurrogate()
+        ) {
+            val low = this@safeApprovalText[index + 1]
+            val codePoint = 0x10000 +
+                ((character.code - 0xD800) shl 10) +
+                (low.code - 0xDC00)
+            if (codePoint.isSupplementaryFormatCodePoint()) {
+                append("\\u{")
+                append(codePoint.toString(16).uppercase())
+                append('}')
+            } else {
+                append(character)
+                append(low)
+            }
+            index += 2
+            continue
+        }
+        if (character.category in UNSAFE_APPROVAL_CATEGORIES) {
+            append("\\u{")
+            append(character.code.toString(16).uppercase())
+            append('}')
+        } else {
+            append(character)
+        }
+        index += 1
+    }
+}
+
+private fun Int.isSupplementaryFormatCodePoint(): Boolean =
+    this == 0x110BD ||
+        this == 0x110CD ||
+        this in 0x13430..0x1343F ||
+        this in 0x1BCA0..0x1BCAF ||
+        this in 0x1D173..0x1D17A ||
+        this == 0xE0001 ||
+        this in 0xE0020..0xE007F
+
+private val UNSAFE_APPROVAL_CATEGORIES = setOf(
+    CharCategory.CONTROL,
+    CharCategory.FORMAT,
+    CharCategory.LINE_SEPARATOR,
+    CharCategory.PARAGRAPH_SEPARATOR,
+    CharCategory.SURROGATE,
+)
 
 internal suspend fun CodexAgentClient.rejectServerRequestAction(id: JsonElement, method: String) {
     respondServerError(id, -32601, "Client method is not available: $method")

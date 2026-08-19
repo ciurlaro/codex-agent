@@ -9,6 +9,7 @@ plugins {
 }
 
 kotlin {
+    explicitApi()
     sourceSets {
         commonMain { kotlin.srcDir(rootProject.layout.projectDirectory.dir("runtime-host-shared/src/commonMain/kotlin")) }
         commonMain.dependencies {

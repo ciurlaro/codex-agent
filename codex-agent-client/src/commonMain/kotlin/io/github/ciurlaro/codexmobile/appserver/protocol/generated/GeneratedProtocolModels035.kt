@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ServerNotificationAppListUpdatedNotification(
+internal data class ServerNotificationAppListUpdatedNotification(
     @SerialName("params")
     public val params: AppListUpdatedNotification,
     @SerialName("emittedAtMs")
@@ -25,7 +25,7 @@ public data class ServerNotificationAppListUpdatedNotification(
 }
 
 @Serializable
-public data class ServerNotificationRemoteControlStatusChangedNotification(
+internal data class ServerNotificationRemoteControlStatusChangedNotification(
     @SerialName("params")
     public val params: RemoteControlStatusChangedNotification,
     @SerialName("emittedAtMs")
@@ -37,7 +37,7 @@ public data class ServerNotificationRemoteControlStatusChangedNotification(
 }
 
 @Serializable
-public data class ServerNotificationExternalAgentConfigImportProgressNotification(
+internal data class ServerNotificationExternalAgentConfigImportProgressNotification(
     @SerialName("params")
     public val params: ExternalAgentConfigImportProgressNotification,
     @SerialName("emittedAtMs")
@@ -49,7 +49,7 @@ public data class ServerNotificationExternalAgentConfigImportProgressNotificatio
 }
 
 @Serializable
-public data class ServerNotificationExternalAgentConfigImportCompletedNotification(
+internal data class ServerNotificationExternalAgentConfigImportCompletedNotification(
     @SerialName("params")
     public val params: ExternalAgentConfigImportCompletedNotification,
     @SerialName("emittedAtMs")
@@ -61,7 +61,7 @@ public data class ServerNotificationExternalAgentConfigImportCompletedNotificati
 }
 
 @Serializable
-public data class ServerNotificationFsChangedNotification(
+internal data class ServerNotificationFsChangedNotification(
     @SerialName("params")
     public val params: FsChangedNotification,
     @SerialName("emittedAtMs")
@@ -73,7 +73,7 @@ public data class ServerNotificationFsChangedNotification(
 }
 
 @Serializable
-public data class ServerNotificationItemReasoningSummaryTextDeltaNotification(
+internal data class ServerNotificationItemReasoningSummaryTextDeltaNotification(
     @SerialName("params")
     public val params: ReasoningSummaryTextDeltaNotification,
     @SerialName("emittedAtMs")
@@ -85,7 +85,7 @@ public data class ServerNotificationItemReasoningSummaryTextDeltaNotification(
 }
 
 @Serializable
-public data class ServerNotificationItemReasoningSummaryPartAddedNotification(
+internal data class ServerNotificationItemReasoningSummaryPartAddedNotification(
     @SerialName("params")
     public val params: ReasoningSummaryPartAddedNotification,
     @SerialName("emittedAtMs")
@@ -97,7 +97,7 @@ public data class ServerNotificationItemReasoningSummaryPartAddedNotification(
 }
 
 @Serializable
-public data class ServerNotificationItemReasoningTextDeltaNotification(
+internal data class ServerNotificationItemReasoningTextDeltaNotification(
     @SerialName("params")
     public val params: ReasoningTextDeltaNotification,
     @SerialName("emittedAtMs")
@@ -109,7 +109,7 @@ public data class ServerNotificationItemReasoningTextDeltaNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadCompactedNotification(
+internal data class ServerNotificationThreadCompactedNotification(
     @SerialName("params")
     public val params: ContextCompactedNotification,
     @SerialName("emittedAtMs")
@@ -121,7 +121,7 @@ public data class ServerNotificationThreadCompactedNotification(
 }
 
 @Serializable
-public data class ServerNotificationModelReroutedNotification(
+internal data class ServerNotificationModelReroutedNotification(
     @SerialName("params")
     public val params: ModelReroutedNotification,
     @SerialName("emittedAtMs")
@@ -133,7 +133,7 @@ public data class ServerNotificationModelReroutedNotification(
 }
 
 @Serializable
-public data class ServerNotificationModelVerificationNotification(
+internal data class ServerNotificationModelVerificationNotification(
     @SerialName("params")
     public val params: ModelVerificationNotification,
     @SerialName("emittedAtMs")
@@ -145,7 +145,7 @@ public data class ServerNotificationModelVerificationNotification(
 }
 
 @Serializable
-public data class ServerNotificationTurnModerationMetadataNotification(
+internal data class ServerNotificationTurnModerationMetadataNotification(
     @SerialName("params")
     public val params: TurnModerationMetadataNotification,
     @SerialName("emittedAtMs")
@@ -157,7 +157,7 @@ public data class ServerNotificationTurnModerationMetadataNotification(
 }
 
 @Serializable
-public data class ServerNotificationModelSafetyBufferingUpdatedNotification(
+internal data class ServerNotificationModelSafetyBufferingUpdatedNotification(
     @SerialName("params")
     public val params: ModelSafetyBufferingUpdatedNotification,
     @SerialName("emittedAtMs")
@@ -169,7 +169,7 @@ public data class ServerNotificationModelSafetyBufferingUpdatedNotification(
 }
 
 @Serializable
-public data class ServerNotificationWarningNotification(
+internal data class ServerNotificationWarningNotification(
     @SerialName("params")
     public val params: WarningNotification,
     @SerialName("emittedAtMs")
@@ -181,7 +181,7 @@ public data class ServerNotificationWarningNotification(
 }
 
 @Serializable
-public data class ServerNotificationGuardianWarningNotification(
+internal data class ServerNotificationGuardianWarningNotification(
     @SerialName("params")
     public val params: GuardianWarningNotification,
     @SerialName("emittedAtMs")
@@ -193,7 +193,7 @@ public data class ServerNotificationGuardianWarningNotification(
 }
 
 @Serializable
-public data class ServerNotificationDeprecationNoticeNotification(
+internal data class ServerNotificationDeprecationNoticeNotification(
     @SerialName("params")
     public val params: DeprecationNoticeNotification,
     @SerialName("emittedAtMs")
@@ -205,7 +205,7 @@ public data class ServerNotificationDeprecationNoticeNotification(
 }
 
 @Serializable
-public data class ServerNotificationConfigWarningNotification(
+internal data class ServerNotificationConfigWarningNotification(
     @SerialName("params")
     public val params: ConfigWarningNotification,
     @SerialName("emittedAtMs")
@@ -217,7 +217,7 @@ public data class ServerNotificationConfigWarningNotification(
 }
 
 @Serializable
-public data class ServerNotificationFuzzyFileSearchSessionUpdatedNotification(
+internal data class ServerNotificationFuzzyFileSearchSessionUpdatedNotification(
     @SerialName("params")
     public val params: FuzzyFileSearchSessionUpdatedNotification,
     @SerialName("emittedAtMs")

@@ -31,9 +31,9 @@ class ChatRuntimeConversationTest {
         }
         val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
         try {
-            val sessionId = SessionId("thread-history")
-            client.renameSession(sessionId, "  Useful name  ")
-            client.deleteSession(sessionId)
+            val conversationId = ConversationId("thread-history")
+            client.renameConversation(conversationId, "  Useful name  ")
+            client.deleteConversation(conversationId)
 
             assertEquals("thread-history", checkNotNull(renameParams).requiredString("threadId"))
             assertEquals("Useful name", checkNotNull(renameParams).requiredString("name"))
@@ -149,8 +149,10 @@ class ChatRuntimeConversationTest {
             fileSystem = FileSystem.SYSTEM,
         )
         try {
-            val session = client.openSession(
-                settings = AgentRuntimeSettings(workingDirectory = "/storage/emulated/0/Documents"),
+            val session = client.openConversation(
+                null,
+                AgentConversationSettings(),
+                "/storage/emulated/0/Documents",
             )
             val events = async {
                 withTimeout(1_000) {
@@ -172,9 +174,9 @@ class ChatRuntimeConversationTest {
             assertEquals(0, assertIs<AgentEvent.ShellCommandCompleted>(received[1]).exitCode)
             assertIs<AgentEvent.TurnCompleted>(received[2])
 
-            assertEquals("!printf 'one\\ntwo\\n'", client.listSessions().single().title)
-            val history = client.readSession(session)
-            assertEquals(listOf(AgentMessageRole.USER, AgentMessageRole.CODEX), history.messages.map { it.role })
+            assertEquals("!printf 'one\\ntwo\\n'", client.listConversations().single().title)
+            val history = client.readConversation(session)
+            assertEquals(listOf(AgentMessageRole.USER, AgentMessageRole.ASSISTANT), history.messages.map { it.role })
             assertEquals("!printf 'one\\ntwo\\n'", history.messages[0].text)
             assertEquals("printf 'one\\ntwo\\n'", history.messages[1].shellCommand)
             assertEquals("one\ntwo\n", history.messages[1].text)

@@ -91,7 +91,13 @@ internal fun testDefinition(pluginId: String, name: String, mutation: Boolean) =
     mutation,
 )
 
-internal fun dispatcher(block: suspend (BuiltInToolCall) -> BuiltInToolResult) = object : BuiltInToolDispatcher {
+internal fun dispatcher(block: suspend (BuiltInToolCall) -> BuiltInToolResult) = object : CodexToolProvider {
     override fun definitions() = TEST_DEFINITIONS
-    override suspend fun execute(call: BuiltInToolCall) = block(call)
+    override suspend fun execute(
+        call: BuiltInToolCall,
+        context: CodexToolExecutionContext,
+    ): BuiltInToolResult {
+        if (definitions().single { it.name == call.tool }.isMutation) context.beforeMutation()
+        return block(call)
+    }
 }

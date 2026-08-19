@@ -2,10 +2,11 @@
 
 package io.github.ciurlaro.codexmobile.app.runtime.ios
 
-import io.github.ciurlaro.codexmobile.appserver.client.AppServerConnection
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.ClientInfo
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeCapabilities
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeParams
+import io.github.ciurlaro.codexmobile.agent.CodexClientInfo
+import io.github.ciurlaro.codexmobile.agent.CodexHost
+import io.github.ciurlaro.codexmobile.agent.CodexHostState
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexPlatform
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexWorkspaceSelection
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlinx.cinterop.UIntVar
@@ -15,8 +16,13 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSURL
 import platform.darwin.KERN_SUCCESS
 import platform.darwin.MACH_TASK_BASIC_INFO
 import platform.darwin.MACH_TASK_BASIC_INFO_COUNT
@@ -32,25 +38,28 @@ class IosCodexRuntimeMetricsTest {
     @Test
     fun recordsStartupShutdownAndMemoryReleaseMetrics() = runBlocking {
         TestWorkspace().use { test ->
+            val platform = IosCodexPlatform(test.sandboxRoot)
             val startup = mutableListOf<Long>()
             val shutdown = mutableListOf<Long>()
             var coldStartupMillis = 0L
             var idleCurrentResidentBytes = 0L
             var recursiveSearchCurrentResidentBytes = 0L
             repeat(6) { iteration ->
-                val connection = AppServerConnection(
-                    runtimeFactory = IosCodexRuntimeFactory(test.configuration),
-                    initializeParams = InitializeParams(
-                        clientInfo = ClientInfo("ios-release-metrics", "0.2.0", "iOS Release Metrics"),
-                        capabilities = InitializeCapabilities(
-                            experimentalApi = true,
-                            mcpServerOpenaiFormElicitation = false,
-                        ),
-                    ),
-                    requestTimeoutMillis = 60_000,
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+                val host = CodexHost(
+                    platform,
+                    scope,
+                    CodexClientInfo("ios-runtime-metrics", "iOS Runtime Metrics", "0.2.0"),
                 )
                 val startMark = kotlin.time.TimeSource.Monotonic.markNow()
-                connection.ensureStarted()
+                if (iteration == 0) {
+                    host.selectWorkspace(
+                        IosCodexWorkspaceSelection(NSURL.fileURLWithPath(test.workspace)),
+                    )
+                } else {
+                    host.start()
+                }
+                check(host.state.value is CodexHostState.Ready)
                 val startupMillis = startMark.elapsedNow().inWholeMilliseconds
                 assertTrue(startupMillis < 30_000, "startup took ${startupMillis}ms")
                 if (iteration == 0) {
@@ -72,7 +81,8 @@ class IosCodexRuntimeMetricsTest {
                     startup += startupMillis
                 }
                 val shutdownMark = kotlin.time.TimeSource.Monotonic.markNow()
-                connection.shutdown()
+                host.close()
+                scope.cancel()
                 val shutdownMillis = shutdownMark.elapsedNow().inWholeMilliseconds
                 assertTrue(shutdownMillis < 5_000, "shutdown took ${shutdownMillis}ms")
                 if (iteration > 0) shutdown += shutdownMillis

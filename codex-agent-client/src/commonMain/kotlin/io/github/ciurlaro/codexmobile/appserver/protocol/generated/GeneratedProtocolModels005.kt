@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ClientRequestThreadInjectItemsRequest(
+internal data class ClientRequestThreadInjectItemsRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -25,7 +25,7 @@ public data class ClientRequestThreadInjectItemsRequest(
 }
 
 @Serializable
-public data class ClientRequestSkillsListRequest(
+internal data class ClientRequestSkillsListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -37,7 +37,7 @@ public data class ClientRequestSkillsListRequest(
 }
 
 @Serializable
-public data class ClientRequestSkillsExtraRootsSetRequest(
+internal data class ClientRequestSkillsExtraRootsSetRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -49,7 +49,7 @@ public data class ClientRequestSkillsExtraRootsSetRequest(
 }
 
 @Serializable
-public data class ClientRequestHooksListRequest(
+internal data class ClientRequestHooksListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -61,7 +61,7 @@ public data class ClientRequestHooksListRequest(
 }
 
 @Serializable
-public data class ClientRequestMarketplaceAddRequest(
+internal data class ClientRequestMarketplaceAddRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -73,7 +73,7 @@ public data class ClientRequestMarketplaceAddRequest(
 }
 
 @Serializable
-public data class ClientRequestMarketplaceRemoveRequest(
+internal data class ClientRequestMarketplaceRemoveRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -85,7 +85,7 @@ public data class ClientRequestMarketplaceRemoveRequest(
 }
 
 @Serializable
-public data class ClientRequestMarketplaceUpgradeRequest(
+internal data class ClientRequestMarketplaceUpgradeRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -97,7 +97,7 @@ public data class ClientRequestMarketplaceUpgradeRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginListRequest(
+internal data class ClientRequestPluginListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -109,7 +109,7 @@ public data class ClientRequestPluginListRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginInstalledRequest(
+internal data class ClientRequestPluginInstalledRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -121,7 +121,7 @@ public data class ClientRequestPluginInstalledRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginReadRequest(
+internal data class ClientRequestPluginReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -133,7 +133,7 @@ public data class ClientRequestPluginReadRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginSkillReadRequest(
+internal data class ClientRequestPluginSkillReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -145,7 +145,7 @@ public data class ClientRequestPluginSkillReadRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginShareSaveRequest(
+internal data class ClientRequestPluginShareSaveRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -157,7 +157,7 @@ public data class ClientRequestPluginShareSaveRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginShareUpdateTargetsRequest(
+internal data class ClientRequestPluginShareUpdateTargetsRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -169,7 +169,7 @@ public data class ClientRequestPluginShareUpdateTargetsRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginShareListRequest(
+internal data class ClientRequestPluginShareListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -181,7 +181,7 @@ public data class ClientRequestPluginShareListRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginShareCheckoutRequest(
+internal data class ClientRequestPluginShareCheckoutRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -193,7 +193,7 @@ public data class ClientRequestPluginShareCheckoutRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginShareDeleteRequest(
+internal data class ClientRequestPluginShareDeleteRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -205,7 +205,7 @@ public data class ClientRequestPluginShareDeleteRequest(
 }
 
 @Serializable
-public data class ClientRequestAppReadRequest(
+internal data class ClientRequestAppReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -217,7 +217,7 @@ public data class ClientRequestAppReadRequest(
 }
 
 @Serializable
-public data class ClientRequestAppListRequest(
+internal data class ClientRequestAppListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")

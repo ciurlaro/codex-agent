@@ -23,6 +23,7 @@ import io.github.ciurlaro.codexmobile.agent.AgentElicitation
 import io.github.ciurlaro.codexmobile.agent.AgentFormField
 import io.github.ciurlaro.codexmobile.agent.AgentFormFieldType
 import io.github.ciurlaro.codexmobile.agent.AgentFormOption
+import io.github.ciurlaro.codexmobile.agent.AgentFormStringFormat
 import io.github.ciurlaro.codexmobile.agent.AgentFormValue
 import io.github.ciurlaro.codexmobile.agent.AgentInvocation
 import io.github.ciurlaro.codexmobile.agent.AgentMcpAuthStatus
@@ -35,7 +36,7 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginSkill
 import io.github.ciurlaro.codexmobile.agent.AgentPluginSummary
 import io.github.ciurlaro.codexmobile.agent.AgentSkill
 import io.github.ciurlaro.codexmobile.agent.AgentSkillScope
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -47,6 +48,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 internal fun parseElicitation(
@@ -57,14 +59,14 @@ internal fun parseElicitation(
         is McpServerElicitationRequestParamsForm -> AgentElicitation(
             requestId = requestId,
             serverName = params.serverName,
-            sessionId = SessionId(params.threadId),
+            conversationId = ConversationId(params.threadId),
             message = params.message,
             form = parseForm(params.requestedSchema),
         )
         is McpServerElicitationRequestParamsUrl -> AgentElicitation(
             requestId = requestId,
             serverName = params.serverName,
-            sessionId = SessionId(params.threadId),
+            conversationId = ConversationId(params.threadId),
             message = params.message,
             url = params.url.also(::requireSafeAuthUrl),
         )
@@ -78,7 +80,7 @@ internal fun parseUserInputRequest(
 ) = AgentElicitation(
     requestId = requestId,
     serverName = "Plan",
-    sessionId = SessionId(params.threadId),
+    conversationId = ConversationId(params.threadId),
     message = "Codex needs your input to continue planning.",
     form = params.questions.map { question ->
         val options = question.options.orEmpty()
@@ -86,13 +88,13 @@ internal fun parseUserInputRequest(
             name = question.id,
             title = question.header,
             description = question.question,
-            required = true,
+            isRequired = true,
             type = if (options.isEmpty()) AgentFormFieldType.STRING else AgentFormFieldType.SINGLE_SELECT,
             options = options.map { option ->
                 AgentFormOption(option.label, option.label, option.description)
             },
-            allowOther = question.isOther == true,
-            secret = question.isSecret == true,
+            allowsOther = question.isOther == true,
+            isSecret = question.isSecret == true,
         )
     },
 )
@@ -136,12 +138,25 @@ internal fun parseForm(schema: McpElicitationSchema): List<AgentFormField> {
             name = name,
             title = field.optionalString("title") ?: name.replace('_', ' ').replaceFirstChar(Char::uppercase),
             description = field.optionalString("description"),
-            required = name in required,
+            isRequired = name in required,
             type = fieldType,
             options = options,
             defaultValue = parseDefault(field, fieldType),
             minimum = field["minimum"]?.jsonPrimitive?.doubleOrNull,
             maximum = field["maximum"]?.jsonPrimitive?.doubleOrNull,
+            format = field.optionalString("format")?.let { value ->
+                when (value) {
+                    "email" -> AgentFormStringFormat.EMAIL
+                    "uri" -> AgentFormStringFormat.URI
+                    "date" -> AgentFormStringFormat.DATE
+                    "date-time" -> AgentFormStringFormat.DATE_TIME
+                    else -> error("Unsupported string format")
+                }
+            },
+            minimumLength = field["minLength"]?.jsonPrimitive?.longOrNull,
+            maximumLength = field["maxLength"]?.jsonPrimitive?.longOrNull,
+            minimumSelections = field["minItems"]?.jsonPrimitive?.longOrNull,
+            maximumSelections = field["maxItems"]?.jsonPrimitive?.longOrNull,
         )
     }
 }

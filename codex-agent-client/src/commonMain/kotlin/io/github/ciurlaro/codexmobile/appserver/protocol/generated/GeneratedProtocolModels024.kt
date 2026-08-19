@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ModelSafetyBufferingUpdatedNotification(
+internal data class ModelSafetyBufferingUpdatedNotification(
     @SerialName("model")
     public val model: String,
     @SerialName("reasons")
@@ -31,7 +31,7 @@ public data class ModelSafetyBufferingUpdatedNotification(
 )
 
 @Serializable
-public data class ModelServiceTier(
+internal data class ModelServiceTier(
     @SerialName("description")
     public val description: String,
     @SerialName("id")
@@ -41,7 +41,7 @@ public data class ModelServiceTier(
 )
 
 @Serializable
-public data class ModelUpgradeInfo(
+internal data class ModelUpgradeInfo(
     @SerialName("model")
     public val model: String,
     @SerialName("migrationMarkdown")
@@ -53,12 +53,12 @@ public data class ModelUpgradeInfo(
 )
 
 @Serializable
-public enum class ModelVerification {
+internal enum class ModelVerification {
     @SerialName("trustedAccessForCyber") TRUSTED_ACCESS_FOR_CYBER,
 }
 
 @Serializable
-public data class ModelVerificationNotification(
+internal data class ModelVerificationNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("turnId")
@@ -68,21 +68,21 @@ public data class ModelVerificationNotification(
 )
 
 @Serializable
-public data class ModelsRequirements(
+internal data class ModelsRequirements(
     @SerialName("newThread")
     public val newThread: NewThreadModelDefaults? = null,
 )
 
-public typealias MultiAgentMode = JsonElement
+internal typealias MultiAgentMode = JsonElement
 
 @Serializable
-public enum class NetworkAccess {
+internal enum class NetworkAccess {
     @SerialName("restricted") RESTRICTED,
     @SerialName("enabled") ENABLED,
 }
 
 @Serializable
-public data class NetworkApprovalContext(
+internal data class NetworkApprovalContext(
     @SerialName("host")
     public val host: String,
     @SerialName("protocol")
@@ -90,7 +90,7 @@ public data class NetworkApprovalContext(
 )
 
 @Serializable
-public enum class NetworkApprovalProtocol {
+internal enum class NetworkApprovalProtocol {
     @SerialName("http") HTTP,
     @SerialName("https") HTTPS,
     @SerialName("socks5Tcp") SOCKS5_TCP,
@@ -98,13 +98,13 @@ public enum class NetworkApprovalProtocol {
 }
 
 @Serializable
-public enum class NetworkDomainPermission {
+internal enum class NetworkDomainPermission {
     @SerialName("allow") ALLOW,
     @SerialName("deny") DENY,
 }
 
 @Serializable
-public data class NetworkPolicyAmendment(
+internal data class NetworkPolicyAmendment(
     @SerialName("action")
     public val action: NetworkPolicyRuleAction,
     @SerialName("host")
@@ -112,13 +112,13 @@ public data class NetworkPolicyAmendment(
 )
 
 @Serializable
-public enum class NetworkPolicyRuleAction {
+internal enum class NetworkPolicyRuleAction {
     @SerialName("allow") ALLOW,
     @SerialName("deny") DENY,
 }
 
 @Serializable
-public data class NetworkRequirements(
+internal data class NetworkRequirements(
     @SerialName("allowLocalBinding")
     public val allowLocalBinding: Boolean? = null,
     @SerialName("allowUnixSockets")
@@ -148,13 +148,13 @@ public data class NetworkRequirements(
 )
 
 @Serializable
-public enum class NetworkUnixSocketPermission {
+internal enum class NetworkUnixSocketPermission {
     @SerialName("allow") ALLOW,
     @SerialName("deny") DENY,
 }
 
 @Serializable
-public data class NewThreadModelDefaults(
+internal data class NewThreadModelDefaults(
     @SerialName("model")
     public val model: String? = null,
     @SerialName("modelReasoningEffort")
@@ -164,13 +164,13 @@ public data class NewThreadModelDefaults(
 )
 
 @Serializable
-public enum class NonSteerableTurnKind {
+internal enum class NonSteerableTurnKind {
     @SerialName("review") REVIEW,
     @SerialName("compact") COMPACT,
 }
 
 @Serializable
-public data class OverriddenMetadata(
+internal data class OverriddenMetadata(
     @SerialName("effectiveValue")
     public val effectiveValue: JsonElement,
     @SerialName("message")
@@ -180,10 +180,10 @@ public data class OverriddenMetadata(
 )
 
 @Serializable(with = ParsedCommandSerializer::class)
-public sealed interface ParsedCommand
+internal sealed interface ParsedCommand
 
 @Serializable
-public data class ParsedCommandReadParsedCommand(
+internal data class ParsedCommandReadParsedCommand(
     @SerialName("cmd")
     public val cmd: String,
     @SerialName("name")
@@ -197,7 +197,7 @@ public data class ParsedCommandReadParsedCommand(
 }
 
 @Serializable
-public data class ParsedCommandListFilesParsedCommand(
+internal data class ParsedCommandListFilesParsedCommand(
     @SerialName("cmd")
     public val cmd: String,
     @SerialName("path")
@@ -209,7 +209,7 @@ public data class ParsedCommandListFilesParsedCommand(
 }
 
 @Serializable
-public data class ParsedCommandSearchParsedCommand(
+internal data class ParsedCommandSearchParsedCommand(
     @SerialName("cmd")
     public val cmd: String,
     @SerialName("path")

@@ -10,9 +10,9 @@ import io.github.ciurlaro.codexmobile.agent.AgentFormValue
 import io.github.ciurlaro.codexmobile.agent.AgentHookTrustStatus
 import io.github.ciurlaro.codexmobile.agent.AgentInvocation
 import io.github.ciurlaro.codexmobile.agent.AgentMessageRole
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import io.github.ciurlaro.codexmobile.agent.deriveConversationTitle
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -51,7 +51,7 @@ class ChatRuntimeContractTest {
             name = "google-contacts",
             uri = "plugin://google-contacts@openai-curated",
         )
-        val store = TurnInputMetadataStore(directory.absolutePath.toPath(), FileSystem.SYSTEM)
+        val store = TurnInputMetadataStore(directory.absolutePath.toPath(), FileSystem.SYSTEM.asAgentFileStore())
         store.upsert("thread-1", TurnInputMetadata("client-chip", listOf(plugin)))
 
         val messages = conversationMessages(
@@ -85,7 +85,7 @@ class ChatRuntimeContractTest {
             }
         }
         CodexAgentClient({ process }, requestTimeoutMillis = 1_000).use { client ->
-            client.openSession(SessionId("thread-1"))
+            client.openConversation(ConversationId("thread-1"))
             val requested = async {
                 withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.ElicitationRequested>().first() }
             }
@@ -115,7 +115,7 @@ class ChatRuntimeContractTest {
 
             val elicitation = requested.await()
             assertEquals("Plan", elicitation.elicitation.serverName)
-            assertTrue(elicitation.elicitation.form!!.single().allowOther)
+            assertTrue(elicitation.elicitation.form!!.single().allowsOther)
             client.resolveElicitation(
                 elicitation.elicitation.requestId,
                 AgentElicitationResponse(

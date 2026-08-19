@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class McpServerToolCallResponse(
+internal data class McpServerToolCallResponse(
     @SerialName("content")
     public val content: List<JsonElement>,
     @SerialName("_meta")
@@ -25,7 +25,7 @@ public data class McpServerToolCallResponse(
 )
 
 @Serializable
-public data class McpToolCallAppContext(
+internal data class McpToolCallAppContext(
     @SerialName("connectorId")
     public val connectorId: String,
     @SerialName("actionName")
@@ -39,13 +39,13 @@ public data class McpToolCallAppContext(
 )
 
 @Serializable
-public data class McpToolCallError(
+internal data class McpToolCallError(
     @SerialName("message")
     public val message: String,
 )
 
 @Serializable
-public data class McpToolCallProgressNotification(
+internal data class McpToolCallProgressNotification(
     @SerialName("itemId")
     public val itemId: String,
     @SerialName("message")
@@ -57,7 +57,7 @@ public data class McpToolCallProgressNotification(
 )
 
 @Serializable
-public data class McpToolCallResult(
+internal data class McpToolCallResult(
     @SerialName("content")
     public val content: List<JsonElement>,
     @SerialName("_meta")
@@ -67,14 +67,14 @@ public data class McpToolCallResult(
 )
 
 @Serializable
-public enum class McpToolCallStatus {
+internal enum class McpToolCallStatus {
     @SerialName("inProgress") IN_PROGRESS,
     @SerialName("completed") COMPLETED,
     @SerialName("failed") FAILED,
 }
 
 @Serializable
-public data class MemoryCitation(
+internal data class MemoryCitation(
     @SerialName("entries")
     public val entries: List<MemoryCitationEntry>,
     @SerialName("threadIds")
@@ -82,7 +82,7 @@ public data class MemoryCitation(
 )
 
 @Serializable
-public data class MemoryCitationEntry(
+internal data class MemoryCitationEntry(
     @SerialName("lineEnd")
     public val lineEnd: Long,
     @SerialName("lineStart")
@@ -94,15 +94,15 @@ public data class MemoryCitationEntry(
 )
 
 @Serializable
-public enum class MergeStrategy {
+internal enum class MergeStrategy {
     @SerialName("replace") REPLACE,
     @SerialName("upsert") UPSERT,
 }
 
-public typealias MessagePhase = JsonElement
+internal typealias MessagePhase = JsonElement
 
 @Serializable
-public data class MigrationDetails(
+internal data class MigrationDetails(
     @SerialName("commands")
     public val commands: List<CommandMigration>? = null,
     @SerialName("hooks")
@@ -122,13 +122,13 @@ public data class MigrationDetails(
 )
 
 @Serializable
-public enum class ModeKind {
+internal enum class ModeKind {
     @SerialName("plan") PLAN,
     @SerialName("default") DEFAULT,
 }
 
 @Serializable
-public data class Model(
+internal data class Model(
     @SerialName("defaultReasoningEffort")
     public val defaultReasoningEffort: ReasoningEffort,
     @SerialName("description")
@@ -164,13 +164,13 @@ public data class Model(
 )
 
 @Serializable
-public data class ModelAvailabilityNux(
+internal data class ModelAvailabilityNux(
     @SerialName("message")
     public val message: String,
 )
 
 @Serializable
-public data class ModelListParams(
+internal data class ModelListParams(
     @SerialName("cursor")
     public val cursor: String? = null,
     @SerialName("includeHidden")
@@ -180,7 +180,7 @@ public data class ModelListParams(
 )
 
 @Serializable
-public data class ModelListResponse(
+internal data class ModelListResponse(
     @SerialName("data")
     public val data: List<Model>,
     @SerialName("nextCursor")
@@ -188,10 +188,10 @@ public data class ModelListResponse(
 )
 
 @Serializable
-public class ModelProviderCapabilitiesReadParams
+internal class ModelProviderCapabilitiesReadParams
 
 @Serializable
-public data class ModelProviderCapabilitiesReadResponse(
+internal data class ModelProviderCapabilitiesReadResponse(
     @SerialName("imageGeneration")
     public val imageGeneration: Boolean,
     @SerialName("namespaceTools")
@@ -201,12 +201,12 @@ public data class ModelProviderCapabilitiesReadResponse(
 )
 
 @Serializable
-public enum class ModelRerouteReason {
+internal enum class ModelRerouteReason {
     @SerialName("highRiskCyberActivity") HIGH_RISK_CYBER_ACTIVITY,
 }
 
 @Serializable
-public data class ModelReroutedNotification(
+internal data class ModelReroutedNotification(
     @SerialName("fromModel")
     public val fromModel: String,
     @SerialName("reason")

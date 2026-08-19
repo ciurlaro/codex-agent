@@ -4,7 +4,7 @@ import okio.FileSystem
 import okio.Path
 import okio.buffer
 
-fun buildMinimalRuntimeEnvironment(
+internal fun buildMinimalRuntimeEnvironment(
     platform: Map<String, String>,
     applicationDirectory: Path,
     temporaryDirectory: Path,
@@ -53,7 +53,7 @@ private val COMMON_ENVIRONMENT_KEYS = setOf(
     "NO_COLOR",
 )
 
-fun prepareRuntimeCertificateBundle(certificateSources: List<Path>, codexHome: Path): Path {
+internal fun prepareRuntimeCertificateBundle(certificateSources: List<Path>, codexHome: Path): Path {
     val certificates = certificateSources
         .filter(Path::isRegularFile)
         .sortedBy(Path::name)

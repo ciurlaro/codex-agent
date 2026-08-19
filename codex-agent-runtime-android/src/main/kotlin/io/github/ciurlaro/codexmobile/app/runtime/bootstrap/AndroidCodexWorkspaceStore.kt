@@ -12,11 +12,9 @@ import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceSelectionReason
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceStore
 import java.io.File
 
-class AndroidCodexWorkspaceStore(context: Context) : CodexWorkspaceStore {
+internal class AndroidCodexWorkspaceStore(context: Context) : CodexWorkspaceStore {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-
-    fun availableRoots(): List<String> = roots().map(File::getPath)
 
     override suspend fun select(selection: CodexWorkspaceSelection): CodexWorkspaceResolution {
         if (selection !is CodexPathWorkspaceSelection) return selectionRequired(

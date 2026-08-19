@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -106,7 +104,7 @@ internal suspend fun CodexAgentClient.installPluginAction(plugin: AgentPluginRef
     )
 }
 
-internal suspend fun CodexAgentClient.uninstallPluginAction(plugin: AgentPluginReference): AgentPluginRemovalResult {
+internal suspend fun CodexAgentClient.uninstallPluginAction(plugin: AgentPluginReference) {
     require(plugin.id.isNotBlank()) { "Plugin ID must not be blank" }
     pluginRequest(
         AppServerClientMethods.PluginUninstall,
@@ -114,24 +112,23 @@ internal suspend fun CodexAgentClient.uninstallPluginAction(plugin: AgentPluginR
     )
     clearPluginCache()
     eventsChannel.send(AgentEvent.PluginsChanged)
-    return AgentPluginRemovalResult(completed = true)
 }
 
-internal suspend fun CodexAgentClient.setPluginEnabledAction(pluginId: String, enabled: Boolean) {
+internal suspend fun CodexAgentClient.setPluginEnabledAction(pluginId: String, isEnabled: Boolean) {
     require(pluginId.isNotBlank() && '.' !in pluginId) { "Invalid plugin ID" }
     if (builtInPluginEnabled.containsKey(pluginId)) {
         builtInToolGate.withLock {
             pluginRequest(
                 AppServerClientMethods.ConfigValueWrite,
-                pluginEnablementParams(pluginId, enabled),
+                pluginEnablementParams(pluginId, isEnabled),
                 retryOnTimeout = true,
             )
-            builtInPluginEnabled[pluginId] = enabled
+            builtInPluginEnabled[pluginId] = isEnabled
         }
     } else {
         pluginRequest(
             AppServerClientMethods.ConfigValueWrite,
-            pluginEnablementParams(pluginId, enabled),
+            pluginEnablementParams(pluginId, isEnabled),
             retryOnTimeout = true,
         )
     }
@@ -139,11 +136,11 @@ internal suspend fun CodexAgentClient.setPluginEnabledAction(pluginId: String, e
 }
 
 internal suspend fun CodexAgentClient.listConnectorsAction(
-    sessionId: SessionId?,
+    conversationId: ConversationId?,
     forceReload: Boolean,
 ): List<AgentConnector> = requestAllPages(
     AppServerClientMethods.AppList,
-    params = { cursor -> AppsListParams(cursor, forceReload, threadId = sessionId?.value) },
+    params = { cursor -> AppsListParams(cursor, forceReload, threadId = conversationId?.value) },
     data = AppsListResponse::data,
     nextCursor = AppsListResponse::nextCursor,
     transform = ::parseConnector,

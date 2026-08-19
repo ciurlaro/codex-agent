@@ -2,7 +2,7 @@
     "schemaVersion": 1,
     "reviewStatus": "approved",
     "evidenceSha256": "a2d3710f22d93aae14a84b5fbb670a449f52e1982e418918042f1968315f1fdf",
-    "policySha256": "edcbdd6cb1959cf326ca837a073f453c23e5f8d2390a43887dba927274e1e54a",
+    "policySha256": "a47ddf8a8612f796856594e1e9116fd2f69a108a091da05ba927e9ee5e4c5cc2",
     "reviews": [
         {
             "findingId": "category:NSPrivacyAccessedAPICategoryActiveKeyboards",

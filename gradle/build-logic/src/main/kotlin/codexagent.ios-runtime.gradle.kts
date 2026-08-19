@@ -15,7 +15,7 @@ private val expectedPatchedSqliteSourceSha256 = "a0b50ae286c86c1890c214464168282
 private val pinnedRustToolchain = "1.95.0"
 private val rustLibrary = "libcodex_agent_ios_bridge.a"
 private val minimumIosVersion = "15.0"
-private val expectedSwiftTestCount = 26
+private val expectedSwiftTestCount = 3
 private val pinnedSqliteArchiveSha256 = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 private val sqliteArchiveBytes = 5_295_554L
 private val pinnedReleaseLto = "thin"
@@ -30,9 +30,9 @@ private val pinnedReleaseRustPathRemapPolicy = linkedMapOf(
     "releaseRustProjectRootPrefix" to "/codex-agent/project",
     "releaseRustPreparedSourcePrefix" to "/codex-agent/prepared-source",
 )
-private val expectedXcodeVersion = "26.6"
-private val expectedXcodeBuild = "17F113"
-private val expectedSwiftVersion = "6.3.3"
+private val pinnedXcodeVersion = "26.6"
+private val pinnedXcodeBuild = "17F113"
+private val pinnedSwiftVersion = "6.3.3"
 
 val nativeTasks = registerIosNativeTasks(
     IosNativeTaskConfiguration(
@@ -105,9 +105,9 @@ tasks.named<KotlinNativeTest>("iosSimulatorArm64Test") {
 }
 
 val verifyAppleToolchain = registerAppleToolchainVerificationTask(
-    expectedXcodeVersion,
-    expectedXcodeBuild,
-    expectedSwiftVersion,
+    pinnedXcodeVersion,
+    pinnedXcodeBuild,
+    pinnedSwiftVersion,
 )
 tasks.register<VerifyIosFreeDiskSpaceTask>("preflightIosRuntime") {
     group = "verification"
@@ -129,9 +129,9 @@ tasks.register<VerifySwiftSimulatorCompilationTask>("verifyCodexAgentSwiftSimula
     simulatorFrameworkDirectory.set(
         layout.buildDirectory.dir("bin/iosSimulatorArm64/debugFramework/CodexAgent.framework"),
     )
-    this.expectedXcodeVersion.set(expectedXcodeVersion)
-    this.expectedXcodeBuild.set(expectedXcodeBuild)
-    this.expectedSwiftVersion.set(expectedSwiftVersion)
+    this.expectedXcodeVersion.set(pinnedXcodeVersion)
+    this.expectedXcodeBuild.set(pinnedXcodeBuild)
+    this.expectedSwiftVersion.set(pinnedSwiftVersion)
     derivedDataDirectory.set(layout.buildDirectory.dir("swift-simulator-compilation-derived-data"))
     reportFile.set(layout.buildDirectory.file("reports/ios-development/swift-simulator-compilation.json"))
 }

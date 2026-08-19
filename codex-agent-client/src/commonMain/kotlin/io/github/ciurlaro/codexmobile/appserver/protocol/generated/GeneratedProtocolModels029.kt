@@ -12,10 +12,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-public typealias ReasoningEffort = String
+internal typealias ReasoningEffort = String
 
 @Serializable
-public data class ReasoningEffortOption(
+internal data class ReasoningEffortOption(
     @SerialName("description")
     public val description: String,
     @SerialName("reasoningEffort")
@@ -23,10 +23,10 @@ public data class ReasoningEffortOption(
 )
 
 @Serializable(with = ReasoningItemContentSerializer::class)
-public sealed interface ReasoningItemContent
+internal sealed interface ReasoningItemContent
 
 @Serializable
-public data class ReasoningItemContentReasoningTextReasoningItemContent(
+internal data class ReasoningItemContentReasoningTextReasoningItemContent(
     @SerialName("text")
     public val text: String,
     @SerialName("type")
@@ -36,7 +36,7 @@ public data class ReasoningItemContentReasoningTextReasoningItemContent(
 }
 
 @Serializable
-public data class ReasoningItemContentTextReasoningItemContent(
+internal data class ReasoningItemContentTextReasoningItemContent(
     @SerialName("text")
     public val text: String,
     @SerialName("type")
@@ -45,7 +45,7 @@ public data class ReasoningItemContentTextReasoningItemContent(
     init { require(type == "text") }
 }
 
-public object ReasoningItemContentSerializer : JsonContentPolymorphicSerializer<ReasoningItemContent>(ReasoningItemContent::class) {
+internal object ReasoningItemContentSerializer : JsonContentPolymorphicSerializer<ReasoningItemContent>(ReasoningItemContent::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ReasoningItemContent> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "reasoning_text" -> ReasoningItemContentReasoningTextReasoningItemContent.serializer()
@@ -55,10 +55,10 @@ public object ReasoningItemContentSerializer : JsonContentPolymorphicSerializer<
 }
 
 @Serializable(with = ReasoningItemReasoningSummarySerializer::class)
-public sealed interface ReasoningItemReasoningSummary
+internal sealed interface ReasoningItemReasoningSummary
 
 @Serializable
-public data class ReasoningItemReasoningSummarySummaryTextReasoningItemReasoningSummary(
+internal data class ReasoningItemReasoningSummarySummaryTextReasoningItemReasoningSummary(
     @SerialName("text")
     public val text: String,
     @SerialName("type")
@@ -67,7 +67,7 @@ public data class ReasoningItemReasoningSummarySummaryTextReasoningItemReasoning
     init { require(type == "summary_text") }
 }
 
-public object ReasoningItemReasoningSummarySerializer : JsonContentPolymorphicSerializer<ReasoningItemReasoningSummary>(ReasoningItemReasoningSummary::class) {
+internal object ReasoningItemReasoningSummarySerializer : JsonContentPolymorphicSerializer<ReasoningItemReasoningSummary>(ReasoningItemReasoningSummary::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ReasoningItemReasoningSummary> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "summary_text" -> ReasoningItemReasoningSummarySummaryTextReasoningItemReasoningSummary.serializer()
@@ -75,10 +75,10 @@ public object ReasoningItemReasoningSummarySerializer : JsonContentPolymorphicSe
         }
 }
 
-public typealias ReasoningSummary = JsonElement
+internal typealias ReasoningSummary = JsonElement
 
 @Serializable
-public data class ReasoningSummaryPartAddedNotification(
+internal data class ReasoningSummaryPartAddedNotification(
     @SerialName("itemId")
     public val itemId: String,
     @SerialName("summaryIndex")
@@ -90,7 +90,7 @@ public data class ReasoningSummaryPartAddedNotification(
 )
 
 @Serializable
-public data class ReasoningSummaryTextDeltaNotification(
+internal data class ReasoningSummaryTextDeltaNotification(
     @SerialName("delta")
     public val delta: String,
     @SerialName("itemId")
@@ -104,7 +104,7 @@ public data class ReasoningSummaryTextDeltaNotification(
 )
 
 @Serializable
-public data class ReasoningTextDeltaNotification(
+internal data class ReasoningTextDeltaNotification(
     @SerialName("contentIndex")
     public val contentIndex: Long,
     @SerialName("delta")
@@ -118,7 +118,7 @@ public data class ReasoningTextDeltaNotification(
 )
 
 @Serializable
-public enum class RemoteControlConnectionStatus {
+internal enum class RemoteControlConnectionStatus {
     @SerialName("disabled") DISABLED,
     @SerialName("connecting") CONNECTING,
     @SerialName("connected") CONNECTED,
@@ -126,19 +126,19 @@ public enum class RemoteControlConnectionStatus {
 }
 
 @Serializable
-public data class RemoteControlDisableParams(
+internal data class RemoteControlDisableParams(
     @SerialName("ephemeral")
     public val ephemeral: Boolean? = null,
 )
 
 @Serializable
-public data class RemoteControlEnableParams(
+internal data class RemoteControlEnableParams(
     @SerialName("ephemeral")
     public val ephemeral: Boolean? = null,
 )
 
 @Serializable
-public data class RemoteControlStatusChangedNotification(
+internal data class RemoteControlStatusChangedNotification(
     @SerialName("installationId")
     public val installationId: String,
     @SerialName("serverName")
@@ -149,10 +149,10 @@ public data class RemoteControlStatusChangedNotification(
     public val environmentId: String? = null,
 )
 
-public typealias RequestId = JsonElement
+internal typealias RequestId = JsonElement
 
 @Serializable
-public data class RequestPermissionProfile(
+internal data class RequestPermissionProfile(
     @SerialName("fileSystem")
     public val fileSystem: AdditionalFileSystemPermissions? = null,
     @SerialName("network")
@@ -160,12 +160,12 @@ public data class RequestPermissionProfile(
 )
 
 @Serializable
-public enum class ResidencyRequirement {
+internal enum class ResidencyRequirement {
     @SerialName("us") US,
 }
 
 @Serializable
-public data class Resource(
+internal data class Resource(
     @SerialName("name")
     public val name: String,
     @SerialName("uri")
@@ -186,10 +186,10 @@ public data class Resource(
     public val title: String? = null,
 )
 
-public typealias ResourceContent = JsonElement
+internal typealias ResourceContent = JsonElement
 
 @Serializable
-public data class ResourceTemplate(
+internal data class ResourceTemplate(
     @SerialName("name")
     public val name: String,
     @SerialName("uriTemplate")
@@ -205,10 +205,10 @@ public data class ResourceTemplate(
 )
 
 @Serializable(with = ResponseItemSerializer::class)
-public sealed interface ResponseItem
+internal sealed interface ResponseItem
 
 @Serializable
-public data class ResponseItemMessageResponseItem(
+internal data class ResponseItemMessageResponseItem(
     @SerialName("content")
     public val content: List<ContentItem>,
     @SerialName("role")

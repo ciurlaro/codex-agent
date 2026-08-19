@@ -3,7 +3,7 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 import androidx.sqlite.SQLiteDriver
 import okio.Path
 
-data class CodexRuntimeConfiguration(
+internal data class CodexRuntimeConfiguration(
     val executable: Path,
     val packagedRuntimeEnvironment: RuntimeEnvironment?,
     val applicationDirectory: Path,

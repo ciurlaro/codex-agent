@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class AppConfig(
+internal data class AppConfig(
     @SerialName("approvals_reviewer")
     public val approvals_reviewer: ApprovalsReviewer? = null,
     @SerialName("default_tools_approval_mode")
@@ -31,7 +31,7 @@ public data class AppConfig(
 )
 
 @Serializable
-public data class AppInfo(
+internal data class AppInfo(
     @SerialName("id")
     public val id: String,
     @SerialName("name")
@@ -65,13 +65,13 @@ public data class AppInfo(
 )
 
 @Serializable
-public data class AppListUpdatedNotification(
+internal data class AppListUpdatedNotification(
     @SerialName("data")
     public val data: List<AppInfo>,
 )
 
 @Serializable
-public data class AppMetadata(
+internal data class AppMetadata(
     @SerialName("categories")
     public val categories: List<String>? = null,
     @SerialName("developer")
@@ -99,13 +99,13 @@ public data class AppMetadata(
 )
 
 @Serializable
-public data class AppReview(
+internal data class AppReview(
     @SerialName("status")
     public val status: String,
 )
 
 @Serializable
-public data class AppScreenshot(
+internal data class AppScreenshot(
     @SerialName("userPrompt")
     public val userPrompt: String,
     @SerialName("fileId")
@@ -115,7 +115,7 @@ public data class AppScreenshot(
 )
 
 @Serializable
-public data class AppSummary(
+internal data class AppSummary(
     @SerialName("id")
     public val id: String,
     @SerialName("name")
@@ -129,7 +129,7 @@ public data class AppSummary(
 )
 
 @Serializable
-public data class AppTemplateSummary(
+internal data class AppTemplateSummary(
     @SerialName("materializedAppIds")
     public val materializedAppIds: List<String>,
     @SerialName("name")
@@ -151,13 +151,13 @@ public data class AppTemplateSummary(
 )
 
 @Serializable
-public enum class AppTemplateUnavailableReason {
+internal enum class AppTemplateUnavailableReason {
     @SerialName("NOT_CONFIGURED_FOR_WORKSPACE") NOT_CONFIGURED_FOR_WORKSPACE,
     @SerialName("NO_ACTIVE_WORKSPACE") NO_ACTIVE_WORKSPACE,
 }
 
 @Serializable
-public enum class AppToolApproval {
+internal enum class AppToolApproval {
     @SerialName("auto") AUTO,
     @SerialName("prompt") PROMPT,
     @SerialName("writes") WRITES,
@@ -165,7 +165,7 @@ public enum class AppToolApproval {
 }
 
 @Serializable
-public data class AppToolConfig(
+internal data class AppToolConfig(
     @SerialName("approval_mode")
     public val approval_mode: AppToolApproval? = null,
     @SerialName("enabled")
@@ -173,7 +173,7 @@ public data class AppToolConfig(
 )
 
 @Serializable
-public data class AppToolSummary(
+internal data class AppToolSummary(
     @SerialName("description")
     public val description: String,
     @SerialName("name")
@@ -183,10 +183,10 @@ public data class AppToolSummary(
 )
 
 @Serializable
-public class AppToolsConfig
+internal class AppToolsConfig
 
 @Serializable
-public data class ApplyPatchApprovalParams(
+internal data class ApplyPatchApprovalParams(
     @SerialName("callId")
     public val callId: String,
     @SerialName("conversationId")
@@ -200,20 +200,20 @@ public data class ApplyPatchApprovalParams(
 )
 
 @Serializable
-public data class ApplyPatchApprovalResponse(
+internal data class ApplyPatchApprovalResponse(
     @SerialName("decision")
     public val decision: ReviewDecision,
 )
 
 @Serializable
-public enum class ApprovalsReviewer {
+internal enum class ApprovalsReviewer {
     @SerialName("user") USER,
     @SerialName("auto_review") AUTO_REVIEW,
     @SerialName("guardian_subagent") GUARDIAN_SUBAGENT,
 }
 
 @Serializable
-public data class AppsConfig(
+internal data class AppsConfig(
     @SerialName("_default")
     public val _default: AppsDefaultConfig? = null,
 )

@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ItemGuardianApprovalReviewCompletedNotification(
+internal data class ItemGuardianApprovalReviewCompletedNotification(
     @SerialName("action")
     public val action: GuardianApprovalReviewAction,
     @SerialName("completedAtMs")
@@ -35,7 +35,7 @@ public data class ItemGuardianApprovalReviewCompletedNotification(
 )
 
 @Serializable
-public data class ItemGuardianApprovalReviewStartedNotification(
+internal data class ItemGuardianApprovalReviewStartedNotification(
     @SerialName("action")
     public val action: GuardianApprovalReviewAction,
     @SerialName("review")
@@ -53,7 +53,7 @@ public data class ItemGuardianApprovalReviewStartedNotification(
 )
 
 @Serializable
-public data class ItemStartedNotification(
+internal data class ItemStartedNotification(
     @SerialName("item")
     public val item: ThreadItem,
     @SerialName("startedAtMs")
@@ -65,7 +65,7 @@ public data class ItemStartedNotification(
 )
 
 @Serializable
-public data class JSONRPCError(
+internal data class JSONRPCError(
     @SerialName("error")
     public val error: JSONRPCErrorError,
     @SerialName("id")
@@ -73,7 +73,7 @@ public data class JSONRPCError(
 )
 
 @Serializable
-public data class JSONRPCErrorError(
+internal data class JSONRPCErrorError(
     @SerialName("code")
     public val code: Long,
     @SerialName("message")
@@ -82,10 +82,10 @@ public data class JSONRPCErrorError(
     public val data: JsonElement? = null,
 )
 
-public typealias JSONRPCMessage = JsonElement
+internal typealias JSONRPCMessage = JsonElement
 
 @Serializable
-public data class JSONRPCNotification(
+internal data class JSONRPCNotification(
     @SerialName("method")
     public val method: String,
     @SerialName("params")
@@ -93,7 +93,7 @@ public data class JSONRPCNotification(
 )
 
 @Serializable
-public data class JSONRPCRequest(
+internal data class JSONRPCRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")
@@ -105,17 +105,17 @@ public data class JSONRPCRequest(
 )
 
 @Serializable
-public data class JSONRPCResponse(
+internal data class JSONRPCResponse(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("result")
     public val result: JsonElement,
 )
 
-public typealias LegacyAppPathString = String
+internal typealias LegacyAppPathString = String
 
 @Serializable
-public data class ListMcpServerStatusParams(
+internal data class ListMcpServerStatusParams(
     @SerialName("cursor")
     public val cursor: String? = null,
     @SerialName("detail")
@@ -127,7 +127,7 @@ public data class ListMcpServerStatusParams(
 )
 
 @Serializable
-public data class ListMcpServerStatusResponse(
+internal data class ListMcpServerStatusResponse(
     @SerialName("data")
     public val data: List<McpServerStatus>,
     @SerialName("nextCursor")
@@ -135,10 +135,10 @@ public data class ListMcpServerStatusResponse(
 )
 
 @Serializable(with = LocalShellActionSerializer::class)
-public sealed interface LocalShellAction
+internal sealed interface LocalShellAction
 
 @Serializable
-public data class LocalShellActionExecLocalShellAction(
+internal data class LocalShellActionExecLocalShellAction(
     @SerialName("command")
     public val command: List<String>,
     @SerialName("env")
@@ -155,7 +155,7 @@ public data class LocalShellActionExecLocalShellAction(
     init { require(type == "exec") }
 }
 
-public object LocalShellActionSerializer : JsonContentPolymorphicSerializer<LocalShellAction>(LocalShellAction::class) {
+internal object LocalShellActionSerializer : JsonContentPolymorphicSerializer<LocalShellAction>(LocalShellAction::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<LocalShellAction> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "exec" -> LocalShellActionExecLocalShellAction.serializer()
@@ -164,17 +164,17 @@ public object LocalShellActionSerializer : JsonContentPolymorphicSerializer<Loca
 }
 
 @Serializable
-public enum class LocalShellStatus {
+internal enum class LocalShellStatus {
     @SerialName("completed") COMPLETED,
     @SerialName("in_progress") IN_PROGRESS,
     @SerialName("incomplete") INCOMPLETE,
 }
 
 @Serializable(with = LoginAccountParamsSerializer::class)
-public sealed interface LoginAccountParams
+internal sealed interface LoginAccountParams
 
 @Serializable
-public data class LoginAccountParamsApiKey(
+internal data class LoginAccountParamsApiKey(
     @SerialName("apiKey")
     public val apiKey: String,
     @SerialName("type")
@@ -184,7 +184,7 @@ public data class LoginAccountParamsApiKey(
 }
 
 @Serializable
-public data class LoginAccountParamsChatgpt(
+internal data class LoginAccountParamsChatgpt(
     @SerialName("appBrand")
     public val appBrand: LoginAppBrand? = null,
     @SerialName("codexStreamlinedLogin")
@@ -198,7 +198,7 @@ public data class LoginAccountParamsChatgpt(
 }
 
 @Serializable
-public data class LoginAccountParamsChatgptDeviceCode(
+internal data class LoginAccountParamsChatgptDeviceCode(
     @SerialName("type")
     public val type: String = "chatgptDeviceCode",
 ) : LoginAccountParams {
@@ -206,7 +206,7 @@ public data class LoginAccountParamsChatgptDeviceCode(
 }
 
 @Serializable
-public data class LoginAccountParamsChatgptAuthTokens(
+internal data class LoginAccountParamsChatgptAuthTokens(
     @SerialName("accessToken")
     public val accessToken: String,
     @SerialName("chatgptAccountId")

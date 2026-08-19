@@ -4,8 +4,9 @@ package io.github.ciurlaro.codexmobile.app.runtime.ios
 
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolCall
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolDefinition
-import io.github.ciurlaro.codexmobile.agent.BuiltInToolDispatcher
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolResult
+import io.github.ciurlaro.codexmobile.agent.CodexToolExecutionContext
+import io.github.ciurlaro.codexmobile.agent.CodexToolProvider
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
@@ -17,13 +18,23 @@ import kotlinx.cinterop.toKString
 import platform.posix.free
 import platform.posix.realpath
 
-class IosCodexWorkspaceTools internal constructor(
+internal class IosCodexWorkspaceTools(
     private val configuration: IosCodexRuntimeConfiguration,
-) : BuiltInToolDispatcher {
+) : CodexToolProvider {
     override fun definitions(): List<BuiltInToolDefinition> = DEFINITIONS
 
-    override suspend fun execute(call: BuiltInToolCall): BuiltInToolResult {
-        if (!sameIosWorkspace(call.workspace, configuration.workspacePath)) {
+    override suspend fun execute(
+        call: BuiltInToolCall,
+        context: CodexToolExecutionContext,
+    ): BuiltInToolResult {
+        if (call.tool in IOS_MUTATING_TOOLS) context.beforeMutation() else context.checkActive()
+        return executeCall(call)
+    }
+
+    internal suspend fun executeForTest(call: BuiltInToolCall): BuiltInToolResult = executeCall(call)
+
+    private suspend fun executeCall(call: BuiltInToolCall): BuiltInToolResult {
+        if (!sameIosWorkspace(call.workspacePath, configuration.workspacePath)) {
             return BuiltInToolResult.text("The tool workspace does not match the local iOS workspace", false)
         }
         return executeIosWorkspaceTool(configuration, call.tool, call.arguments)
@@ -40,7 +51,7 @@ class IosCodexWorkspaceTools internal constructor(
                     stringProperty("patch", "Complete patch text from *** Begin Patch through *** End Patch")
                 },
                 required = listOf("patch"),
-                mutation = true,
+                isMutation = true,
             ),
             definition(
                 name = "read_file",
@@ -80,7 +91,7 @@ class IosCodexWorkspaceTools internal constructor(
                     stringProperty("content", "Complete UTF-8 file content")
                 },
                 required = listOf("path", "content"),
-                mutation = true,
+                isMutation = true,
             ),
         )
 
@@ -89,7 +100,7 @@ class IosCodexWorkspaceTools internal constructor(
             description: String,
             properties: JsonObject,
             required: List<String> = emptyList(),
-            mutation: Boolean = false,
+            isMutation: Boolean = false,
         ) = BuiltInToolDefinition(
             pluginId = PLUGIN_ID,
             name = name,
@@ -100,7 +111,7 @@ class IosCodexWorkspaceTools internal constructor(
                 put("additionalProperties", false)
                 if (required.isNotEmpty()) put("required", JsonArray(required.map(::JsonPrimitive)))
             },
-            mutation = mutation,
+            isMutation = isMutation,
             requiresEnabledPlugin = false,
         )
 

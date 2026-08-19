@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,20 +33,20 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +57,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
@@ -76,10 +76,29 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.KSerializer
+import kotlin.uuid.Uuid
+import kotlin.uuid.ExperimentalUuidApi
 
 
-internal suspend fun CodexAgentClient.sendTurnAction(sessionId: SessionId, request: AgentTurnRequest) {
+@OptIn(ExperimentalUuidApi::class)
+internal suspend fun CodexAgentClient.sendTurnAction(
+    conversationId: ConversationId,
+    request: AgentTurnRequest,
+    workingDirectory: String,
+) {
+    val logicalClientMessageId = request.clientMessageId ?: Uuid.random().toString()
+    require(
+        request.collaborationMode == AgentCollaborationMode.PLAN ||
+            !logicalClientMessageId.startsWith(PLAN_CLIENT_MESSAGE_PREFIX) &&
+            !logicalClientMessageId.startsWith(LEGACY_PLAN_CLIENT_MESSAGE_PREFIX),
+    ) { "Client message ID uses a reserved plan prefix" }
+    val wireClientMessageId = if (request.collaborationMode == AgentCollaborationMode.PLAN) {
+        PLAN_CLIENT_MESSAGE_PREFIX + logicalClientMessageId
+    } else {
+        logicalClientMessageId
+    }
     val snapshot = request.copy(
+        clientMessageId = wireClientMessageId,
         capabilities = request.capabilities.toSet(),
         invocations = request.invocations.distinctBy(AgentInvocation::key),
     )
@@ -96,27 +115,25 @@ internal suspend fun CodexAgentClient.sendTurnAction(sessionId: SessionId, reque
     require(snapshot.model?.isNotBlank() != false) { "Model must not be blank" }
     require(snapshot.effort?.isNotBlank() != false) { "Effort must not be blank" }
     require(snapshot.serviceTier?.isNotBlank() != false) { "Service tier must not be blank" }
-    require(snapshot.workingDirectory?.isAbsoluteHostPath() != false) {
+    require(workingDirectory.isAbsoluteHostPath()) {
         "Working directory must be absolute"
     }
-    turnStateLock.withLock {
-        check(sessionId !in startingTurns && !activeTurns.containsKey(sessionId)) {
-            "A turn is already active for this session"
-        }
-        cancelledTurns -= sessionId
-        startingTurns += sessionId
+    markTurnStarting(conversationId, clearCancellation = true)
+    val previousRuntimeSettings = stateLock.withLock {
+        check(conversationId in openedConversations) { "Conversation is not open" }
+        val previous = conversationRuntimeSettings[conversationId]
+        conversationRuntimeSettings[conversationId] = ConversationRuntimeSettings(
+            workspace = workingDirectory,
+            approvalPreset = snapshot.approvalPreset,
+            model = snapshot.model ?: previous?.model,
+            effort = snapshot.effort ?: previous?.effort,
+        )
+        previous
     }
-    val previousRuntimeSettings = sessionRuntimeSettings[sessionId]
-    sessionRuntimeSettings[sessionId] = SessionRuntimeSettings(
-        workspace = snapshot.workingDirectory ?: previousRuntimeSettings?.workspace,
-        approvalPreset = snapshot.approvalPreset,
-        model = snapshot.model ?: previousRuntimeSettings?.model,
-        effort = snapshot.effort ?: previousRuntimeSettings?.effort,
-    )
     snapshot.clientMessageId?.takeIf { snapshot.invocations.isNotEmpty() }?.let { clientMessageId ->
         runCatching {
             turnInputMetadataStore.upsert(
-                sessionId.value,
+                conversationId.value,
                 TurnInputMetadata(clientMessageId, snapshot.invocations),
             )
         }
@@ -127,11 +144,11 @@ internal suspend fun CodexAgentClient.sendTurnAction(sessionId: SessionId, reque
             AppServerClientMethods.TurnStart,
             TurnStartParams(
                 input = turnInput(snapshot),
-                threadId = sessionId.value,
-                approvalPolicy = JsonPrimitive(snapshot.approvalPreset.approvalPolicy),
+                threadId = conversationId.value,
+                approvalPolicy = JsonPrimitive(snapshot.approvalPreset.wireApprovalPolicy()),
                 approvalsReviewer = approvalsReviewer(snapshot.approvalPreset),
                 clientUserMessageId = snapshot.clientMessageId,
-                cwd = snapshot.workingDirectory,
+                cwd = workingDirectory,
                 effort = snapshot.effort,
                 model = snapshot.model,
                 collaborationMode = if (snapshot.collaborationMode == AgentCollaborationMode.PLAN) {
@@ -152,68 +169,84 @@ internal suspend fun CodexAgentClient.sendTurnAction(sessionId: SessionId, reque
             ),
         )
         val turnId = result.turn.id
+        var deferredTerminal: PendingTurnTerminal? = null
         turnStateLock.withLock {
-            startingTurns -= sessionId
-            if (terminalDuringStart.remove(sessionId) != turnId) {
-                activeTurns[sessionId] = turnId
+            startingTurns -= conversationId
+            val pending = pendingTerminalsDuringStart.remove(conversationId to turnId)
+            pendingTerminalsDuringStart.keys.removeAll { it.first == conversationId }
+            if (pending != null) {
+                deferredTerminal = PendingTurnTerminal(turnId, pending)
+            } else {
+                activeTurns[conversationId] = turnId
             }
         }
+        deferredTerminal?.let { publishAcceptedTerminalAction(conversationId, it) }
     } catch (error: Exception) {
-        if (previousRuntimeSettings == null) {
-            sessionRuntimeSettings -= sessionId
-        } else {
-            sessionRuntimeSettings[sessionId] = previousRuntimeSettings
-        }
-        turnStateLock.withLock {
-            startingTurns -= sessionId
-            terminalDuringStart.remove(sessionId)
+        withContext(NonCancellable) {
+            stateLock.withLock {
+                if (conversationId in openedConversations) {
+                    if (previousRuntimeSettings == null) {
+                        conversationRuntimeSettings -= conversationId
+                    } else {
+                        conversationRuntimeSettings[conversationId] = previousRuntimeSettings
+                    }
+                }
+            }
+            turnStateLock.withLock {
+                startingTurns -= conversationId
+                pendingTerminalsDuringStart.keys.removeAll { it.first == conversationId }
+            }
         }
         throw error
     }
 }
 
-internal suspend fun CodexAgentClient.runShellCommandAction(sessionId: SessionId, command: String) {
+internal suspend fun CodexAgentClient.runShellCommandAction(conversationId: ConversationId, command: String) {
     val snapshot = command.trim()
     require(snapshot.isNotEmpty()) { "Shell command must not be blank" }
     require(snapshot.length <= MAX_PROMPT_CHARS) { "Shell command is too large" }
-    check(sessionId in openedSessions) { "Session is not open" }
-    turnStateLock.withLock {
-        check(sessionId !in startingTurns && !activeTurns.containsKey(sessionId)) {
-            "A turn is already active for this session"
-        }
-        startingTurns += sessionId
-    }
+    check(stateLock.withLock { conversationId in openedConversations }) { "Conversation is not open" }
+    val startup = markShellTurnStarting(conversationId)
     try {
         connection.request(
             AppServerClientMethods.ThreadShellCommand,
-            ThreadShellCommandParams(command = snapshot, threadId = sessionId.value),
+            ThreadShellCommandParams(command = snapshot, threadId = conversationId.value),
         )
-    } finally {
-        turnStateLock.withLock {
-            startingTurns -= sessionId
-            terminalDuringStart.remove(sessionId)
+        check(withTimeoutOrNull(requestTimeoutMillis) { startup.await() } != null) {
+            "Shell command did not start in time"
         }
+    } catch (error: Throwable) {
+        withContext(NonCancellable) {
+            turnStateLock.withLock {
+                startingTurns -= conversationId
+                shellStartupCompletions.remove(conversationId)?.cancel()
+                pendingTerminalsDuringStart.keys.removeAll { it.first == conversationId }
+            }
+        }
+        throw error
     }
 }
 
-internal suspend fun CodexAgentClient.cancelTurnAction(sessionId: SessionId) {
+internal suspend fun CodexAgentClient.cancelTurnAction(conversationId: ConversationId) {
     val turnId = turnStateLock.withLock {
-        val active = activeTurns[sessionId] ?: error("No active turn for this session")
-        check(cancellingTurns.add(sessionId)) { "Turn cancellation is already in progress" }
-        cancelledTurns[sessionId] = active
+        val active = activeTurns[conversationId] ?: error("No active turn for this conversation")
+        check(cancellingTurns.add(conversationId)) { "Turn cancellation is already in progress" }
+        cancelledTurns[conversationId] = active
         active
     }
-    cancelPendingBuiltInTools(sessionId, turnId, "Built-in tool call was cancelled")
+    cancelPendingBuiltInTools(conversationId, turnId, "Built-in tool call was cancelled")
     try {
         try {
             connection.request(
                 AppServerClientMethods.TurnInterrupt,
-                TurnInterruptParams(threadId = sessionId.value, turnId = turnId),
+                TurnInterruptParams(threadId = conversationId.value, turnId = turnId),
             )
         } catch (error: AppServerRpcException) {
             if (error.code != -32600L || error.detail != "no active turn to interrupt") throw error
         }
     } finally {
-        turnStateLock.withLock { cancellingTurns -= sessionId }
+        withContext(NonCancellable) {
+            turnStateLock.withLock { cancellingTurns -= conversationId }
+        }
     }
 }

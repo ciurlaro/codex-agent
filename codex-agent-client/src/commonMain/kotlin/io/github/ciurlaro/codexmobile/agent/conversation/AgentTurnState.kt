@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -78,21 +76,62 @@ import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.KSerializer
 
 
-internal suspend fun CodexAgentClient.finishTurnAction(sessionId: SessionId, turnId: String?) {
-    turnStateLock.withLock {
-        if (turnId == null || activeTurns[sessionId] == turnId) activeTurns.remove(sessionId)
-        if (turnId != null && sessionId in startingTurns) {
-            terminalDuringStart[sessionId] = turnId
+internal suspend fun CodexAgentClient.finishTurnAction(
+    conversationId: ConversationId,
+    turnId: String,
+    event: AgentEvent,
+): Boolean {
+    val accepted = turnStateLock.withLock {
+        val recent = recentTerminalTurnIds[conversationId].orEmpty()
+        when {
+            turnId in recent -> false
+            conversationId in startingTurns -> {
+                pendingTerminalsDuringStart[conversationId to turnId] = event
+                false
+            }
+            activeTurns[conversationId] == turnId -> {
+                activeTurns -= conversationId
+                cancellingTurns -= conversationId
+                if (cancelledTurns[conversationId] == turnId) cancelledTurns -= conversationId
+                rememberTerminalTurnLocked(conversationId, turnId)
+                true
+            }
+            else -> false
         }
-        cancellingTurns -= sessionId
-        if (turnId == null || cancelledTurns[sessionId] == turnId) cancelledTurns -= sessionId
     }
-    cancelPendingBuiltInTools(sessionId, turnId, "Built-in tool call is no longer active")
-    val removedWork = stateLock.withLock {
-        workItems.entries.removeAll { it.value.first == sessionId }
-    }
-    if (removedWork) eventsChannel.send(AgentEvent.WorkActivityChanged(sessionId, null))
+    if (!accepted) return false
+    cleanupFinishedTurnAction(conversationId, turnId)
+    return true
 }
+
+internal suspend fun CodexAgentClient.publishAcceptedTerminalAction(
+    conversationId: ConversationId,
+    terminal: PendingTurnTerminal,
+) {
+    turnStateLock.withLock { rememberTerminalTurnLocked(conversationId, terminal.turnId) }
+    cleanupFinishedTurnAction(conversationId, terminal.turnId)
+    eventsChannel.send(terminal.event)
+}
+
+private suspend fun CodexAgentClient.cleanupFinishedTurnAction(
+    conversationId: ConversationId,
+    turnId: String,
+) {
+    cancelPendingBuiltInTools(conversationId, turnId, "Built-in tool call is no longer active")
+    val removedWork = stateLock.withLock {
+        workItems.entries.removeAll { it.value.first == conversationId }
+    }
+    if (removedWork) eventsChannel.send(AgentEvent.WorkActivityChanged(conversationId, null))
+}
+
+private fun CodexAgentClient.rememberTerminalTurnLocked(conversationId: ConversationId, turnId: String) {
+    val recent = recentTerminalTurnIds.getOrPut(conversationId, ::ArrayDeque)
+    recent.remove(turnId)
+    recent.addLast(turnId)
+    while (recent.size > MAX_RECENT_TERMINAL_TURNS) recent.removeFirst()
+}
+
+private const val MAX_RECENT_TERMINAL_TURNS = 32
 
 internal suspend fun CodexAgentClient.updateItemActivityAction(
     threadId: String,
@@ -100,7 +139,7 @@ internal suspend fun CodexAgentClient.updateItemActivityAction(
     item: ThreadItem,
     started: Boolean,
 ) {
-    val sessionId = SessionId(threadId)
+    val conversationId = ConversationId(threadId)
     val itemId = when (item) {
         is ThreadItemCommandExecutionThreadItem -> item.id
         is ThreadItemFileChangeThreadItem -> item.id
@@ -110,23 +149,47 @@ internal suspend fun CodexAgentClient.updateItemActivityAction(
         started && item is ThreadItemCommandExecutionThreadItem &&
         item.source == CommandExecutionSource.USER_SHELL
     ) {
-        stateLock.withLock { userShellItems += itemId }
-        turnStateLock.withLock { activeTurns[sessionId] = turnId }
+        var deferredTerminal: PendingTurnTerminal? = null
+        val accepted = turnStateLock.withLock {
+            val startup = shellStartupCompletions.remove(conversationId)
+            if (startup != null) {
+                startingTurns -= conversationId
+                val pending = pendingTerminalsDuringStart.remove(conversationId to turnId)
+                pendingTerminalsDuringStart.keys.removeAll { it.first == conversationId }
+                if (pending != null) {
+                    rememberTerminalTurnLocked(conversationId, turnId)
+                    deferredTerminal = PendingTurnTerminal(turnId, pending)
+                    startup.complete(false)
+                    false
+                } else {
+                    activeTurns[conversationId] = turnId
+                    startup.complete(true)
+                    true
+                }
+            } else {
+                false
+            }
+        }
+        deferredTerminal?.let {
+            publishAcceptedTerminalAction(conversationId, it)
+            return
+        }
+        if (accepted) stateLock.withLock { userShellItems += itemId }
     }
     val activity = when (item) {
         is ThreadItemCommandExecutionThreadItem -> AgentWorkActivity.RUNNING_COMMAND
         is ThreadItemFileChangeThreadItem -> AgentWorkActivity.WRITING_FILES
     }
     if (started) {
-        stateLock.withLock { workItems[itemId] = sessionId to activity }
-        eventsChannel.send(AgentEvent.WorkActivityChanged(sessionId, activity))
+        stateLock.withLock { workItems[itemId] = conversationId to activity }
+        eventsChannel.send(AgentEvent.WorkActivityChanged(conversationId, activity))
     } else if (!started && stateLock.withLock { workItems.remove(itemId) != null }) {
         val activity = stateLock.withLock {
-            workItems.values.lastOrNull { it.first == sessionId }?.second
+            workItems.values.lastOrNull { it.first == conversationId }?.second
         }
         eventsChannel.send(
             AgentEvent.WorkActivityChanged(
-                sessionId,
+                conversationId,
                 activity,
             ),
         )
@@ -152,7 +215,7 @@ internal suspend fun CodexAgentClient.completeUserShellItemAction(threadId: Stri
         }
         eventsChannel.send(
             AgentEvent.ShellCommandCompleted(
-                sessionId = SessionId(threadId),
+                conversationId = ConversationId(threadId),
                 exitCode = item.exitCode?.toInt(),
             ),
         )

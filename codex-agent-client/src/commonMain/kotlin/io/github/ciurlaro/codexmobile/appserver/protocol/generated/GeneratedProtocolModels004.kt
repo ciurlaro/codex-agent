@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ClientRequestThreadResumeRequest(
+internal data class ClientRequestThreadResumeRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -25,7 +25,7 @@ public data class ClientRequestThreadResumeRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadForkRequest(
+internal data class ClientRequestThreadForkRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -37,7 +37,7 @@ public data class ClientRequestThreadForkRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadArchiveRequest(
+internal data class ClientRequestThreadArchiveRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -49,7 +49,7 @@ public data class ClientRequestThreadArchiveRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadDeleteRequest(
+internal data class ClientRequestThreadDeleteRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -61,7 +61,7 @@ public data class ClientRequestThreadDeleteRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadUnsubscribeRequest(
+internal data class ClientRequestThreadUnsubscribeRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -73,7 +73,7 @@ public data class ClientRequestThreadUnsubscribeRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadNameSetRequest(
+internal data class ClientRequestThreadNameSetRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -85,7 +85,7 @@ public data class ClientRequestThreadNameSetRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadGoalSetRequest(
+internal data class ClientRequestThreadGoalSetRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -97,7 +97,7 @@ public data class ClientRequestThreadGoalSetRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadGoalGetRequest(
+internal data class ClientRequestThreadGoalGetRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -109,7 +109,7 @@ public data class ClientRequestThreadGoalGetRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadGoalClearRequest(
+internal data class ClientRequestThreadGoalClearRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -121,7 +121,7 @@ public data class ClientRequestThreadGoalClearRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadMetadataUpdateRequest(
+internal data class ClientRequestThreadMetadataUpdateRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -133,7 +133,7 @@ public data class ClientRequestThreadMetadataUpdateRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadUnarchiveRequest(
+internal data class ClientRequestThreadUnarchiveRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -145,7 +145,7 @@ public data class ClientRequestThreadUnarchiveRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadCompactStartRequest(
+internal data class ClientRequestThreadCompactStartRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -157,7 +157,7 @@ public data class ClientRequestThreadCompactStartRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadShellCommandRequest(
+internal data class ClientRequestThreadShellCommandRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -169,7 +169,7 @@ public data class ClientRequestThreadShellCommandRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadApproveGuardianDeniedActionRequest(
+internal data class ClientRequestThreadApproveGuardianDeniedActionRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -181,7 +181,7 @@ public data class ClientRequestThreadApproveGuardianDeniedActionRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadRollbackRequest(
+internal data class ClientRequestThreadRollbackRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -193,7 +193,7 @@ public data class ClientRequestThreadRollbackRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadListRequest(
+internal data class ClientRequestThreadListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -205,7 +205,7 @@ public data class ClientRequestThreadListRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadLoadedListRequest(
+internal data class ClientRequestThreadLoadedListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -217,7 +217,7 @@ public data class ClientRequestThreadLoadedListRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadReadRequest(
+internal data class ClientRequestThreadReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")

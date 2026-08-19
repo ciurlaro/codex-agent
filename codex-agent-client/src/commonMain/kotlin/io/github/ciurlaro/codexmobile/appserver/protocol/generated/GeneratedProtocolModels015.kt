@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-public object FileSystemPathSerializer : JsonContentPolymorphicSerializer<FileSystemPath>(FileSystemPath::class) {
+internal object FileSystemPathSerializer : JsonContentPolymorphicSerializer<FileSystemPath>(FileSystemPath::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<FileSystemPath> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "path" -> FileSystemPathPathFileSystemPath.serializer()
@@ -23,7 +23,7 @@ public object FileSystemPathSerializer : JsonContentPolymorphicSerializer<FileSy
 }
 
 @Serializable
-public data class FileSystemSandboxEntry(
+internal data class FileSystemSandboxEntry(
     @SerialName("access")
     public val access: FileSystemAccessMode,
     @SerialName("path")
@@ -31,10 +31,10 @@ public data class FileSystemSandboxEntry(
 )
 
 @Serializable(with = FileSystemSpecialPathSerializer::class)
-public sealed interface FileSystemSpecialPath
+internal sealed interface FileSystemSpecialPath
 
 @Serializable
-public data class FileSystemSpecialPathRootFileSystemSpecialPath(
+internal data class FileSystemSpecialPathRootFileSystemSpecialPath(
     @SerialName("kind")
     public val kind: String = "root",
 ) : FileSystemSpecialPath {
@@ -42,7 +42,7 @@ public data class FileSystemSpecialPathRootFileSystemSpecialPath(
 }
 
 @Serializable
-public data class FileSystemSpecialPathMinimalFileSystemSpecialPath(
+internal data class FileSystemSpecialPathMinimalFileSystemSpecialPath(
     @SerialName("kind")
     public val kind: String = "minimal",
 ) : FileSystemSpecialPath {
@@ -50,7 +50,7 @@ public data class FileSystemSpecialPathMinimalFileSystemSpecialPath(
 }
 
 @Serializable
-public data class FileSystemSpecialPathKindFileSystemSpecialPath(
+internal data class FileSystemSpecialPathKindFileSystemSpecialPath(
     @SerialName("kind")
     public val kind: String = "project_roots",
     @SerialName("subpath")
@@ -60,7 +60,7 @@ public data class FileSystemSpecialPathKindFileSystemSpecialPath(
 }
 
 @Serializable
-public data class FileSystemSpecialPathTmpdirFileSystemSpecialPath(
+internal data class FileSystemSpecialPathTmpdirFileSystemSpecialPath(
     @SerialName("kind")
     public val kind: String = "tmpdir",
 ) : FileSystemSpecialPath {
@@ -68,7 +68,7 @@ public data class FileSystemSpecialPathTmpdirFileSystemSpecialPath(
 }
 
 @Serializable
-public data class FileSystemSpecialPathSlashTmpFileSystemSpecialPath(
+internal data class FileSystemSpecialPathSlashTmpFileSystemSpecialPath(
     @SerialName("kind")
     public val kind: String = "slash_tmp",
 ) : FileSystemSpecialPath {
@@ -76,7 +76,7 @@ public data class FileSystemSpecialPathSlashTmpFileSystemSpecialPath(
 }
 
 @Serializable
-public data class FileSystemSpecialPathUnknown(
+internal data class FileSystemSpecialPathUnknown(
     @SerialName("path")
     public val path: String,
     @SerialName("kind")
@@ -87,7 +87,7 @@ public data class FileSystemSpecialPathUnknown(
     init { require(kind == "unknown") }
 }
 
-public object FileSystemSpecialPathSerializer : JsonContentPolymorphicSerializer<FileSystemSpecialPath>(FileSystemSpecialPath::class) {
+internal object FileSystemSpecialPathSerializer : JsonContentPolymorphicSerializer<FileSystemSpecialPath>(FileSystemSpecialPath::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<FileSystemSpecialPath> =
         when (element.jsonObject["kind"]?.jsonPrimitive?.content) {
             "root" -> FileSystemSpecialPathRootFileSystemSpecialPath.serializer()
@@ -101,7 +101,7 @@ public object FileSystemSpecialPathSerializer : JsonContentPolymorphicSerializer
 }
 
 @Serializable
-public data class FileUpdateChange(
+internal data class FileUpdateChange(
     @SerialName("diff")
     public val diff: String,
     @SerialName("kind")
@@ -110,16 +110,16 @@ public data class FileUpdateChange(
     public val path: String,
 )
 
-public typealias ForcedChatgptWorkspaceIds = JsonElement
+internal typealias ForcedChatgptWorkspaceIds = JsonElement
 
 @Serializable
-public enum class ForcedLoginMethod {
+internal enum class ForcedLoginMethod {
     @SerialName("chatgpt") CHATGPT,
     @SerialName("api") API,
 }
 
 @Serializable
-public data class FsChangedNotification(
+internal data class FsChangedNotification(
     @SerialName("changedPaths")
     public val changedPaths: List<AbsolutePathBuf>,
     @SerialName("watchId")
@@ -127,7 +127,7 @@ public data class FsChangedNotification(
 )
 
 @Serializable
-public data class FsCopyParams(
+internal data class FsCopyParams(
     @SerialName("destinationPath")
     public val destinationPath: AbsolutePathBuf,
     @SerialName("sourcePath")
@@ -137,10 +137,10 @@ public data class FsCopyParams(
 )
 
 @Serializable
-public class FsCopyResponse
+internal class FsCopyResponse
 
 @Serializable
-public data class FsCreateDirectoryParams(
+internal data class FsCreateDirectoryParams(
     @SerialName("path")
     public val path: AbsolutePathBuf,
     @SerialName("recursive")
@@ -148,16 +148,16 @@ public data class FsCreateDirectoryParams(
 )
 
 @Serializable
-public class FsCreateDirectoryResponse
+internal class FsCreateDirectoryResponse
 
 @Serializable
-public data class FsGetMetadataParams(
+internal data class FsGetMetadataParams(
     @SerialName("path")
     public val path: AbsolutePathBuf,
 )
 
 @Serializable
-public data class FsGetMetadataResponse(
+internal data class FsGetMetadataResponse(
     @SerialName("createdAtMs")
     public val createdAtMs: Long,
     @SerialName("isDirectory")
@@ -171,7 +171,7 @@ public data class FsGetMetadataResponse(
 )
 
 @Serializable
-public data class FsReadDirectoryEntry(
+internal data class FsReadDirectoryEntry(
     @SerialName("fileName")
     public val fileName: String,
     @SerialName("isDirectory")
@@ -181,31 +181,31 @@ public data class FsReadDirectoryEntry(
 )
 
 @Serializable
-public data class FsReadDirectoryParams(
+internal data class FsReadDirectoryParams(
     @SerialName("path")
     public val path: AbsolutePathBuf,
 )
 
 @Serializable
-public data class FsReadDirectoryResponse(
+internal data class FsReadDirectoryResponse(
     @SerialName("entries")
     public val entries: List<FsReadDirectoryEntry>,
 )
 
 @Serializable
-public data class FsReadFileParams(
+internal data class FsReadFileParams(
     @SerialName("path")
     public val path: AbsolutePathBuf,
 )
 
 @Serializable
-public data class FsReadFileResponse(
+internal data class FsReadFileResponse(
     @SerialName("dataBase64")
     public val dataBase64: String,
 )
 
 @Serializable
-public data class FsRemoveParams(
+internal data class FsRemoveParams(
     @SerialName("path")
     public val path: AbsolutePathBuf,
     @SerialName("force")
@@ -215,10 +215,10 @@ public data class FsRemoveParams(
 )
 
 @Serializable
-public class FsRemoveResponse
+internal class FsRemoveResponse
 
 @Serializable
-public data class FsUnwatchParams(
+internal data class FsUnwatchParams(
     @SerialName("watchId")
     public val watchId: String,
 )

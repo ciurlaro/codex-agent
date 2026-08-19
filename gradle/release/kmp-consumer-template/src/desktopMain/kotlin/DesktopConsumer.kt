@@ -1,17 +1,5 @@
-import io.github.ciurlaro.codexmobile.appserver.runtime.DesktopCodexRuntimeConfiguration
-import io.github.ciurlaro.codexmobile.appserver.runtime.DesktopCodexRuntimeFactory
+import io.github.ciurlaro.codexmobile.agent.runtime.DesktopCodexPlatform
 import okio.Path
 
-fun desktopRuntimeFactory(
-    appServerExecutable: Path,
-    processSupervisorExecutable: Path,
-    processSupervisorSha256: String,
-    workingDirectory: Path,
-) = DesktopCodexRuntimeFactory(
-    DesktopCodexRuntimeConfiguration(
-        appServerExecutable = appServerExecutable,
-        processSupervisorExecutable = processSupervisorExecutable,
-        processSupervisorSha256 = processSupervisorSha256,
-        workingDirectory = workingDirectory,
-    ),
-)
+fun desktopPlatform(bundleDirectory: Path, dataDirectory: Path) =
+    DesktopCodexPlatform(bundleDirectory, dataDirectory)

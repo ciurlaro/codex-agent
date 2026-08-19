@@ -37,13 +37,17 @@ extensions.configure<LibraryExtension> {
     }
 }
 
+kotlin {
+    explicitApi()
+}
+
 dependencies {
     api(project(":codex-agent-client"))
-    api(libs.androidx.sqlite)
-    api(libs.okio)
     implementation(libs.androidx.browser)
+    implementation(libs.androidx.sqlite)
     implementation(libs.androidx.sqlite.framework)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.okio)
 
     testImplementation(kotlin("test-junit"))
     testImplementation(bundledSqliteTest)

@@ -15,7 +15,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
-public sealed interface AppServerConnectionState {
+internal sealed interface AppServerConnectionState {
     public data object Stopped : AppServerConnectionState
     public data object Starting : AppServerConnectionState
     public data class Ready(public val initializeResponse: InitializeResponse) : AppServerConnectionState
@@ -23,7 +23,7 @@ public sealed interface AppServerConnectionState {
     public data object Closed : AppServerConnectionState
 }
 
-public sealed interface AppServerEvent {
+internal sealed interface AppServerEvent {
     public data class Request(
         public val value: ServerRequest,
         public val descriptor: AppServerRequestDescriptor,
@@ -37,20 +37,20 @@ public sealed interface AppServerEvent {
     public data class Failure(public val code: String, public val message: String) : AppServerEvent
 }
 
-public class AppServerRpcException(
+internal class AppServerRpcException(
     public val code: Long,
     public val detail: String,
     public val data: JsonElement? = null,
 ) : IllegalStateException("App-server error $code: $detail")
 
-public class AppServerRuntimeException(message: String) : IllegalStateException(message)
+internal class AppServerRuntimeException(message: String) : IllegalStateException(message)
 
-public class AppServerProtocolException(message: String, cause: Throwable? = null) :
+internal class AppServerProtocolException(message: String, cause: Throwable? = null) :
     IllegalStateException(message, cause)
 
-public class AppServerDeliveryException(message: String) : IllegalStateException(message)
+internal class AppServerDeliveryException(message: String) : IllegalStateException(message)
 
-public class AppServerTimeoutException(message: String) : IllegalStateException(message)
+internal class AppServerTimeoutException(message: String) : IllegalStateException(message)
 
 internal sealed interface PendingRequest {
     data object Initialize : PendingRequest

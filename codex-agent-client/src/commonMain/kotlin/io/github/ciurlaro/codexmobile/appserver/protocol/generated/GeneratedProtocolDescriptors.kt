@@ -6,7 +6,7 @@ package io.github.ciurlaro.codexmobile.appserver.protocol.generated
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.serializer
 
-public data class AppServerRequestDescriptor(
+internal data class AppServerRequestDescriptor(
     public val method: String,
     public val paramsType: String,
     public val responseType: String,
@@ -15,18 +15,18 @@ public data class AppServerRequestDescriptor(
     public val inspectParams: Boolean = false,
 )
 
-public data class AppServerNotificationDescriptor(
+internal data class AppServerNotificationDescriptor(
     public val method: String,
     public val paramsType: String,
 )
 
-public interface AppServerMethod<P, R> {
+internal interface AppServerMethod<P, R> {
     public val descriptor: AppServerRequestDescriptor
     public val paramsSerializer: KSerializer<P>
     public val responseSerializer: KSerializer<R>
 }
 
-public object AppServerProtocolDescriptors {
+internal object AppServerProtocolDescriptors {
     public const val SCHEMA_SHA256: String = "8039a1222460b3846a3688c61eb4b2626b451d61b9c2b36b83fea0ce341ce0be"
     public val clientRequests: Map<String, AppServerRequestDescriptor> = generatedClientRequests
     public val serverRequests: Map<String, AppServerRequestDescriptor> = generatedServerRequests
@@ -34,7 +34,7 @@ public object AppServerProtocolDescriptors {
     public val clientNotifications: Map<String, AppServerNotificationDescriptor> = generatedClientNotifications
 }
 
-public object AppServerServerMethods {
+internal object AppServerServerMethods {
     public data object AccountChatgptAuthTokensRefresh : AppServerMethod<ChatgptAuthTokensRefreshParams, ChatgptAuthTokensRefreshResponse> {
         override val descriptor = AppServerProtocolDescriptors.serverRequests.getValue("account/chatgptAuthTokens/refresh"); override val paramsSerializer = ChatgptAuthTokensRefreshParams.serializer(); override val responseSerializer = ChatgptAuthTokensRefreshResponse.serializer() }
 

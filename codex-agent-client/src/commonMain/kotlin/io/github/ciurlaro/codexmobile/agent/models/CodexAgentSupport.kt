@@ -2,7 +2,7 @@ package io.github.ciurlaro.codexmobile.agent
 
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.McpServerElicitationRequestResponse
 import io.github.ciurlaro.codexmobile.agent.AgentApprovalPreset
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
@@ -12,11 +12,16 @@ internal data class LoginCompletion(
     val error: String?,
 )
 
-internal data class SessionRuntimeSettings(
+internal data class ConversationRuntimeSettings(
     val workspace: String?,
     val approvalPreset: AgentApprovalPreset,
     val model: String?,
     val effort: String?,
+)
+
+internal data class PendingTurnTerminal(
+    val turnId: String,
+    val event: AgentEvent,
 )
 
 internal data class PendingBuiltInApproval(
@@ -27,13 +32,25 @@ internal data class PendingBuiltInApproval(
     var dispatch: Boolean = false,
 )
 
-internal data class PendingApproval(val wireId: JsonElement, val type: ApprovalType)
+internal data class PendingApproval(
+    val wireId: JsonElement,
+    val type: ApprovalType,
+    val conversationId: ConversationId,
+)
 
 internal sealed interface PendingElicitation {
     val wireId: JsonElement
+    val elicitation: AgentElicitation
 
-    data class Mcp(override val wireId: JsonElement) : PendingElicitation
-    data class UserInput(override val wireId: JsonElement) : PendingElicitation
+    data class Mcp(
+        override val wireId: JsonElement,
+        override val elicitation: AgentElicitation,
+    ) : PendingElicitation
+
+    data class UserInput(
+        override val wireId: JsonElement,
+        override val elicitation: AgentElicitation,
+    ) : PendingElicitation
 }
 
 internal enum class ApprovalType { COMMAND, FILE_CHANGE }

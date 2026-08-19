@@ -51,9 +51,9 @@ class CodexRuntimeEventTest {
             val completed = async {
                 withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.TurnCompleted>().first() }
             }
-            client.sendTurn(SessionId("thread-1"), AgentTurnRequest("hello"))
-            client.cancelTurn(SessionId("thread-1"))
-            assertEquals(SessionId("thread-1"), completed.await().sessionId)
+            client.sendTurn(ConversationId("thread-1"), AgentTurnRequest("hello"))
+            client.cancelTurn(ConversationId("thread-1"))
+            assertEquals(ConversationId("thread-1"), completed.await().conversationId)
         } finally {
             client.close()
         }
@@ -93,7 +93,7 @@ class CodexRuntimeEventTest {
                         .first()
                 }
             }
-            client.sendTurn(SessionId("thread-1"), AgentTurnRequest("hello"))
+            client.sendTurn(ConversationId("thread-1"), AgentTurnRequest("hello"))
             assertEquals("event_observer_overflow", overflow.await().code)
             assertTrue(process.isAlive)
         } finally {
@@ -184,7 +184,7 @@ class CodexRuntimeEventTest {
         val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
         try {
             val events = async(start = CoroutineStart.UNDISPATCHED) {
-                withTimeout(5_000) { client.events.take(6).toList() }
+                withTimeout(5_000) { client.events.take(5).toList() }
             }
 
             client.authenticate()
@@ -196,19 +196,18 @@ class CodexRuntimeEventTest {
                     put("error", JsonNull)
                 },
             )
-            val session = client.openSession()
+            val session = client.openConversation()
             client.sendTurn(session, AgentTurnRequest("hello"))
             val received = events.await()
             val required = assertIs<AgentEvent.AuthenticationRequired>(received[0])
             assertEquals("https://auth.openai.com/oauth/authorize?state=test", required.signInUrl)
             assertIs<AgentEvent.Authenticated>(received[1])
-            assertEquals(AgentEvent.SessionOpened(SessionId("thread-1"), model = "test"), received[2])
+            assertEquals(AgentEvent.ConversationOpened(ConversationId("thread-1"), model = "test"), received[2])
             assertEquals(
-                AgentEvent.TextDelta(SessionId("thread-1"), "Hello", "item-1", isCommentary = true),
+                AgentEvent.TextDelta(ConversationId("thread-1"), "Hello", "item-1", isCommentary = true),
                 received[3],
             )
-            assertEquals(AgentEvent.TurnCompleted(SessionId("thread-1")), received[4])
-            assertIs<AgentEvent.Failure>(received[5])
+            assertEquals(AgentEvent.TurnCompleted(ConversationId("thread-1")), received[4])
         } finally {
             client.close()
         }

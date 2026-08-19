@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -81,15 +79,15 @@ import kotlinx.serialization.KSerializer
 internal fun CodexAgentClient.shellTranscriptMessagesAction(transcript: ShellTranscript): List<AgentMessage> = listOf(
     AgentMessage(
         id = "shell-user-${transcript.itemId}",
-        clientId = null,
+        clientMessageId = null,
         role = AgentMessageRole.USER,
         text = "!${transcript.command}",
         shellCommand = transcript.command,
     ),
     AgentMessage(
         id = transcript.itemId,
-        clientId = null,
-        role = AgentMessageRole.CODEX,
+        clientMessageId = null,
+        role = AgentMessageRole.ASSISTANT,
         text = transcript.output,
         shellCommand = transcript.command,
         exitCode = transcript.exitCode,
@@ -121,6 +119,14 @@ internal fun CodexAgentClient.pluginEnablementParamsAction(pluginId: String, ena
 internal fun CodexAgentClient.approvalsReviewerAction(preset: AgentApprovalPreset) = when (preset) {
     AgentApprovalPreset.AUTO_REVIEW -> ApprovalsReviewer.AUTO_REVIEW
     else -> ApprovalsReviewer.USER
+}
+
+internal fun AgentApprovalPreset.wireApprovalPolicy(): String = when (this) {
+    AgentApprovalPreset.NEVER -> "never"
+    AgentApprovalPreset.AUTO_REVIEW,
+    AgentApprovalPreset.ASK_ME,
+    -> "on-request"
+    AgentApprovalPreset.STRICT -> "untrusted"
 }
 
 internal fun CodexAgentClient.elicitationResponseAction(response: AgentElicitationResponse): McpServerElicitationRequestResponse {

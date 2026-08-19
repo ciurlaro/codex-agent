@@ -66,11 +66,11 @@ internal class ProtocolModels(root: JsonObject) {
         ModelKind.ENUM -> renderEnum(name, schema)
         ModelKind.OBJECT -> renderObject(name, schema)
         ModelKind.UNION -> renderUnion(name, schema, checkNotNull(discriminatedUnion(schema)))
-        ModelKind.STRING -> "public typealias $name = String\n"
-        ModelKind.LONG -> "public typealias $name = Long\n"
-        ModelKind.DOUBLE -> "public typealias $name = Double\n"
-        ModelKind.BOOLEAN -> "public typealias $name = Boolean\n"
-        ModelKind.JSON -> "public typealias $name = JsonElement\n"
+        ModelKind.STRING -> "internal typealias $name = String\n"
+        ModelKind.LONG -> "internal typealias $name = Long\n"
+        ModelKind.DOUBLE -> "internal typealias $name = Double\n"
+        ModelKind.BOOLEAN -> "internal typealias $name = Boolean\n"
+        ModelKind.JSON -> "internal typealias $name = JsonElement\n"
     }
 
     private fun renderDefinitionParts(name: String, schema: JsonObject): List<String> =
@@ -79,7 +79,7 @@ internal class ProtocolModels(root: JsonObject) {
 
     private fun renderEnum(name: String, schema: JsonObject): String = buildString {
         appendLine("@Serializable")
-        appendLine("public enum class $name {")
+        appendLine("internal enum class $name {")
         val used = mutableSetOf<String>()
         schema.getValue("enum").jsonArray.forEachIndexed { index, raw ->
             val value = raw.jsonPrimitive.content
@@ -97,12 +97,12 @@ internal class ProtocolModels(root: JsonObject) {
         discriminator: Pair<String, String>? = null,
     ): String {
         if (schema["additionalProperties"]?.toString() == "true" && schema["properties"] != null) {
-            return "public typealias $name = JsonObject\n"
+            return "internal typealias $name = JsonObject\n"
         }
         val properties = schema["properties"]?.jsonObject.orEmpty()
         if (properties.isEmpty()) return buildString {
             appendLine("@Serializable")
-            append("public class $name")
+            append("internal class $name")
             parent?.let { append(" : $it") }
             appendLine()
         }
@@ -115,7 +115,7 @@ internal class ProtocolModels(root: JsonObject) {
         }.sortedBy { it.optional || it.forcedValue != null }
         return buildString {
             appendLine("@Serializable")
-            appendLine("public data class $name(")
+            appendLine("internal data class $name(")
             fields.forEach { field ->
                 appendLine("    @SerialName(\"${field.wireName.escape()}\")")
                 append("    public val ${field.identifier}: ${field.type}")
@@ -149,7 +149,7 @@ internal class ProtocolModels(root: JsonObject) {
         schema: JsonObject,
         union: DiscriminatedUnion,
     ): List<String> = buildList {
-        add("@Serializable(with = ${name}Serializer::class)\npublic sealed interface $name\n")
+        add("@Serializable(with = ${name}Serializer::class)\ninternal sealed interface $name\n")
         union.variants.forEach { variant ->
             add(
                 renderObject(
@@ -161,7 +161,7 @@ internal class ProtocolModels(root: JsonObject) {
             )
         }
         add(buildString {
-            appendLine("public object ${name}Serializer : JsonContentPolymorphicSerializer<$name>($name::class) {")
+            appendLine("internal object ${name}Serializer : JsonContentPolymorphicSerializer<$name>($name::class) {")
             appendLine("    override fun selectDeserializer(element: JsonElement): DeserializationStrategy<$name> =")
             appendLine("        when (element.jsonObject[\"${union.property.escape()}\"]?.jsonPrimitive?.content) {")
             union.variants.forEach { variant ->

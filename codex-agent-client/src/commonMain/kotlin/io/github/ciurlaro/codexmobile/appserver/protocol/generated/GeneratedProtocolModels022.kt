@@ -13,23 +13,23 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class McpResourceReadResponse(
+internal data class McpResourceReadResponse(
     @SerialName("contents")
     public val contents: List<ResourceContent>,
 )
 
 @Serializable
-public enum class McpServerElicitationAction {
+internal enum class McpServerElicitationAction {
     @SerialName("accept") ACCEPT,
     @SerialName("decline") DECLINE,
     @SerialName("cancel") CANCEL,
 }
 
 @Serializable(with = McpServerElicitationRequestParamsSerializer::class)
-public sealed interface McpServerElicitationRequestParams
+internal sealed interface McpServerElicitationRequestParams
 
 @Serializable
-public data class McpServerElicitationRequestParamsForm(
+internal data class McpServerElicitationRequestParamsForm(
     @SerialName("serverName")
     public val serverName: String,
     @SerialName("threadId")
@@ -49,7 +49,7 @@ public data class McpServerElicitationRequestParamsForm(
 }
 
 @Serializable
-public data class McpServerElicitationRequestParamsOpenaiForm(
+internal data class McpServerElicitationRequestParamsOpenaiForm(
     @SerialName("serverName")
     public val serverName: String,
     @SerialName("threadId")
@@ -69,7 +69,7 @@ public data class McpServerElicitationRequestParamsOpenaiForm(
 }
 
 @Serializable
-public data class McpServerElicitationRequestParamsUrl(
+internal data class McpServerElicitationRequestParamsUrl(
     @SerialName("serverName")
     public val serverName: String,
     @SerialName("threadId")
@@ -90,7 +90,7 @@ public data class McpServerElicitationRequestParamsUrl(
     init { require(mode == "url") }
 }
 
-public object McpServerElicitationRequestParamsSerializer : JsonContentPolymorphicSerializer<McpServerElicitationRequestParams>(McpServerElicitationRequestParams::class) {
+internal object McpServerElicitationRequestParamsSerializer : JsonContentPolymorphicSerializer<McpServerElicitationRequestParams>(McpServerElicitationRequestParams::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<McpServerElicitationRequestParams> =
         when (element.jsonObject["mode"]?.jsonPrimitive?.content) {
             "form" -> McpServerElicitationRequestParamsForm.serializer()
@@ -101,7 +101,7 @@ public object McpServerElicitationRequestParamsSerializer : JsonContentPolymorph
 }
 
 @Serializable
-public data class McpServerElicitationRequestResponse(
+internal data class McpServerElicitationRequestResponse(
     @SerialName("action")
     public val action: McpServerElicitationAction,
     @SerialName("_meta")
@@ -111,7 +111,7 @@ public data class McpServerElicitationRequestResponse(
 )
 
 @Serializable
-public data class McpServerInfo(
+internal data class McpServerInfo(
     @SerialName("name")
     public val name: String,
     @SerialName("version")
@@ -127,13 +127,13 @@ public data class McpServerInfo(
 )
 
 @Serializable
-public data class McpServerMigration(
+internal data class McpServerMigration(
     @SerialName("name")
     public val name: String,
 )
 
 @Serializable
-public data class McpServerOauthLoginCompletedNotification(
+internal data class McpServerOauthLoginCompletedNotification(
     @SerialName("name")
     public val name: String,
     @SerialName("success")
@@ -145,7 +145,7 @@ public data class McpServerOauthLoginCompletedNotification(
 )
 
 @Serializable
-public data class McpServerOauthLoginParams(
+internal data class McpServerOauthLoginParams(
     @SerialName("name")
     public val name: String,
     @SerialName("scopes")
@@ -157,21 +157,21 @@ public data class McpServerOauthLoginParams(
 )
 
 @Serializable
-public data class McpServerOauthLoginResponse(
+internal data class McpServerOauthLoginResponse(
     @SerialName("authorizationUrl")
     public val authorizationUrl: String,
 )
 
 @Serializable
-public class McpServerRefreshResponse
+internal class McpServerRefreshResponse
 
 @Serializable
-public enum class McpServerStartupFailureReason {
+internal enum class McpServerStartupFailureReason {
     @SerialName("reauthenticationRequired") REAUTHENTICATION_REQUIRED,
 }
 
 @Serializable
-public enum class McpServerStartupState {
+internal enum class McpServerStartupState {
     @SerialName("starting") STARTING,
     @SerialName("ready") READY,
     @SerialName("failed") FAILED,
@@ -179,7 +179,7 @@ public enum class McpServerStartupState {
 }
 
 @Serializable
-public data class McpServerStatus(
+internal data class McpServerStatus(
     @SerialName("authStatus")
     public val authStatus: McpAuthStatus,
     @SerialName("name")
@@ -195,13 +195,13 @@ public data class McpServerStatus(
 )
 
 @Serializable
-public enum class McpServerStatusDetail {
+internal enum class McpServerStatusDetail {
     @SerialName("full") FULL,
     @SerialName("toolsAndAuthOnly") TOOLS_AND_AUTH_ONLY,
 }
 
 @Serializable
-public data class McpServerStatusUpdatedNotification(
+internal data class McpServerStatusUpdatedNotification(
     @SerialName("name")
     public val name: String,
     @SerialName("status")
@@ -215,7 +215,7 @@ public data class McpServerStatusUpdatedNotification(
 )
 
 @Serializable
-public data class McpServerToolCallParams(
+internal data class McpServerToolCallParams(
     @SerialName("server")
     public val server: String,
     @SerialName("threadId")

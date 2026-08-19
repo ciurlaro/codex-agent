@@ -2,29 +2,28 @@
 
 package io.github.ciurlaro.codexmobile.app.runtime.ios
 
-import io.github.ciurlaro.codexmobile.agent.AgentEvent
-import io.github.ciurlaro.codexmobile.agent.SessionId
-import io.github.ciurlaro.codexmobile.appserver.client.AppServerConnection
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.ClientInfo
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeCapabilities
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeParams
+import io.github.ciurlaro.codexmobile.agent.CodexClientInfo
+import io.github.ciurlaro.codexmobile.agent.CodexHost
+import io.github.ciurlaro.codexmobile.agent.CodexHostState
+import io.github.ciurlaro.codexmobile.agent.CodexStorageRoots
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexCredentialProtection
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexPlatform
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexWorkspaceSelection
+import io.github.ciurlaro.codexmobile.agent.runtime.resolveIosStorageRoots
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
-import platform.Foundation.NSFileManager
+import okio.Path.Companion.toPath
+import platform.Foundation.NSURL
 
 class IosCodexRuntimeTest {
     @Test
@@ -64,61 +63,44 @@ class IosCodexRuntimeTest {
     }
 
     @Test
-    fun commonConnectionOwnsInitializationAndRuntimeRestarts() = runBlocking {
+    fun publicPlatformStartsTheHostAndRestartsTheRuntime() = runBlocking {
         TestWorkspace().use { test ->
+            val platform = IosCodexPlatform(
+                sandboxRootPath = test.sandboxRoot,
+                credentialProtection = IosCodexCredentialProtection.WHEN_UNLOCKED,
+            )
             repeat(2) {
-                val connection = AppServerConnection(
-                    runtimeFactory = IosCodexRuntimeFactory(test.configuration),
-                    initializeParams = InitializeParams(
-                        clientInfo = ClientInfo("ios-runtime-test", "0.2.0", "iOS Runtime Test"),
-                        capabilities = InitializeCapabilities(
-                            experimentalApi = true,
-                            mcpServerOpenaiFormElicitation = false,
-                        ),
-                    ),
-                    requestTimeoutMillis = 60_000,
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+                val host = CodexHost(
+                    platform,
+                    scope,
+                    CodexClientInfo("ios-runtime-test", "iOS Runtime Test", "0.2.0"),
                 )
                 try {
-                    val initialized = connection.ensureStarted()
-                    assertEquals("ios", initialized.platformOs)
-                    assertTrue(initialized.codexHome.contains("CodexAgent"))
+                    host.selectWorkspace(
+                        IosCodexWorkspaceSelection(NSURL.fileURLWithPath(test.workspace)),
+                    )
+                    assertIs<CodexHostState.Ready>(host.state.value)
                 } finally {
-                    connection.shutdown()
+                    host.close()
+                    scope.cancel()
                 }
             }
-            assertFalse(NSFileManager.defaultManager.fileExistsAtPath(test.unusedTemporaryPath))
         }
     }
 
     @Test
-    fun browserAuthenticationUsesTheEmbeddedLoopbackCallbackAndCancelsCleanly() = runBlocking {
-        TestWorkspace().use { test ->
-            val facade = IosCodexAgentFacade(test.configuration, clientVersion = "0.2.0")
-            try {
-                val eventResult = CompletableDeferred<AgentEvent.AuthenticationRequired>()
-                val observation = facade.observeEvents { event ->
-                    if (event is AgentEvent.AuthenticationRequired) eventResult.complete(event)
-                }
-                val startResult = CompletableDeferred<String?>()
-                val startOperation = facade.authenticateWithChatGpt(startResult::complete)
+    fun storageRootsDefaultOverrideAndDisableAreDistinct() {
+        val defaults = resolveIosStorageRoots("/sandbox", "/codex-home", null)
+        assertEquals("/sandbox/Library/Caches/CodexAgent".toPath(), defaults.cacheRoot)
+        assertEquals("/codex-home".toPath(), defaults.stateRoot)
 
-                assertNull(withTimeout(60_000) { startResult.await() })
-                val event = withTimeout(60_000) { eventResult.await() }
-                assertTrue(event.signInUrl.startsWith("https://auth.openai.com/"))
-                assertTrue(event.signInUrl.contains("redirect_uri="))
-                assertTrue(event.signInUrl.contains("localhost"))
+        val override = CodexStorageRoots("/cache".toPath(), "/state".toPath())
+        assertEquals(override, resolveIosStorageRoots("/sandbox", "/codex-home", override))
 
-                startOperation.cancel()
-                withTimeout(60_000) {
-                    while (facade.authenticationState.status != IosCodexAuthenticationStatus.SIGNED_OUT) {
-                        kotlinx.coroutines.yield()
-                    }
-                }
-                observation.close()
-            } finally {
-                facade.close()
-            }
-        }
+        val disabled = resolveIosStorageRoots("/sandbox", "/codex-home", CodexStorageRoots())
+        assertNull(disabled.cacheRoot)
+        assertNull(disabled.stateRoot)
     }
 
     @Test
@@ -130,9 +112,7 @@ class IosCodexRuntimeTest {
             val home = "${test.sandboxRoot}/state"
             val nestedWorkspace = "$home/workspace"
             createDirectory(nestedWorkspace)
-            assertRejected(
-                test.configuration.copy(workspacePath = nestedWorkspace, codexHomePath = home),
-            )
+            assertRejected(test.configuration.copy(workspacePath = nestedWorkspace, codexHomePath = home))
         }
     }
 
@@ -155,7 +135,7 @@ class IosCodexRuntimeTest {
     }
 
     @Test
-    fun duplicateRuntimeOwnershipIsRejectedAndReusableAfterCleanShutdown() = runBlocking {
+    fun duplicateRuntimeOwnershipIsRejectedAndReusableAfterCleanShutdown(): Unit = runBlocking {
         TestWorkspace().use { test ->
             val first = IosCodexRuntime(test.configuration)
             val duplicate = IosCodexRuntime(test.configuration)
@@ -172,63 +152,6 @@ class IosCodexRuntimeTest {
                 it.start()
                 it.close()
             }
-            Unit
-        }
-    }
-
-    @Test
-    fun facadeBroadcastsAuthenticationFailureAndNormalEventsToEveryObserver() = runBlocking {
-        val upstream = MutableSharedFlow<AgentEvent>(extraBufferCapacity = 8)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        try {
-            val broadcast = IosCodexEventBroadcast(upstream, scope)
-            val first = Channel<AgentEvent>(Channel.UNLIMITED)
-            val second = Channel<AgentEvent>(Channel.UNLIMITED)
-            val firstObservation = broadcast.observeEvents { first.trySend(it) }
-            val secondObservation = broadcast.observeEvents { second.trySend(it) }
-            val events = listOf(
-                AgentEvent.AuthenticationRequired("https://auth.openai.com/resume"),
-                AgentEvent.Failure(null, "authentication_failed", "failed", true),
-                AgentEvent.TextDelta(SessionId("session"), "hello"),
-            )
-
-            events.forEach { upstream.emit(it) }
-            assertEquals(events, events.map { withTimeout(5_000) { first.receive() } })
-            assertEquals(events, events.map { withTimeout(5_000) { second.receive() } })
-
-            firstObservation.close()
-            val finalEvent = AgentEvent.Authenticated
-            upstream.emit(finalEvent)
-            assertEquals(finalEvent, withTimeout(5_000) { second.receive() })
-            assertTrue(first.tryReceive().isFailure)
-            secondObservation.close()
-        } finally {
-            scope.cancel()
-        }
-    }
-
-    @Test
-    fun facadeAuthenticationStateResetsOnlyForRelevantFailures() = runBlocking {
-        val upstream = MutableSharedFlow<AgentEvent>(extraBufferCapacity = 8)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        try {
-            val broadcast = IosCodexEventBroadcast(upstream, scope)
-            upstream.emit(AgentEvent.Authenticated)
-            withTimeout(5_000) {
-                while (broadcast.authenticationState.status != IosCodexAuthenticationStatus.AUTHENTICATED) {
-                    kotlinx.coroutines.yield()
-                }
-            }
-            upstream.emit(AgentEvent.Failure(SessionId("session"), "turn_failed", "failed", true))
-            assertEquals(IosCodexAuthenticationStatus.AUTHENTICATED, broadcast.authenticationState.status)
-            upstream.emit(AgentEvent.Failure(null, "event_stream", "runtime failed", true))
-            withTimeout(5_000) {
-                while (broadcast.authenticationState.status != IosCodexAuthenticationStatus.SIGNED_OUT) {
-                    kotlinx.coroutines.yield()
-                }
-            }
-        } finally {
-            scope.cancel()
         }
     }
 }

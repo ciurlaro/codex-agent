@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ThreadRollbackParams(
+internal data class ThreadRollbackParams(
     @SerialName("numTurns")
     public val numTurns: Long,
     @SerialName("threadId")
@@ -21,13 +21,13 @@ public data class ThreadRollbackParams(
 )
 
 @Serializable
-public data class ThreadRollbackResponse(
+internal data class ThreadRollbackResponse(
     @SerialName("thread")
     public val thread: Thread,
 )
 
 @Serializable
-public data class ThreadSearchResult(
+internal data class ThreadSearchResult(
     @SerialName("snippet")
     public val snippet: String,
     @SerialName("thread")
@@ -35,7 +35,7 @@ public data class ThreadSearchResult(
 )
 
 @Serializable
-public data class ThreadSetNameParams(
+internal data class ThreadSetNameParams(
     @SerialName("name")
     public val name: String,
     @SerialName("threadId")
@@ -43,10 +43,10 @@ public data class ThreadSetNameParams(
 )
 
 @Serializable
-public class ThreadSetNameResponse
+internal class ThreadSetNameResponse
 
 @Serializable
-public data class ThreadSettings(
+internal data class ThreadSettings(
     @SerialName("approvalPolicy")
     public val approvalPolicy: AskForApproval,
     @SerialName("approvalsReviewer")
@@ -74,7 +74,7 @@ public data class ThreadSettings(
 )
 
 @Serializable
-public data class ThreadSettingsUpdatedNotification(
+internal data class ThreadSettingsUpdatedNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("threadSettings")
@@ -82,7 +82,7 @@ public data class ThreadSettingsUpdatedNotification(
 )
 
 @Serializable
-public data class ThreadShellCommandParams(
+internal data class ThreadShellCommandParams(
     @SerialName("command")
     public val command: String,
     @SerialName("threadId")
@@ -90,19 +90,19 @@ public data class ThreadShellCommandParams(
 )
 
 @Serializable
-public class ThreadShellCommandResponse
+internal class ThreadShellCommandResponse
 
 @Serializable
-public enum class ThreadSortKey {
+internal enum class ThreadSortKey {
     @SerialName("created_at") CREATED_AT,
     @SerialName("updated_at") UPDATED_AT,
     @SerialName("recency_at") RECENCY_AT,
 }
 
-public typealias ThreadSource = String
+internal typealias ThreadSource = String
 
 @Serializable
-public enum class ThreadSourceKind {
+internal enum class ThreadSourceKind {
     @SerialName("cli") CLI,
     @SerialName("vscode") VSCODE,
     @SerialName("exec") EXEC,
@@ -116,7 +116,7 @@ public enum class ThreadSourceKind {
 }
 
 @Serializable
-public data class ThreadStartParams(
+internal data class ThreadStartParams(
     @SerialName("approvalPolicy")
     public val approvalPolicy: AskForApproval? = null,
     @SerialName("approvalsReviewer")
@@ -152,7 +152,7 @@ public data class ThreadStartParams(
 )
 
 @Serializable
-public data class ThreadStartResponse(
+internal data class ThreadStartResponse(
     @SerialName("approvalPolicy")
     public val approvalPolicy: AskForApproval,
     @SerialName("approvalsReviewer")
@@ -176,22 +176,22 @@ public data class ThreadStartResponse(
 )
 
 @Serializable
-public enum class ThreadStartSource {
+internal enum class ThreadStartSource {
     @SerialName("startup") STARTUP,
     @SerialName("clear") CLEAR,
 }
 
 @Serializable
-public data class ThreadStartedNotification(
+internal data class ThreadStartedNotification(
     @SerialName("thread")
     public val thread: Thread,
 )
 
 @Serializable(with = ThreadStatusSerializer::class)
-public sealed interface ThreadStatus
+internal sealed interface ThreadStatus
 
 @Serializable
-public data class ThreadStatusNotLoadedThreadStatus(
+internal data class ThreadStatusNotLoadedThreadStatus(
     @SerialName("type")
     public val type: String = "notLoaded",
 ) : ThreadStatus {
@@ -199,7 +199,7 @@ public data class ThreadStatusNotLoadedThreadStatus(
 }
 
 @Serializable
-public data class ThreadStatusIdleThreadStatus(
+internal data class ThreadStatusIdleThreadStatus(
     @SerialName("type")
     public val type: String = "idle",
 ) : ThreadStatus {
@@ -207,7 +207,7 @@ public data class ThreadStatusIdleThreadStatus(
 }
 
 @Serializable
-public data class ThreadStatusSystemErrorThreadStatus(
+internal data class ThreadStatusSystemErrorThreadStatus(
     @SerialName("type")
     public val type: String = "systemError",
 ) : ThreadStatus {
@@ -215,7 +215,7 @@ public data class ThreadStatusSystemErrorThreadStatus(
 }
 
 @Serializable
-public data class ThreadStatusActiveThreadStatus(
+internal data class ThreadStatusActiveThreadStatus(
     @SerialName("activeFlags")
     public val activeFlags: List<ThreadActiveFlag>,
     @SerialName("type")

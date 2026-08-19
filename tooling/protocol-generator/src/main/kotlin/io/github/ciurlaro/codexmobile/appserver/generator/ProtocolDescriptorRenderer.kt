@@ -13,7 +13,7 @@ internal fun renderKotlin(
         generatedHeader(
             "import kotlinx.serialization.KSerializer\nimport kotlinx.serialization.builtins.serializer",
         ) + buildString {
-            appendLine("public data class AppServerRequestDescriptor(")
+            appendLine("internal data class AppServerRequestDescriptor(")
             appendLine("    public val method: String,")
             appendLine("    public val paramsType: String,")
             appendLine("    public val responseType: String,")
@@ -22,18 +22,18 @@ internal fun renderKotlin(
             appendLine("    public val inspectParams: Boolean = false,")
             appendLine(")")
             appendLine()
-            appendLine("public data class AppServerNotificationDescriptor(")
+            appendLine("internal data class AppServerNotificationDescriptor(")
             appendLine("    public val method: String,")
             appendLine("    public val paramsType: String,")
             appendLine(")")
             appendLine()
-            appendLine("public interface AppServerMethod<P, R> {")
+            appendLine("internal interface AppServerMethod<P, R> {")
             appendLine("    public val descriptor: AppServerRequestDescriptor")
             appendLine("    public val paramsSerializer: KSerializer<P>")
             appendLine("    public val responseSerializer: KSerializer<R>")
             appendLine("}")
             appendLine()
-            appendLine("public object AppServerProtocolDescriptors {")
+            appendLine("internal object AppServerProtocolDescriptors {")
             appendLine("    public const val SCHEMA_SHA256: String = \"$schemaSha256\"")
             appendLine("    public val clientRequests: Map<String, AppServerRequestDescriptor> = generatedClientRequests")
             appendLine("    public val serverRequests: Map<String, AppServerRequestDescriptor> = generatedServerRequests")
@@ -90,7 +90,7 @@ internal fun StringBuilder.appendMethodObject(
     routes: List<Route>,
     models: ProtocolModels,
 ) {
-    appendLine("public object $objectName {")
+    appendLine("internal object $objectName {")
     routes.forEach { route ->
         val response = checkNotNull(route.responseType)
         appendLine("    public data object ${route.method.kotlinTypeName()} : AppServerMethod<${route.paramsType}, $response> {")

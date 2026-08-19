@@ -39,21 +39,47 @@ class PluginLifecycleProtocolTest : SkillsPluginsProtocolTestBase() {
                         putJsonObject("folder") {
                             put("type", "string")
                             put("title", "Folder")
+                            put("minLength", 2)
+                            put("maxLength", 10)
+                        }
+                        putJsonObject("email") {
+                            put("type", "string")
+                            put("format", "email")
                         }
                         putJsonObject("format") {
                             put("type", "string")
                             putJsonArray("enum") { add(JsonPrimitive("pdf")); add(JsonPrimitive("docx")) }
                         }
                         putJsonObject("notify") { put("type", "boolean") }
+                        putJsonObject("tags") {
+                            put("type", "array")
+                            put("minItems", 1)
+                            put("maxItems", 2)
+                            putJsonObject("items") {
+                                put("type", "string")
+                                putJsonArray("enum") { add("a"); add("b") }
+                            }
+                        }
                     }
                 }
             }),
         )
 
         val form = requireNotNull(elicitation.form)
-        assertEquals(listOf(AgentFormFieldType.STRING, AgentFormFieldType.SINGLE_SELECT, AgentFormFieldType.BOOLEAN),
+        assertEquals(listOf(
+            AgentFormFieldType.STRING,
+            AgentFormFieldType.STRING,
+            AgentFormFieldType.SINGLE_SELECT,
+            AgentFormFieldType.BOOLEAN,
+            AgentFormFieldType.MULTI_SELECT,
+        ),
             form.map { it.type })
-        assertTrue(form.first().required)
+        assertTrue(form.first().isRequired)
+        assertEquals(2L, form.first().minimumLength)
+        assertEquals(10L, form.first().maximumLength)
+        assertEquals(AgentFormStringFormat.EMAIL, form[1].format)
+        assertEquals(1L, form.last().minimumSelections)
+        assertEquals(2L, form.last().maximumSelections)
         assertFailsWith<IllegalArgumentException> { requireSafeAuthUrl("http://192.168.1.2/login") }
         assertEquals("http://127.0.0.1:9876/callback", requireSafeAuthUrl("http://127.0.0.1:9876/callback"))
     }
@@ -81,7 +107,7 @@ class PluginLifecycleProtocolTest : SkillsPluginsProtocolTestBase() {
         val field = elicitation.form!!.single()
         assertEquals(AgentFormFieldType.SINGLE_SELECT, field.type)
         assertEquals("Any week works", field.options.single().description)
-        assertTrue(field.allowOther)
+        assertTrue(field.allowsOther)
     }
 
 }

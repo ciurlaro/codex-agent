@@ -12,13 +12,13 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-public typealias AbsolutePathBuf = String
+internal typealias AbsolutePathBuf = String
 
 @Serializable(with = AccountSerializer::class)
-public sealed interface Account
+internal sealed interface Account
 
 @Serializable
-public data class AccountApiKeyAccount(
+internal data class AccountApiKeyAccount(
     @SerialName("type")
     public val type: String = "apiKey",
 ) : Account {
@@ -26,7 +26,7 @@ public data class AccountApiKeyAccount(
 }
 
 @Serializable
-public data class AccountChatgptAccount(
+internal data class AccountChatgptAccount(
     @SerialName("email")
     public val email: String?,
     @SerialName("planType")
@@ -38,7 +38,7 @@ public data class AccountChatgptAccount(
 }
 
 @Serializable
-public data class AccountAmazonBedrockAccount(
+internal data class AccountAmazonBedrockAccount(
     @SerialName("type")
     public val type: String = "amazonBedrock",
     @SerialName("usesCodexManagedCredentials")
@@ -47,7 +47,7 @@ public data class AccountAmazonBedrockAccount(
     init { require(type == "amazonBedrock") }
 }
 
-public object AccountSerializer : JsonContentPolymorphicSerializer<Account>(Account::class) {
+internal object AccountSerializer : JsonContentPolymorphicSerializer<Account>(Account::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<Account> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "apiKey" -> AccountApiKeyAccount.serializer()
@@ -58,7 +58,7 @@ public object AccountSerializer : JsonContentPolymorphicSerializer<Account>(Acco
 }
 
 @Serializable
-public data class AccountLoginCompletedNotification(
+internal data class AccountLoginCompletedNotification(
     @SerialName("success")
     public val success: Boolean,
     @SerialName("error")
@@ -68,13 +68,13 @@ public data class AccountLoginCompletedNotification(
 )
 
 @Serializable
-public data class AccountRateLimitsUpdatedNotification(
+internal data class AccountRateLimitsUpdatedNotification(
     @SerialName("rateLimits")
     public val rateLimits: RateLimitSnapshot,
 )
 
 @Serializable
-public data class AccountTokenUsageDailyBucket(
+internal data class AccountTokenUsageDailyBucket(
     @SerialName("startDate")
     public val startDate: String,
     @SerialName("tokens")
@@ -82,7 +82,7 @@ public data class AccountTokenUsageDailyBucket(
 )
 
 @Serializable
-public data class AccountTokenUsageSummary(
+internal data class AccountTokenUsageSummary(
     @SerialName("currentStreakDays")
     public val currentStreakDays: Long? = null,
     @SerialName("lifetimeTokens")
@@ -96,7 +96,7 @@ public data class AccountTokenUsageSummary(
 )
 
 @Serializable
-public data class AccountUpdatedNotification(
+internal data class AccountUpdatedNotification(
     @SerialName("authMode")
     public val authMode: AuthMode? = null,
     @SerialName("planType")
@@ -104,7 +104,7 @@ public data class AccountUpdatedNotification(
 )
 
 @Serializable
-public data class ActivePermissionProfile(
+internal data class ActivePermissionProfile(
     @SerialName("id")
     public val id: String,
     @SerialName("extends")
@@ -112,19 +112,19 @@ public data class ActivePermissionProfile(
 )
 
 @Serializable
-public enum class AddCreditsNudgeCreditType {
+internal enum class AddCreditsNudgeCreditType {
     @SerialName("credits") CREDITS,
     @SerialName("usage_limit") USAGE_LIMIT,
 }
 
 @Serializable
-public enum class AddCreditsNudgeEmailStatus {
+internal enum class AddCreditsNudgeEmailStatus {
     @SerialName("sent") SENT,
     @SerialName("cooldown_active") COOLDOWN_ACTIVE,
 }
 
 @Serializable
-public data class AdditionalContextEntry(
+internal data class AdditionalContextEntry(
     @SerialName("kind")
     public val kind: AdditionalContextKind,
     @SerialName("value")
@@ -132,13 +132,13 @@ public data class AdditionalContextEntry(
 )
 
 @Serializable
-public enum class AdditionalContextKind {
+internal enum class AdditionalContextKind {
     @SerialName("untrusted") UNTRUSTED,
     @SerialName("application") APPLICATION,
 }
 
 @Serializable
-public data class AdditionalFileSystemPermissions(
+internal data class AdditionalFileSystemPermissions(
     @SerialName("entries")
     public val entries: List<FileSystemSandboxEntry>? = null,
     @SerialName("globScanMaxDepth")
@@ -150,13 +150,13 @@ public data class AdditionalFileSystemPermissions(
 )
 
 @Serializable
-public data class AdditionalNetworkPermissions(
+internal data class AdditionalNetworkPermissions(
     @SerialName("enabled")
     public val enabled: Boolean? = null,
 )
 
 @Serializable
-public data class AdditionalPermissionProfile(
+internal data class AdditionalPermissionProfile(
     @SerialName("fileSystem")
     public val fileSystem: AdditionalFileSystemPermissions? = null,
     @SerialName("network")
@@ -164,7 +164,7 @@ public data class AdditionalPermissionProfile(
 )
 
 @Serializable
-public data class AgentMessageDeltaNotification(
+internal data class AgentMessageDeltaNotification(
     @SerialName("delta")
     public val delta: String,
     @SerialName("itemId")
@@ -176,10 +176,10 @@ public data class AgentMessageDeltaNotification(
 )
 
 @Serializable(with = AgentMessageInputContentSerializer::class)
-public sealed interface AgentMessageInputContent
+internal sealed interface AgentMessageInputContent
 
 @Serializable
-public data class AgentMessageInputContentInputTextAgentMessageInputContent(
+internal data class AgentMessageInputContentInputTextAgentMessageInputContent(
     @SerialName("text")
     public val text: String,
     @SerialName("type")
@@ -189,7 +189,7 @@ public data class AgentMessageInputContentInputTextAgentMessageInputContent(
 }
 
 @Serializable
-public data class AgentMessageInputContentEncryptedContentAgentMessageInputContent(
+internal data class AgentMessageInputContentEncryptedContentAgentMessageInputContent(
     @SerialName("encrypted_content")
     public val encrypted_content: String,
     @SerialName("type")
@@ -198,7 +198,7 @@ public data class AgentMessageInputContentEncryptedContentAgentMessageInputConte
     init { require(type == "encrypted_content") }
 }
 
-public object AgentMessageInputContentSerializer : JsonContentPolymorphicSerializer<AgentMessageInputContent>(AgentMessageInputContent::class) {
+internal object AgentMessageInputContentSerializer : JsonContentPolymorphicSerializer<AgentMessageInputContent>(AgentMessageInputContent::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<AgentMessageInputContent> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "input_text" -> AgentMessageInputContentInputTextAgentMessageInputContent.serializer()
@@ -207,12 +207,12 @@ public object AgentMessageInputContentSerializer : JsonContentPolymorphicSeriali
         }
 }
 
-public typealias AgentPath = String
+internal typealias AgentPath = String
 
-public typealias AnalyticsConfig = JsonElement
+internal typealias AnalyticsConfig = JsonElement
 
 @Serializable
-public data class AppBranding(
+internal data class AppBranding(
     @SerialName("isDiscoverableApp")
     public val isDiscoverableApp: Boolean,
     @SerialName("category")

@@ -79,10 +79,10 @@ internal fun parseSwiftTestSummary(json: String): SwiftTestSummary {
 
 internal fun verifySwiftTestSummary(summary: SwiftTestSummary, expectedTestCount: Int) {
     check(summary.total == expectedTestCount) {
-        "Expected $expectedTestCount Swift authentication tests, executed ${summary.total}"
+        "Expected $expectedTestCount Swift package tests, executed ${summary.total}"
     }
-    check(summary.total > 0) { "Swift authentication test target was empty" }
-    check(summary.failed == 0) { "Swift authentication tests failed: ${summary.failed}" }
+    check(summary.total > 0) { "Swift package test targets were empty" }
+    check(summary.failed == 0) { "Swift package tests failed: ${summary.failed}" }
 }
 
 internal fun swiftAuthenticationXcodebuildCommand(
@@ -223,7 +223,7 @@ abstract class VerifySwiftAuthenticationTestsTask @Inject constructor(
                 }
                 val summary = parseSwiftTestSummary(summaryJson)
                 verifySwiftTestSummary(summary, expectedTestCount.get())
-                logger.lifecycle("Swift authentication tests executed: ${summary.total}")
+                logger.lifecycle("Swift package tests executed: ${summary.total}")
                 return
             } catch (failure: Throwable) {
                 val latestDevices = runCatching {

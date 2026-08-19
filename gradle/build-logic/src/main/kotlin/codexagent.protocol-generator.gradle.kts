@@ -1,10 +1,15 @@
 import java.io.File
+import org.gradle.api.tasks.SourceSetContainer
+
+val mainRuntimeClasspath = extensions.getByType<SourceSetContainer>()
+    .named("main")
+    .map { it.runtimeClasspath }
 
 tasks.register<GenerateProtocolTask>("generateProtocol") {
     group = "protocol"
     description = "Extracts exact stable-v2 route descriptors from pinned upstream sources."
     dependsOn(tasks.named("classes"))
-    generatorClasspath.from(configurations.named("runtimeClasspath"))
+    generatorClasspath.from(mainRuntimeClasspath)
     generatorMainClass.set("io.github.ciurlaro.codexmobile.appserver.generator.ProtocolGeneratorKt")
     commonSource.set(layout.file(providers.gradleProperty("codexProtocolCommon").map(::File)))
     schemaSource.set(layout.file(providers.gradleProperty("codexProtocolSchema").map(::File)))

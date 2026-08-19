@@ -146,17 +146,37 @@ class PluginDiscoveryProtocolTest : SkillsPluginsProtocolTestBase() {
                 )
             }
         }
-        val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
+        val workspace = CodexWorkspace("/workspace")
+        val platform = object : CodexPlatform {
+            override val authorizationBrowser =
+                CodexAuthorizationBrowser { CodexAuthorizationPresentation.None }
+            override val workspaceStore = object : CodexWorkspaceStore {
+                override suspend fun select(selection: CodexWorkspaceSelection) =
+                    CodexWorkspaceResolution.Available(workspace)
+                override suspend fun restore() = CodexWorkspaceResolution.Available(workspace)
+                override suspend fun clear() = Unit
+            }
+            override suspend fun prepare(workspace: CodexWorkspace) = PreparedCodexRuntime(
+                runtimeFactory = { process },
+                workspacePath = workspace.path,
+                features = CodexRuntimeFeature.entries.toSet(),
+            )
+        }
+        val host = CodexHost(platform, CodexClientInfo("plugin_test", "Plugin Test", "test"))
         try {
+            host.start()
+            val agent = assertIs<CodexHostState.Ready>(host.state.value).agent
             val error = runCatching {
-                client.installPlugin(
+                agent.installPlugin(
                     AgentPluginReference("missing@remote", "missing", "remote", remotePluginId = REMOTE_PLUGIN_ID),
                 )
             }.exceptionOrNull()
 
-            assertEquals("missing@remote", assertIs<AgentPluginUnavailableException>(error).pluginId)
+            val operation = assertIs<CodexOperationException>(error)
+            assertEquals("plugin_unavailable", operation.failure.code)
+            assertEquals("missing@remote", assertIs<AgentPluginUnavailableException>(operation.cause).pluginId)
         } finally {
-            client.close()
+            host.close()
         }
     }
 

@@ -140,7 +140,9 @@ internal fun verifyMavenRepository(
         }
     }
     val actualFiles = Files.walk(repository.toPath()).use { paths ->
-        paths.filter(Files::isRegularFile).map {
+        paths.filter(Files::isRegularFile).filter {
+            centralExclusion(it.toFile()) == null
+        }.map {
             repository.toPath().relativize(it).toString().replace(File.separatorChar, '/')
         }.toList().toSortedSet()
     }

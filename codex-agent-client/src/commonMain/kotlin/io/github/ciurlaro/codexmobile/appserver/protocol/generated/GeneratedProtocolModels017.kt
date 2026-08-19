@@ -13,10 +13,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable(with = GuardianApprovalReviewActionSerializer::class)
-public sealed interface GuardianApprovalReviewAction
+internal sealed interface GuardianApprovalReviewAction
 
 @Serializable
-public data class GuardianApprovalReviewActionCommandGuardianApprovalReviewAction(
+internal data class GuardianApprovalReviewActionCommandGuardianApprovalReviewAction(
     @SerialName("command")
     public val command: String,
     @SerialName("cwd")
@@ -30,7 +30,7 @@ public data class GuardianApprovalReviewActionCommandGuardianApprovalReviewActio
 }
 
 @Serializable
-public data class GuardianApprovalReviewActionExecveGuardianApprovalReviewAction(
+internal data class GuardianApprovalReviewActionExecveGuardianApprovalReviewAction(
     @SerialName("argv")
     public val argv: List<String>,
     @SerialName("cwd")
@@ -46,7 +46,7 @@ public data class GuardianApprovalReviewActionExecveGuardianApprovalReviewAction
 }
 
 @Serializable
-public data class GuardianApprovalReviewActionApplyPatchGuardianApprovalReviewAction(
+internal data class GuardianApprovalReviewActionApplyPatchGuardianApprovalReviewAction(
     @SerialName("cwd")
     public val cwd: AbsolutePathBuf,
     @SerialName("files")
@@ -58,7 +58,7 @@ public data class GuardianApprovalReviewActionApplyPatchGuardianApprovalReviewAc
 }
 
 @Serializable
-public data class GuardianApprovalReviewActionNetworkAccessGuardianApprovalReviewAction(
+internal data class GuardianApprovalReviewActionNetworkAccessGuardianApprovalReviewAction(
     @SerialName("host")
     public val host: String,
     @SerialName("port")
@@ -74,7 +74,7 @@ public data class GuardianApprovalReviewActionNetworkAccessGuardianApprovalRevie
 }
 
 @Serializable
-public data class GuardianApprovalReviewActionMcpToolCallGuardianApprovalReviewAction(
+internal data class GuardianApprovalReviewActionMcpToolCallGuardianApprovalReviewAction(
     @SerialName("server")
     public val server: String,
     @SerialName("toolName")
@@ -92,7 +92,7 @@ public data class GuardianApprovalReviewActionMcpToolCallGuardianApprovalReviewA
 }
 
 @Serializable
-public data class GuardianApprovalReviewActionRequestPermissionsGuardianApprovalReviewAction(
+internal data class GuardianApprovalReviewActionRequestPermissionsGuardianApprovalReviewAction(
     @SerialName("permissions")
     public val permissions: RequestPermissionProfile,
     @SerialName("reason")
@@ -103,7 +103,7 @@ public data class GuardianApprovalReviewActionRequestPermissionsGuardianApproval
     init { require(type == "requestPermissions") }
 }
 
-public object GuardianApprovalReviewActionSerializer : JsonContentPolymorphicSerializer<GuardianApprovalReviewAction>(GuardianApprovalReviewAction::class) {
+internal object GuardianApprovalReviewActionSerializer : JsonContentPolymorphicSerializer<GuardianApprovalReviewAction>(GuardianApprovalReviewAction::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<GuardianApprovalReviewAction> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "command" -> GuardianApprovalReviewActionCommandGuardianApprovalReviewAction.serializer()
@@ -117,7 +117,7 @@ public object GuardianApprovalReviewActionSerializer : JsonContentPolymorphicSer
 }
 
 @Serializable
-public enum class GuardianApprovalReviewStatus {
+internal enum class GuardianApprovalReviewStatus {
     @SerialName("inProgress") IN_PROGRESS,
     @SerialName("approved") APPROVED,
     @SerialName("denied") DENIED,
@@ -126,13 +126,13 @@ public enum class GuardianApprovalReviewStatus {
 }
 
 @Serializable
-public enum class GuardianCommandSource {
+internal enum class GuardianCommandSource {
     @SerialName("shell") SHELL,
     @SerialName("unifiedExec") UNIFIED_EXEC,
 }
 
 @Serializable
-public enum class GuardianRiskLevel {
+internal enum class GuardianRiskLevel {
     @SerialName("low") LOW,
     @SerialName("medium") MEDIUM,
     @SerialName("high") HIGH,
@@ -140,7 +140,7 @@ public enum class GuardianRiskLevel {
 }
 
 @Serializable
-public enum class GuardianUserAuthorization {
+internal enum class GuardianUserAuthorization {
     @SerialName("unknown") UNKNOWN,
     @SerialName("low") LOW,
     @SerialName("medium") MEDIUM,
@@ -148,7 +148,7 @@ public enum class GuardianUserAuthorization {
 }
 
 @Serializable
-public data class GuardianWarningNotification(
+internal data class GuardianWarningNotification(
     @SerialName("message")
     public val message: String,
     @SerialName("threadId")
@@ -156,7 +156,7 @@ public data class GuardianWarningNotification(
 )
 
 @Serializable
-public data class HookCompletedNotification(
+internal data class HookCompletedNotification(
     @SerialName("run")
     public val run: HookRunSummary,
     @SerialName("threadId")
@@ -166,7 +166,7 @@ public data class HookCompletedNotification(
 )
 
 @Serializable
-public data class HookErrorInfo(
+internal data class HookErrorInfo(
     @SerialName("message")
     public val message: String,
     @SerialName("path")
@@ -174,7 +174,7 @@ public data class HookErrorInfo(
 )
 
 @Serializable
-public enum class HookEventName {
+internal enum class HookEventName {
     @SerialName("preToolUse") PRE_TOOL_USE,
     @SerialName("permissionRequest") PERMISSION_REQUEST,
     @SerialName("postToolUse") POST_TOOL_USE,
@@ -189,20 +189,20 @@ public enum class HookEventName {
 }
 
 @Serializable
-public enum class HookExecutionMode {
+internal enum class HookExecutionMode {
     @SerialName("sync") SYNC,
     @SerialName("async") ASYNC,
 }
 
 @Serializable
-public enum class HookHandlerType {
+internal enum class HookHandlerType {
     @SerialName("command") COMMAND,
     @SerialName("prompt") PROMPT,
     @SerialName("agent") AGENT,
 }
 
 @Serializable
-public data class HookMetadata(
+internal data class HookMetadata(
     @SerialName("currentHash")
     public val currentHash: String,
     @SerialName("displayOrder")

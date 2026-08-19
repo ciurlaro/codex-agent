@@ -15,6 +15,46 @@ import kotlinx.serialization.json.*
 
 class CodexRuntimeFailureTest {
     @Test
+    fun aStaleTerminalCannotOverwriteTheMatchingTerminalDuringTheNextStart(): Unit = runBlocking {
+        val turnIds = AtomicInteger()
+        val process = FakeCodexRuntime { message, server ->
+            when (message.method) {
+                "initialize" -> server.respond(message.id, buildJsonObject {})
+                "turn/start" -> {
+                    val turnId = "turn-${turnIds.incrementAndGet()}"
+                    if (turnId == "turn-2") {
+                        server.notify("turn/completed", completedTurn("turn-2"))
+                        server.notify("turn/completed", completedTurn("stale-turn"))
+                    }
+                    server.respond(
+                        message.id,
+                        buildJsonObject { putJsonObject("turn") { put("id", turnId) } },
+                    )
+                    if (turnId == "turn-1") server.notify("turn/completed", completedTurn(turnId))
+                }
+            }
+        }
+        val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
+        val conversationId = ConversationId("thread-1")
+        try {
+            val first = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.TurnCompleted>().first() }
+            }
+            client.sendTurn(conversationId, AgentTurnRequest("first"))
+            first.await()
+
+            val second = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.TurnCompleted>().first() }
+            }
+            client.sendTurn(conversationId, AgentTurnRequest("second"))
+            assertEquals(conversationId, second.await().conversationId)
+            assertFailsWith<IllegalStateException> { client.cancelTurn(conversationId) }
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
     fun aDeadProcessCanRestartAndRecheckAuthentication(): Unit = runBlocking {
         val processes = mutableListOf<FakeCodexRuntime>()
         val client = CodexAgentClient(
@@ -146,7 +186,7 @@ class CodexRuntimeFailureTest {
         }
         val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
         try {
-            val session = SessionId("thread-1")
+            val session = ConversationId("thread-1")
             client.sendTurn(session, AgentTurnRequest("hello"))
             coroutineScope {
                 val first = async(start = CoroutineStart.UNDISPATCHED) { client.cancelTurn(session) }
@@ -193,7 +233,7 @@ class CodexRuntimeFailureTest {
             }
         }
         val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
-        val session = SessionId("thread-1")
+        val session = ConversationId("thread-1")
         try {
             repeat(20) {
                 val completed = async {
@@ -210,4 +250,12 @@ class CodexRuntimeFailureTest {
         }
     }
 
+}
+
+private fun completedTurn(turnId: String) = buildJsonObject {
+    put("threadId", "thread-1")
+    putJsonObject("turn") {
+        put("id", turnId)
+        put("status", "completed")
+    }
 }

@@ -10,6 +10,7 @@ plugins {
 }
 
 kotlin {
+    explicitApi()
     sourceSets {
         commonMain.dependencies {
             api(project(":codex-agent-client"))

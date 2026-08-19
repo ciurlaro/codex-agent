@@ -1,16 +1,16 @@
 package io.github.ciurlaro.codexmobile.appserver.runtime
 
-enum class RuntimeKernel { LINUX }
+internal enum class RuntimeKernel { LINUX }
 
-enum class RuntimeArchitecture { AARCH64 }
+internal enum class RuntimeArchitecture { AARCH64 }
 
-data class RuntimeEnvironment(
+internal data class RuntimeEnvironment(
     val kernel: RuntimeKernel,
     val architecture: RuntimeArchitecture,
     val supportsStaticElf: Boolean,
 )
 
-data class AppServerRuntimeDistribution(
+internal data class AppServerRuntimeDistribution(
     val appServerVersion: String,
     val upstreamRevision: String,
     val schemaSha256: String,
@@ -48,7 +48,7 @@ data class AppServerRuntimeDistribution(
     }
 }
 
-object CodexMobileAppServerRuntime {
+internal object CodexMobileAppServerRuntime {
     val DISTRIBUTION = AppServerRuntimeDistribution(
         appServerVersion = "0.145.0",
         upstreamRevision = "25af12f7e61572b0bc18ddb1008be543b91519b0",

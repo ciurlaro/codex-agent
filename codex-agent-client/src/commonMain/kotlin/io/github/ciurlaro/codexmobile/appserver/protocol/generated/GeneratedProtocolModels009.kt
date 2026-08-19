@@ -12,17 +12,17 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-public typealias CodexErrorInfo = JsonElement
+internal typealias CodexErrorInfo = JsonElement
 
 @Serializable
-public enum class CodexResponseHandoffMode {
+internal enum class CodexResponseHandoffMode {
     @SerialName("thinking") THINKING,
     @SerialName("commentary") COMMENTARY,
     @SerialName("bemTags") BEM_TAGS,
 }
 
 @Serializable
-public data class CollabAgentState(
+internal data class CollabAgentState(
     @SerialName("status")
     public val status: CollabAgentStatus,
     @SerialName("message")
@@ -30,7 +30,7 @@ public data class CollabAgentState(
 )
 
 @Serializable
-public enum class CollabAgentStatus {
+internal enum class CollabAgentStatus {
     @SerialName("pendingInit") PENDING_INIT,
     @SerialName("running") RUNNING,
     @SerialName("interrupted") INTERRUPTED,
@@ -41,7 +41,7 @@ public enum class CollabAgentStatus {
 }
 
 @Serializable
-public enum class CollabAgentTool {
+internal enum class CollabAgentTool {
     @SerialName("spawnAgent") SPAWN_AGENT,
     @SerialName("sendInput") SEND_INPUT,
     @SerialName("resumeAgent") RESUME_AGENT,
@@ -50,14 +50,14 @@ public enum class CollabAgentTool {
 }
 
 @Serializable
-public enum class CollabAgentToolCallStatus {
+internal enum class CollabAgentToolCallStatus {
     @SerialName("inProgress") IN_PROGRESS,
     @SerialName("completed") COMPLETED,
     @SerialName("failed") FAILED,
 }
 
 @Serializable
-public data class CollaborationMode(
+internal data class CollaborationMode(
     @SerialName("mode")
     public val mode: ModeKind,
     @SerialName("settings")
@@ -65,7 +65,7 @@ public data class CollaborationMode(
 )
 
 @Serializable
-public data class CollaborationModeMask(
+internal data class CollaborationModeMask(
     @SerialName("name")
     public val name: String,
     @SerialName("mode")
@@ -77,10 +77,10 @@ public data class CollaborationModeMask(
 )
 
 @Serializable(with = CommandActionSerializer::class)
-public sealed interface CommandAction
+internal sealed interface CommandAction
 
 @Serializable
-public data class CommandActionReadCommandAction(
+internal data class CommandActionReadCommandAction(
     @SerialName("command")
     public val command: String,
     @SerialName("name")
@@ -94,7 +94,7 @@ public data class CommandActionReadCommandAction(
 }
 
 @Serializable
-public data class CommandActionListFilesCommandAction(
+internal data class CommandActionListFilesCommandAction(
     @SerialName("command")
     public val command: String,
     @SerialName("path")
@@ -106,7 +106,7 @@ public data class CommandActionListFilesCommandAction(
 }
 
 @Serializable
-public data class CommandActionSearchCommandAction(
+internal data class CommandActionSearchCommandAction(
     @SerialName("command")
     public val command: String,
     @SerialName("path")
@@ -120,7 +120,7 @@ public data class CommandActionSearchCommandAction(
 }
 
 @Serializable
-public data class CommandActionUnknownCommandAction(
+internal data class CommandActionUnknownCommandAction(
     @SerialName("command")
     public val command: String,
     @SerialName("type")
@@ -129,7 +129,7 @@ public data class CommandActionUnknownCommandAction(
     init { require(type == "unknown") }
 }
 
-public object CommandActionSerializer : JsonContentPolymorphicSerializer<CommandAction>(CommandAction::class) {
+internal object CommandActionSerializer : JsonContentPolymorphicSerializer<CommandAction>(CommandAction::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<CommandAction> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "read" -> CommandActionReadCommandAction.serializer()
@@ -141,7 +141,7 @@ public object CommandActionSerializer : JsonContentPolymorphicSerializer<Command
 }
 
 @Serializable
-public data class CommandExecOutputDeltaNotification(
+internal data class CommandExecOutputDeltaNotification(
     @SerialName("capReached")
     public val capReached: Boolean,
     @SerialName("deltaBase64")
@@ -152,10 +152,10 @@ public data class CommandExecOutputDeltaNotification(
     public val stream: CommandExecOutputStream,
 )
 
-public typealias CommandExecOutputStream = JsonElement
+internal typealias CommandExecOutputStream = JsonElement
 
 @Serializable
-public data class CommandExecParams(
+internal data class CommandExecParams(
     @SerialName("command")
     public val command: List<String>,
     @SerialName("cwd")
@@ -185,7 +185,7 @@ public data class CommandExecParams(
 )
 
 @Serializable
-public data class CommandExecResizeParams(
+internal data class CommandExecResizeParams(
     @SerialName("processId")
     public val processId: String,
     @SerialName("size")
@@ -193,10 +193,10 @@ public data class CommandExecResizeParams(
 )
 
 @Serializable
-public class CommandExecResizeResponse
+internal class CommandExecResizeResponse
 
 @Serializable
-public data class CommandExecResponse(
+internal data class CommandExecResponse(
     @SerialName("exitCode")
     public val exitCode: Long,
     @SerialName("stderr")
@@ -206,7 +206,7 @@ public data class CommandExecResponse(
 )
 
 @Serializable
-public data class CommandExecTerminalSize(
+internal data class CommandExecTerminalSize(
     @SerialName("cols")
     public val cols: Long,
     @SerialName("rows")
@@ -214,7 +214,7 @@ public data class CommandExecTerminalSize(
 )
 
 @Serializable
-public data class CommandExecTerminateParams(
+internal data class CommandExecTerminateParams(
     @SerialName("processId")
     public val processId: String,
 )

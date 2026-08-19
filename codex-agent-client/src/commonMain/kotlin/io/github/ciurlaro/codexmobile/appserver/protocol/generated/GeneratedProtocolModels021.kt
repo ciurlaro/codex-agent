@@ -13,12 +13,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public enum class McpElicitationArrayType {
+internal enum class McpElicitationArrayType {
     @SerialName("array") ARRAY,
 }
 
 @Serializable
-public data class McpElicitationBooleanSchema(
+internal data class McpElicitationBooleanSchema(
     @SerialName("type")
     public val type: McpElicitationBooleanType,
     @SerialName("default")
@@ -30,22 +30,22 @@ public data class McpElicitationBooleanSchema(
 )
 
 @Serializable
-public enum class McpElicitationBooleanType {
+internal enum class McpElicitationBooleanType {
     @SerialName("boolean") BOOLEAN,
 }
 
 @Serializable
-public data class McpElicitationConstOption(
+internal data class McpElicitationConstOption(
     @SerialName("const")
     public val const: String,
     @SerialName("title")
     public val title: String,
 )
 
-public typealias McpElicitationEnumSchema = JsonElement
+internal typealias McpElicitationEnumSchema = JsonElement
 
 @Serializable
-public data class McpElicitationLegacyTitledEnumSchema(
+internal data class McpElicitationLegacyTitledEnumSchema(
     @SerialName("enum")
     public val enum: List<String>,
     @SerialName("type")
@@ -60,10 +60,10 @@ public data class McpElicitationLegacyTitledEnumSchema(
     public val title: String? = null,
 )
 
-public typealias McpElicitationMultiSelectEnumSchema = JsonElement
+internal typealias McpElicitationMultiSelectEnumSchema = JsonElement
 
 @Serializable
-public data class McpElicitationNumberSchema(
+internal data class McpElicitationNumberSchema(
     @SerialName("type")
     public val type: McpElicitationNumberType,
     @SerialName("default")
@@ -79,20 +79,20 @@ public data class McpElicitationNumberSchema(
 )
 
 @Serializable
-public enum class McpElicitationNumberType {
+internal enum class McpElicitationNumberType {
     @SerialName("number") NUMBER,
     @SerialName("integer") INTEGER,
 }
 
 @Serializable
-public enum class McpElicitationObjectType {
+internal enum class McpElicitationObjectType {
     @SerialName("object") OBJECT,
 }
 
-public typealias McpElicitationPrimitiveSchema = JsonElement
+internal typealias McpElicitationPrimitiveSchema = JsonElement
 
 @Serializable
-public data class McpElicitationSchema(
+internal data class McpElicitationSchema(
     @SerialName("properties")
     public val properties: Map<String, McpElicitationPrimitiveSchema>,
     @SerialName("type")
@@ -103,10 +103,10 @@ public data class McpElicitationSchema(
     public val required: List<String>? = null,
 )
 
-public typealias McpElicitationSingleSelectEnumSchema = JsonElement
+internal typealias McpElicitationSingleSelectEnumSchema = JsonElement
 
 @Serializable
-public enum class McpElicitationStringFormat {
+internal enum class McpElicitationStringFormat {
     @SerialName("email") EMAIL,
     @SerialName("uri") URI,
     @SerialName("date") DATE,
@@ -114,7 +114,7 @@ public enum class McpElicitationStringFormat {
 }
 
 @Serializable
-public data class McpElicitationStringSchema(
+internal data class McpElicitationStringSchema(
     @SerialName("type")
     public val type: McpElicitationStringType,
     @SerialName("default")
@@ -132,18 +132,18 @@ public data class McpElicitationStringSchema(
 )
 
 @Serializable
-public enum class McpElicitationStringType {
+internal enum class McpElicitationStringType {
     @SerialName("string") STRING,
 }
 
 @Serializable
-public data class McpElicitationTitledEnumItems(
+internal data class McpElicitationTitledEnumItems(
     @SerialName("anyOf")
     public val anyOf: List<McpElicitationConstOption>,
 )
 
 @Serializable
-public data class McpElicitationTitledMultiSelectEnumSchema(
+internal data class McpElicitationTitledMultiSelectEnumSchema(
     @SerialName("items")
     public val items: McpElicitationTitledEnumItems,
     @SerialName("type")
@@ -161,7 +161,7 @@ public data class McpElicitationTitledMultiSelectEnumSchema(
 )
 
 @Serializable
-public data class McpElicitationTitledSingleSelectEnumSchema(
+internal data class McpElicitationTitledSingleSelectEnumSchema(
     @SerialName("oneOf")
     public val oneOf: List<McpElicitationConstOption>,
     @SerialName("type")
@@ -175,7 +175,7 @@ public data class McpElicitationTitledSingleSelectEnumSchema(
 )
 
 @Serializable
-public data class McpElicitationUntitledEnumItems(
+internal data class McpElicitationUntitledEnumItems(
     @SerialName("enum")
     public val enum: List<String>,
     @SerialName("type")
@@ -183,7 +183,7 @@ public data class McpElicitationUntitledEnumItems(
 )
 
 @Serializable
-public data class McpElicitationUntitledMultiSelectEnumSchema(
+internal data class McpElicitationUntitledMultiSelectEnumSchema(
     @SerialName("items")
     public val items: McpElicitationUntitledEnumItems,
     @SerialName("type")
@@ -201,7 +201,7 @@ public data class McpElicitationUntitledMultiSelectEnumSchema(
 )
 
 @Serializable
-public data class McpElicitationUntitledSingleSelectEnumSchema(
+internal data class McpElicitationUntitledSingleSelectEnumSchema(
     @SerialName("enum")
     public val enum: List<String>,
     @SerialName("type")
@@ -215,7 +215,7 @@ public data class McpElicitationUntitledSingleSelectEnumSchema(
 )
 
 @Serializable
-public data class McpResourceReadParams(
+internal data class McpResourceReadParams(
     @SerialName("server")
     public val server: String,
     @SerialName("uri")

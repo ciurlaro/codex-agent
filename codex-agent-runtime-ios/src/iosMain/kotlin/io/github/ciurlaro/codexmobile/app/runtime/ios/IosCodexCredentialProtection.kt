@@ -2,6 +2,7 @@
 
 package io.github.ciurlaro.codexmobile.app.runtime.ios
 
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexCredentialProtection
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileProtectionComplete
 import platform.Foundation.NSFileProtectionCompleteUnlessOpen
@@ -43,14 +44,14 @@ internal fun applyIosCredentialProtection(configuration: IosCodexRuntimeConfigur
                 ofItemAtPath = path,
                 error = null,
             ),
-        ) { "Could not apply iOS file protection to Codex authentication state" }
+        ) { "Could not apply iOS file protection to Codex state" }
         check(
             NSURL.fileURLWithPath(path).setResourceValue(
                 true,
                 forKey = NSURLIsExcludedFromBackupKey,
                 error = null,
             ),
-        ) { "Could not exclude Codex authentication state from backups" }
+        ) { "Could not exclude Codex state from backups" }
     }
 }
 
@@ -64,7 +65,7 @@ internal class IosCodexCredentialProtectionMonitor(
     init {
         applyIosCredentialProtection(configuration)
         descriptor = open(configuration.codexHomePath, DARWIN_O_EVTONLY)
-        check(descriptor >= 0) { "Could not watch iOS Codex authentication state" }
+        check(descriptor >= 0) { "Could not watch iOS Codex state" }
         source = checkNotNull(
             dispatch_source_create(
                 DISPATCH_SOURCE_TYPE_VNODE,
@@ -73,7 +74,7 @@ internal class IosCodexCredentialProtectionMonitor(
                     DISPATCH_VNODE_ATTRIB or DISPATCH_VNODE_RENAME).toULong(),
                 dispatch_queue_create("io.github.ciurlaro.codex-agent.credentials", null),
             ),
-        ) { "Could not create iOS Codex authentication-state watcher" }
+        ) { "Could not create iOS Codex state watcher" }
         dispatch_source_set_event_handler(source) {
             runCatching { applyIosCredentialProtection(configuration) }.onFailure(onFailure)
         }

@@ -134,11 +134,11 @@ class CodexAuthenticationContractTest {
             repeat(2) {
                 val failed = async {
                     withTimeout(1_000) {
-                        client.events.filterIsInstance<AgentEvent.Failure>().first()
+                        client.events.filterIsInstance<AgentEvent.AuthenticationFailed>().first()
                     }
                 }
                 client.authenticate()
-                assertEquals("authentication_failed", failed.await().code)
+                assertEquals("expired", failed.await().message)
             }
             assertEquals(2, loginAttempts.get())
         } finally {
@@ -235,11 +235,11 @@ class CodexAuthenticationContractTest {
     fun rejectsBlankPromptsAndPreservesUnicodeAndMultilinePrompts(): Unit = runBlocking {
         val neverStarted = CodexAgentClient({ error("must not launch") })
         assertFailsWith<IllegalArgumentException> {
-            neverStarted.sendTurn(SessionId("thread"), AgentTurnRequest("  \n"))
+            neverStarted.sendTurn(ConversationId("thread"), AgentTurnRequest("  \n"))
         }
         assertFailsWith<IllegalArgumentException> {
             neverStarted.sendTurn(
-                SessionId("thread"),
+                ConversationId("thread"),
                 AgentTurnRequest("x".repeat(100_001)),
             )
         }
@@ -262,7 +262,7 @@ class CodexAuthenticationContractTest {
         val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
         try {
             val prompt = "Grüezi 👋\n第二行"
-            client.sendTurn(SessionId("thread"), AgentTurnRequest(prompt))
+            client.sendTurn(ConversationId("thread"), AgentTurnRequest(prompt))
             assertEquals(prompt, observedPrompt)
         } finally {
             client.close()

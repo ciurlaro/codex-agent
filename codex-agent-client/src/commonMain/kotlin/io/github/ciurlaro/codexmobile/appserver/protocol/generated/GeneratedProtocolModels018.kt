@@ -13,13 +13,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class HookMigration(
+internal data class HookMigration(
     @SerialName("name")
     public val name: String,
 )
 
 @Serializable
-public data class HookOutputEntry(
+internal data class HookOutputEntry(
     @SerialName("kind")
     public val kind: HookOutputEntryKind,
     @SerialName("text")
@@ -27,7 +27,7 @@ public data class HookOutputEntry(
 )
 
 @Serializable
-public enum class HookOutputEntryKind {
+internal enum class HookOutputEntryKind {
     @SerialName("warning") WARNING,
     @SerialName("stop") STOP,
     @SerialName("feedback") FEEDBACK,
@@ -36,7 +36,7 @@ public enum class HookOutputEntryKind {
 }
 
 @Serializable
-public data class HookPromptFragment(
+internal data class HookPromptFragment(
     @SerialName("hookRunId")
     public val hookRunId: String,
     @SerialName("text")
@@ -44,7 +44,7 @@ public data class HookPromptFragment(
 )
 
 @Serializable
-public enum class HookRunStatus {
+internal enum class HookRunStatus {
     @SerialName("running") RUNNING,
     @SerialName("completed") COMPLETED,
     @SerialName("failed") FAILED,
@@ -53,7 +53,7 @@ public enum class HookRunStatus {
 }
 
 @Serializable
-public data class HookRunSummary(
+internal data class HookRunSummary(
     @SerialName("displayOrder")
     public val displayOrder: Long,
     @SerialName("entries")
@@ -85,13 +85,13 @@ public data class HookRunSummary(
 )
 
 @Serializable
-public enum class HookScope {
+internal enum class HookScope {
     @SerialName("thread") THREAD,
     @SerialName("turn") TURN,
 }
 
 @Serializable
-public enum class HookSource {
+internal enum class HookSource {
     @SerialName("system") SYSTEM,
     @SerialName("user") USER,
     @SerialName("project") PROJECT,
@@ -106,7 +106,7 @@ public enum class HookSource {
 }
 
 @Serializable
-public data class HookStartedNotification(
+internal data class HookStartedNotification(
     @SerialName("run")
     public val run: HookRunSummary,
     @SerialName("threadId")
@@ -116,7 +116,7 @@ public data class HookStartedNotification(
 )
 
 @Serializable
-public enum class HookTrustStatus {
+internal enum class HookTrustStatus {
     @SerialName("managed") MANAGED,
     @SerialName("untrusted") UNTRUSTED,
     @SerialName("trusted") TRUSTED,
@@ -124,7 +124,7 @@ public enum class HookTrustStatus {
 }
 
 @Serializable
-public data class HooksListEntry(
+internal data class HooksListEntry(
     @SerialName("cwd")
     public val cwd: String,
     @SerialName("errors")
@@ -136,19 +136,19 @@ public data class HooksListEntry(
 )
 
 @Serializable
-public data class HooksListParams(
+internal data class HooksListParams(
     @SerialName("cwds")
     public val cwds: List<String>? = null,
 )
 
 @Serializable
-public data class HooksListResponse(
+internal data class HooksListResponse(
     @SerialName("data")
     public val data: List<HooksListEntry>,
 )
 
 @Serializable
-public enum class ImageDetail {
+internal enum class ImageDetail {
     @SerialName("auto") AUTO,
     @SerialName("low") LOW,
     @SerialName("high") HIGH,
@@ -156,7 +156,7 @@ public enum class ImageDetail {
 }
 
 @Serializable
-public data class InitializeCapabilities(
+internal data class InitializeCapabilities(
     @SerialName("experimentalApi")
     public val experimentalApi: Boolean? = null,
     @SerialName("mcpServerOpenaiFormElicitation")
@@ -168,7 +168,7 @@ public data class InitializeCapabilities(
 )
 
 @Serializable
-public data class InitializeParams(
+internal data class InitializeParams(
     @SerialName("clientInfo")
     public val clientInfo: ClientInfo,
     @SerialName("capabilities")
@@ -176,7 +176,7 @@ public data class InitializeParams(
 )
 
 @Serializable
-public data class InitializeResponse(
+internal data class InitializeResponse(
     @SerialName("codexHome")
     public val codexHome: AbsolutePathBuf,
     @SerialName("platformFamily")
@@ -187,10 +187,10 @@ public data class InitializeResponse(
     public val userAgent: String,
 )
 
-public typealias InputModality = JsonElement
+internal typealias InputModality = JsonElement
 
 @Serializable
-public data class InstalledApp(
+internal data class InstalledApp(
     @SerialName("callable")
     public val callable: Boolean,
     @SerialName("enabled")
@@ -202,13 +202,13 @@ public data class InstalledApp(
 )
 
 @Serializable
-public data class InternalChatMessageMetadataPassthrough(
+internal data class InternalChatMessageMetadataPassthrough(
     @SerialName("turn_id")
     public val turn_id: String? = null,
 )
 
 @Serializable
-public data class ItemCompletedNotification(
+internal data class ItemCompletedNotification(
     @SerialName("completedAtMs")
     public val completedAtMs: Long,
     @SerialName("item")

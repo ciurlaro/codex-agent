@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class UserInputSkillUserInput(
+internal data class UserInputSkillUserInput(
     @SerialName("name")
     public val name: String,
     @SerialName("path")
@@ -25,7 +25,7 @@ public data class UserInputSkillUserInput(
 }
 
 @Serializable
-public data class UserInputMentionUserInput(
+internal data class UserInputMentionUserInput(
     @SerialName("name")
     public val name: String,
     @SerialName("path")
@@ -36,7 +36,7 @@ public data class UserInputMentionUserInput(
     init { require(type == "mention") }
 }
 
-public object UserInputSerializer : JsonContentPolymorphicSerializer<UserInput>(UserInput::class) {
+internal object UserInputSerializer : JsonContentPolymorphicSerializer<UserInput>(UserInput::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<UserInput> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "text" -> UserInputTextUserInput.serializer()
@@ -51,14 +51,14 @@ public object UserInputSerializer : JsonContentPolymorphicSerializer<UserInput>(
 }
 
 @Serializable
-public enum class Verbosity {
+internal enum class Verbosity {
     @SerialName("low") LOW,
     @SerialName("medium") MEDIUM,
     @SerialName("high") HIGH,
 }
 
 @Serializable
-public data class W3cTraceContext(
+internal data class W3cTraceContext(
     @SerialName("traceparent")
     public val traceparent: String? = null,
     @SerialName("tracestate")
@@ -66,7 +66,7 @@ public data class W3cTraceContext(
 )
 
 @Serializable
-public data class WarningNotification(
+internal data class WarningNotification(
     @SerialName("message")
     public val message: String,
     @SerialName("threadId")
@@ -74,10 +74,10 @@ public data class WarningNotification(
 )
 
 @Serializable(with = WebSearchActionSerializer::class)
-public sealed interface WebSearchAction
+internal sealed interface WebSearchAction
 
 @Serializable
-public data class WebSearchActionSearchWebSearchAction(
+internal data class WebSearchActionSearchWebSearchAction(
     @SerialName("queries")
     public val queries: List<String>? = null,
     @SerialName("query")
@@ -89,7 +89,7 @@ public data class WebSearchActionSearchWebSearchAction(
 }
 
 @Serializable
-public data class WebSearchActionOpenPageWebSearchAction(
+internal data class WebSearchActionOpenPageWebSearchAction(
     @SerialName("type")
     public val type: String = "openPage",
     @SerialName("url")
@@ -99,7 +99,7 @@ public data class WebSearchActionOpenPageWebSearchAction(
 }
 
 @Serializable
-public data class WebSearchActionFindInPageWebSearchAction(
+internal data class WebSearchActionFindInPageWebSearchAction(
     @SerialName("pattern")
     public val pattern: String? = null,
     @SerialName("type")
@@ -111,14 +111,14 @@ public data class WebSearchActionFindInPageWebSearchAction(
 }
 
 @Serializable
-public data class WebSearchActionOtherWebSearchAction(
+internal data class WebSearchActionOtherWebSearchAction(
     @SerialName("type")
     public val type: String = "other",
 ) : WebSearchAction {
     init { require(type == "other") }
 }
 
-public object WebSearchActionSerializer : JsonContentPolymorphicSerializer<WebSearchAction>(WebSearchAction::class) {
+internal object WebSearchActionSerializer : JsonContentPolymorphicSerializer<WebSearchAction>(WebSearchAction::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<WebSearchAction> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "search" -> WebSearchActionSearchWebSearchAction.serializer()
@@ -130,14 +130,14 @@ public object WebSearchActionSerializer : JsonContentPolymorphicSerializer<WebSe
 }
 
 @Serializable
-public enum class WebSearchContextSize {
+internal enum class WebSearchContextSize {
     @SerialName("low") LOW,
     @SerialName("medium") MEDIUM,
     @SerialName("high") HIGH,
 }
 
 @Serializable
-public data class WebSearchLocation(
+internal data class WebSearchLocation(
     @SerialName("city")
     public val city: String? = null,
     @SerialName("country")
@@ -149,7 +149,7 @@ public data class WebSearchLocation(
 )
 
 @Serializable
-public enum class WebSearchMode {
+internal enum class WebSearchMode {
     @SerialName("disabled") DISABLED,
     @SerialName("cached") CACHED,
     @SerialName("indexed") INDEXED,

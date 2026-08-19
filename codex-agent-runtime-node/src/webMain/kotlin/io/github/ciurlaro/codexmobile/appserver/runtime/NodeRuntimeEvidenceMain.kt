@@ -1,17 +1,17 @@
 package io.github.ciurlaro.codexmobile.appserver.runtime
 
+import io.github.ciurlaro.codexmobile.agent.CodexClientInfo
+import io.github.ciurlaro.codexmobile.agent.CodexHost
+import io.github.ciurlaro.codexmobile.agent.CodexHostState
 import io.github.ciurlaro.codexmobile.agent.CodexPathWorkspaceSelection
-import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceResolution
-import io.github.ciurlaro.codexmobile.appserver.client.AppServerConnection
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.ClientInfo
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeCapabilities
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeParams
+import io.github.ciurlaro.codexmobile.agent.runtime.NodeCodexPlatform
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -103,26 +103,19 @@ private suspend fun officialAppServerProof() {
         ?: error("Node evidence requires a runtime data directory")
     val workspace = nodeEnvironment("CODEX_AGENT_WORKSPACE")
         ?: error("Node evidence requires a workspace")
-    val platform = NodeCodexPlatformSupport(bundle.toPath(), data.toPath())
-    val selected = platform.workspaces.select(CodexPathWorkspaceSelection(workspace))
-    check(selected is CodexWorkspaceResolution.Available) { "Node evidence workspace is unavailable" }
-    val prepared = platform.prepare(selected.workspace)
-    val connection = AppServerConnection(
-        runtimeFactory = prepared.runtimeFactory,
-        initializeParams = InitializeParams(
-            clientInfo = ClientInfo("codex_agent_runtime_node_test", "0.2.0", "Node Runtime Test"),
-            capabilities = InitializeCapabilities(
-                experimentalApi = true,
-                mcpServerOpenaiFormElicitation = false,
-            ),
-        ),
-        requestTimeoutMillis = 30_000,
+    val platform = NodeCodexPlatform(bundle.toPath(), data.toPath())
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val host = CodexHost(
+        platform,
+        scope,
+        CodexClientInfo("node_runtime_evidence", "Node Runtime Evidence", "0.2.0"),
     )
     try {
-        val response = connection.ensureStarted()
-        check(response.platformFamily.isNotBlank() && response.platformOs.isNotBlank())
+        host.selectWorkspace(CodexPathWorkspaceSelection(workspace))
+        check(host.state.value is CodexHostState.Ready) { "Node host did not become ready" }
     } finally {
-        connection.shutdown()
+        host.close()
+        scope.cancel()
     }
 }
 
@@ -139,7 +132,7 @@ private class FakeNodeProcess : NodeOwnedProcess {
     }
 }
 
-public fun main() {
+internal fun main() {
     val argument = runCatching { singleNodeEvidenceArgument(nodeArguments().drop(2)) }.getOrElse {
         nodeConsoleError(it.message.orEmpty())
         nodeExit(2)

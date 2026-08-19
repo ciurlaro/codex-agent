@@ -1,4 +1,4 @@
 import android.content.Context
-import io.github.ciurlaro.codexmobile.app.runtime.bootstrap.AndroidCodexRuntimeFactory
+import io.github.ciurlaro.codexmobile.agent.runtime.AndroidCodexPlatform
 
-fun androidRuntimeFactory(context: Context) = AndroidCodexRuntimeFactory(context)
+fun androidPlatform(context: Context) = AndroidCodexPlatform(context)

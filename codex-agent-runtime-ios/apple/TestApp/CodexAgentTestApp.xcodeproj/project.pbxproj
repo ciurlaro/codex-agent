@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		100000000000000000000001 /* CodexAgentTestApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* CodexAgentTestApp.swift */; };
 		100000000000000000000003 /* CodexAgentAuthentication in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000004 /* CodexAgentAuthentication */; };
+		100000000000000000000015 /* CodexAgentObservation in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000016 /* CodexAgentObservation */; };
+		100000000000000000000017 /* CodexAgentSwiftSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000018 /* CodexAgentSwiftSupport */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -22,6 +24,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000003 /* CodexAgentAuthentication in Frameworks */,
+				100000000000000000000015 /* CodexAgentObservation in Frameworks */,
+				100000000000000000000017 /* CodexAgentSwiftSupport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,7 +73,9 @@
 			);
 			name = CodexAgentTestApp;
 			packageProductDependencies = (
-				100000000000000000000004 /* CodexAgent */,
+				100000000000000000000004 /* CodexAgentAuthentication */,
+				100000000000000000000016 /* CodexAgentObservation */,
+				100000000000000000000018 /* CodexAgentSwiftSupport */,
 			);
 			productName = CodexAgentTestApp;
 			productReference = 100000000000000000000005 /* CodexAgentTestApp.app */;
@@ -232,6 +238,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 100000000000000000000010 /* XCLocalSwiftPackageReference "../CodexAgentPackage" */;
 			productName = CodexAgentAuthentication;
+		};
+		100000000000000000000016 /* CodexAgentObservation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000010 /* XCLocalSwiftPackageReference "../CodexAgentPackage" */;
+			productName = CodexAgentObservation;
+		};
+		100000000000000000000018 /* CodexAgentSwiftSupport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000010 /* XCLocalSwiftPackageReference "../CodexAgentPackage" */;
+			productName = CodexAgentSwiftSupport;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

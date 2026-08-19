@@ -35,7 +35,7 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginSkill
 import io.github.ciurlaro.codexmobile.agent.AgentPluginSummary
 import io.github.ciurlaro.codexmobile.agent.AgentSkill
 import io.github.ciurlaro.codexmobile.agent.AgentSkillScope
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -66,7 +66,7 @@ internal fun parseSkill(item: SkillMetadata): AgentSkill {
             SkillScope.REPO -> AgentSkillScope.REPO
             SkillScope.ADMIN -> AgentSkillScope.ADMIN
         },
-        enabled = item.enabled,
+        isEnabled = item.enabled,
         brandColor = interfaceInfo?.brandColor,
         dependencies = item.dependencies?.tools.orEmpty().map { it.value },
     )
@@ -90,11 +90,11 @@ internal fun parsePluginSummary(
         displayName = interfaceInfo?.displayName
             ?: name.replace('-', ' ').replaceFirstChar(Char::uppercase),
         description = interfaceInfo?.shortDescription ?: interfaceInfo?.longDescription.orEmpty(),
-        installed = item.installed,
-        enabled = item.enabled,
+        isInstalled = item.installed,
+        isEnabled = item.enabled,
         installPolicy = enumValueOf(item.installPolicy.name),
         authPolicy = enumValueOf(item.authPolicy.name),
-        available = (item.availability as? JsonPrimitive)?.contentOrNull != "DISABLED_BY_ADMIN" &&
+        isAvailable = (item.availability as? JsonPrimitive)?.contentOrNull != "DISABLED_BY_ADMIN" &&
             item.installPolicy != PluginInstallPolicy.NOT_AVAILABLE,
         capabilities = interfaceInfo?.capabilities.orEmpty(),
         brandColor = interfaceInfo?.brandColor,
@@ -124,7 +124,7 @@ internal fun parsePluginDetail(plugin: PluginDetail): AgentPluginDetail {
             AgentPluginSkill(
                 name = skill.name,
                 description = skill.description,
-                enabled = skill.enabled,
+                isEnabled = skill.enabled,
                 path = skill.path,
             )
         },

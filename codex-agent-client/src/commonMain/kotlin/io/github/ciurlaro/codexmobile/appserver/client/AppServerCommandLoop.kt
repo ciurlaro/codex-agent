@@ -11,6 +11,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
@@ -51,13 +52,18 @@ internal suspend fun AppServerConnection.commandLoop() {
         pending.clear()
         startWaiters.forEach { it.completeExceptionally(error) }
         startWaiters.clear()
-        stopRuntime()
+        val stopFailure = try {
+            stopRuntime()
+            null
+        } catch (error: Throwable) {
+            error
+        }
         if (closeRequested || mutableState.value !is AppServerConnectionState.Failed) {
             mutableState.value = AppServerConnectionState.Closed
         }
         commands.close()
         eventChannel.close()
-        closed.complete(Unit)
+        if (stopFailure == null) closed.complete(Unit) else closed.completeExceptionally(stopFailure)
         scope.cancel()
     }
 }
@@ -94,7 +100,9 @@ internal suspend fun AppServerConnection.start(waiter: CompletableDeferred<io.gi
         return
     }
     runtime = started
-    runtimeEvents = scope.launch { collectRuntime(started) }
+    val stopRequested = CompletableDeferred<Unit>()
+    runtimeStopRequested = stopRequested
+    runtimeEvents = scope.launch { collectRuntime(started, stopRequested) }
     try {
         started.start()
         val id = nextRequestId++
@@ -116,7 +124,7 @@ internal suspend fun AppServerConnection.start(waiter: CompletableDeferred<io.gi
     }
 }
 
-internal fun AppServerConnection.cancelStart(waiter: CompletableDeferred<io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeResponse>) {
+internal suspend fun AppServerConnection.cancelStart(waiter: CompletableDeferred<io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeResponse>) {
     startWaiters -= waiter
     if (startWaiters.isNotEmpty() || mutableState.value != AppServerConnectionState.Starting) return
     pending.entries.removeAll { (_, value) -> value === PendingRequest.Initialize }
@@ -158,14 +166,30 @@ internal suspend fun AppServerConnection.sendServerResponse(command: ConnectionC
     }
 }
 
-internal suspend fun AppServerConnection.collectRuntime(source: CodexRuntime) {
+internal suspend fun AppServerConnection.collectRuntime(
+    source: CodexRuntime,
+    stopRequested: CompletableDeferred<Unit>,
+) {
     try {
-        source.events.collect { event -> commands.send(ConnectionCommand.RuntimeEvent(source, event)) }
-        commands.send(ConnectionCommand.RuntimeEvent(source, CodexRuntimeEvent.EndOfFile))
+        source.events.collect { event ->
+            forwardRuntimeCommand(ConnectionCommand.RuntimeEvent(source, event), stopRequested)
+        }
+        forwardRuntimeCommand(ConnectionCommand.RuntimeEvent(source, CodexRuntimeEvent.EndOfFile), stopRequested)
     } catch (error: CancellationException) {
         throw error
     } catch (error: Throwable) {
-        commands.send(ConnectionCommand.RuntimeFlowFailed(source, error.visibleMessage()))
+        forwardRuntimeCommand(ConnectionCommand.RuntimeFlowFailed(source, error.visibleMessage()), stopRequested)
+    }
+}
+
+private suspend fun AppServerConnection.forwardRuntimeCommand(
+    command: ConnectionCommand,
+    stopRequested: CompletableDeferred<Unit>,
+) {
+    if (stopRequested.isCompleted) return
+    select<Unit> {
+        commands.onSend(command) {}
+        stopRequested.onAwait {}
     }
 }
 

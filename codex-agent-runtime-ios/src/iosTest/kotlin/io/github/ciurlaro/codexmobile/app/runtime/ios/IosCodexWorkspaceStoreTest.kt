@@ -4,6 +4,7 @@ package io.github.ciurlaro.codexmobile.app.runtime.ios
 
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceResolution
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceSelectionReason
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexWorkspaceSelection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

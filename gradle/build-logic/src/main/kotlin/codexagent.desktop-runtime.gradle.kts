@@ -64,9 +64,12 @@ val desktopPackageTasks = desktopManifest.distributions.associateWith { distribu
         binarySha256.set(distribution.binarySha256)
         executableName.set(distribution.executableName)
         supervisorExecutableName.set(distribution.supervisorExecutableName)
-        supervisorExecutable.set(layout.file(supervisorDirectory.map { directory ->
-            directory.resolve(distribution.target).resolve(distribution.supervisorExecutableName)
-        }))
+        if (!importedClassifierDirectory.isPresent ||
+            providers.gradleProperty("codexAgent.desktopSupervisorDirectory").isPresent) {
+            supervisorExecutable.set(layout.file(supervisorDirectory.map { directory ->
+                directory.resolve(distribution.target).resolve(distribution.supervisorExecutableName)
+            }))
+        }
         prebuiltPackage.set(layout.file(importedClassifierDirectory.map { directory ->
             file("$directory/codex-agent-runtime-desktop-${project.version}-${distribution.classifier}.zip")
         }))

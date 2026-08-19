@@ -13,13 +13,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ExternalAgentConfigImportResponse(
+internal data class ExternalAgentConfigImportResponse(
     @SerialName("importId")
     public val importId: String,
 )
 
 @Serializable
-public data class ExternalAgentConfigImportTypeResult(
+internal data class ExternalAgentConfigImportTypeResult(
     @SerialName("failures")
     public val failures: List<ExternalAgentConfigImportItemTypeFailure>,
     @SerialName("itemType")
@@ -29,7 +29,7 @@ public data class ExternalAgentConfigImportTypeResult(
 )
 
 @Serializable
-public data class ExternalAgentConfigMigrationItem(
+internal data class ExternalAgentConfigMigrationItem(
     @SerialName("description")
     public val description: String,
     @SerialName("itemType")
@@ -41,7 +41,7 @@ public data class ExternalAgentConfigMigrationItem(
 )
 
 @Serializable
-public enum class ExternalAgentConfigMigrationItemType {
+internal enum class ExternalAgentConfigMigrationItemType {
     @SerialName("AGENTS_MD") AGENTS_MD,
     @SerialName("CONFIG") CONFIG,
     @SerialName("SKILLS") SKILLS,
@@ -55,7 +55,7 @@ public enum class ExternalAgentConfigMigrationItemType {
 }
 
 @Serializable
-public data class ExternalAgentImportedConnectorCandidate(
+internal data class ExternalAgentImportedConnectorCandidate(
     @SerialName("name")
     public val name: String,
     @SerialName("sessionCount")
@@ -65,12 +65,12 @@ public data class ExternalAgentImportedConnectorCandidate(
 )
 
 @Serializable
-public enum class ExternalAgentImportedConnectorSource {
+internal enum class ExternalAgentImportedConnectorSource {
     @SerialName("remoteMcpServersConfig") REMOTE_MCP_SERVERS_CONFIG,
 }
 
 @Serializable
-public data class FeedbackUploadParams(
+internal data class FeedbackUploadParams(
     @SerialName("classification")
     public val classification: String,
     @SerialName("extraLogFiles")
@@ -86,16 +86,16 @@ public data class FeedbackUploadParams(
 )
 
 @Serializable
-public data class FeedbackUploadResponse(
+internal data class FeedbackUploadResponse(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable(with = FileChangeSerializer::class)
-public sealed interface FileChange
+internal sealed interface FileChange
 
 @Serializable
-public data class FileChangeAddFileChange(
+internal data class FileChangeAddFileChange(
     @SerialName("content")
     public val content: String,
     @SerialName("type")
@@ -105,7 +105,7 @@ public data class FileChangeAddFileChange(
 }
 
 @Serializable
-public data class FileChangeDeleteFileChange(
+internal data class FileChangeDeleteFileChange(
     @SerialName("content")
     public val content: String,
     @SerialName("type")
@@ -115,7 +115,7 @@ public data class FileChangeDeleteFileChange(
 }
 
 @Serializable
-public data class FileChangeUpdateFileChange(
+internal data class FileChangeUpdateFileChange(
     @SerialName("unified_diff")
     public val unified_diff: String,
     @SerialName("move_path")
@@ -126,7 +126,7 @@ public data class FileChangeUpdateFileChange(
     init { require(type == "update") }
 }
 
-public object FileChangeSerializer : JsonContentPolymorphicSerializer<FileChange>(FileChange::class) {
+internal object FileChangeSerializer : JsonContentPolymorphicSerializer<FileChange>(FileChange::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<FileChange> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "add" -> FileChangeAddFileChange.serializer()
@@ -136,10 +136,10 @@ public object FileChangeSerializer : JsonContentPolymorphicSerializer<FileChange
         }
 }
 
-public typealias FileChangeApprovalDecision = JsonElement
+internal typealias FileChangeApprovalDecision = JsonElement
 
 @Serializable
-public data class FileChangeOutputDeltaNotification(
+internal data class FileChangeOutputDeltaNotification(
     @SerialName("delta")
     public val delta: String,
     @SerialName("itemId")
@@ -151,7 +151,7 @@ public data class FileChangeOutputDeltaNotification(
 )
 
 @Serializable
-public data class FileChangePatchUpdatedNotification(
+internal data class FileChangePatchUpdatedNotification(
     @SerialName("changes")
     public val changes: List<FileUpdateChange>,
     @SerialName("itemId")
@@ -163,7 +163,7 @@ public data class FileChangePatchUpdatedNotification(
 )
 
 @Serializable
-public data class FileChangeRequestApprovalParams(
+internal data class FileChangeRequestApprovalParams(
     @SerialName("itemId")
     public val itemId: String,
     @SerialName("startedAtMs")
@@ -179,23 +179,23 @@ public data class FileChangeRequestApprovalParams(
 )
 
 @Serializable
-public data class FileChangeRequestApprovalResponse(
+internal data class FileChangeRequestApprovalResponse(
     @SerialName("decision")
     public val decision: FileChangeApprovalDecision,
 )
 
 @Serializable
-public enum class FileSystemAccessMode {
+internal enum class FileSystemAccessMode {
     @SerialName("read") READ,
     @SerialName("write") WRITE,
     @SerialName("deny") DENY,
 }
 
 @Serializable(with = FileSystemPathSerializer::class)
-public sealed interface FileSystemPath
+internal sealed interface FileSystemPath
 
 @Serializable
-public data class FileSystemPathPathFileSystemPath(
+internal data class FileSystemPathPathFileSystemPath(
     @SerialName("path")
     public val path: LegacyAppPathString,
     @SerialName("type")
@@ -205,7 +205,7 @@ public data class FileSystemPathPathFileSystemPath(
 }
 
 @Serializable
-public data class FileSystemPathGlobPatternFileSystemPath(
+internal data class FileSystemPathGlobPatternFileSystemPath(
     @SerialName("pattern")
     public val pattern: String,
     @SerialName("type")
@@ -215,7 +215,7 @@ public data class FileSystemPathGlobPatternFileSystemPath(
 }
 
 @Serializable
-public data class FileSystemPathSpecialFileSystemPath(
+internal data class FileSystemPathSpecialFileSystemPath(
     @SerialName("value")
     public val value: FileSystemSpecialPath,
     @SerialName("type")

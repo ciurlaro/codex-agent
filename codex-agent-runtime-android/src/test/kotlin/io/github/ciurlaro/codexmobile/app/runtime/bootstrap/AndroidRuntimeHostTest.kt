@@ -14,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
@@ -71,6 +72,56 @@ class AndroidRuntimeHostTest {
             runtime.close()
             runtime.close()
             assertTrue(!FileSystem.SYSTEM.exists(privateDirectory / "codex" / "system-ca.pem"))
+            FileSystem.SYSTEM.deleteRecursively(directory, mustExist = false)
+        }
+    }
+
+    @Test
+    fun closeDuringProcessLaunchReclaimsTheLateProcess(): Unit = runBlocking {
+        val directory = temporaryDirectory()
+        val executable = directory / "app-server"
+        val certificate = directory / "system-ca.pem"
+        val privateDirectory = directory / "private"
+        FileSystem.SYSTEM.write(executable) {
+            writeUtf8("#!/bin/sh\nwhile :; do sleep 1; done\n")
+        }
+        FileSystem.SYSTEM.write(certificate) { writeUtf8("test certificate") }
+        assertTrue(File(executable.toString()).setExecutable(true))
+
+        val launchEntered = CompletableDeferred<Unit>()
+        val releaseLaunch = CompletableDeferred<Unit>()
+        var launchedProcess: Process? = null
+        val runtime = AndroidCodexRuntime(
+            CodexRuntimeConfiguration(
+                executable = executable,
+                packagedRuntimeEnvironment = null,
+                applicationDirectory = directory / "home",
+                privateDirectory = privateDirectory,
+                temporaryDirectory = directory / "tmp",
+                certificateSources = listOf(certificate),
+                sqliteDriver = BundledSQLiteDriver(),
+                platformEnvironment = mapOf("PATH" to "/usr/bin:/bin"),
+                proxyPassword = "host-test-secret",
+            ),
+            startProcess = { builder ->
+                launchEntered.complete(Unit)
+                releaseLaunch.await()
+                builder.start().also { launchedProcess = it }
+            },
+        )
+        try {
+            val start = async { runCatching { runtime.start() }.exceptionOrNull() }
+            launchEntered.await()
+            runtime.close()
+            releaseLaunch.complete(Unit)
+
+            assertIs<IllegalStateException>(start.await())
+            assertTrue(launchedProcess?.isAlive == false)
+            assertTrue(!FileSystem.SYSTEM.exists(privateDirectory / "codex" / "system-ca.pem"))
+        } finally {
+            releaseLaunch.complete(Unit)
+            runtime.close()
+            launchedProcess?.destroyForcibly()
             FileSystem.SYSTEM.deleteRecursively(directory, mustExist = false)
         }
     }

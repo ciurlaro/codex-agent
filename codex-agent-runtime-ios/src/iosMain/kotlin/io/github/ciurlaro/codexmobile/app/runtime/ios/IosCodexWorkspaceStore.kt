@@ -7,6 +7,7 @@ import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceResolution
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceSelection
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceSelectionReason
 import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceStore
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexWorkspaceSelection
 import kotlinx.cinterop.BooleanVar
 import kotlinx.cinterop.ObjCObjectVar
 import kotlinx.cinterop.addressOf
@@ -31,8 +32,6 @@ import platform.Foundation.dataWithContentsOfFile
 import platform.Foundation.writeToFile
 import platform.posix.free
 import platform.posix.realpath
-
-class IosCodexWorkspaceSelection(val url: NSURL) : CodexWorkspaceSelection
 
 internal data class IosResolvedBookmark(
     val url: NSURL,

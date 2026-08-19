@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ServerNotificationFuzzyFileSearchSessionCompletedNotification(
+internal data class ServerNotificationFuzzyFileSearchSessionCompletedNotification(
     @SerialName("params")
     public val params: FuzzyFileSearchSessionCompletedNotification,
     @SerialName("emittedAtMs")
@@ -25,7 +25,7 @@ public data class ServerNotificationFuzzyFileSearchSessionCompletedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadRealtimeStartedNotification(
+internal data class ServerNotificationThreadRealtimeStartedNotification(
     @SerialName("params")
     public val params: ThreadRealtimeStartedNotification,
     @SerialName("emittedAtMs")
@@ -37,7 +37,7 @@ public data class ServerNotificationThreadRealtimeStartedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadRealtimeItemAddedNotification(
+internal data class ServerNotificationThreadRealtimeItemAddedNotification(
     @SerialName("params")
     public val params: ThreadRealtimeItemAddedNotification,
     @SerialName("emittedAtMs")
@@ -49,7 +49,7 @@ public data class ServerNotificationThreadRealtimeItemAddedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadRealtimeTranscriptDeltaNotification(
+internal data class ServerNotificationThreadRealtimeTranscriptDeltaNotification(
     @SerialName("params")
     public val params: ThreadRealtimeTranscriptDeltaNotification,
     @SerialName("emittedAtMs")
@@ -61,7 +61,7 @@ public data class ServerNotificationThreadRealtimeTranscriptDeltaNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadRealtimeTranscriptDoneNotification(
+internal data class ServerNotificationThreadRealtimeTranscriptDoneNotification(
     @SerialName("params")
     public val params: ThreadRealtimeTranscriptDoneNotification,
     @SerialName("emittedAtMs")
@@ -73,7 +73,7 @@ public data class ServerNotificationThreadRealtimeTranscriptDoneNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadRealtimeOutputAudioDeltaNotification(
+internal data class ServerNotificationThreadRealtimeOutputAudioDeltaNotification(
     @SerialName("params")
     public val params: ThreadRealtimeOutputAudioDeltaNotification,
     @SerialName("emittedAtMs")
@@ -85,7 +85,7 @@ public data class ServerNotificationThreadRealtimeOutputAudioDeltaNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadRealtimeSdpNotification(
+internal data class ServerNotificationThreadRealtimeSdpNotification(
     @SerialName("params")
     public val params: ThreadRealtimeSdpNotification,
     @SerialName("emittedAtMs")
@@ -97,7 +97,7 @@ public data class ServerNotificationThreadRealtimeSdpNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadRealtimeErrorNotification(
+internal data class ServerNotificationThreadRealtimeErrorNotification(
     @SerialName("params")
     public val params: ThreadRealtimeErrorNotification,
     @SerialName("emittedAtMs")
@@ -109,7 +109,7 @@ public data class ServerNotificationThreadRealtimeErrorNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadRealtimeClosedNotification(
+internal data class ServerNotificationThreadRealtimeClosedNotification(
     @SerialName("params")
     public val params: ThreadRealtimeClosedNotification,
     @SerialName("emittedAtMs")
@@ -121,7 +121,7 @@ public data class ServerNotificationThreadRealtimeClosedNotification(
 }
 
 @Serializable
-public data class ServerNotificationWindowsWorldWritableWarningNotification(
+internal data class ServerNotificationWindowsWorldWritableWarningNotification(
     @SerialName("params")
     public val params: WindowsWorldWritableWarningNotification,
     @SerialName("emittedAtMs")
@@ -133,7 +133,7 @@ public data class ServerNotificationWindowsWorldWritableWarningNotification(
 }
 
 @Serializable
-public data class ServerNotificationWindowsSandboxSetupCompletedNotification(
+internal data class ServerNotificationWindowsSandboxSetupCompletedNotification(
     @SerialName("params")
     public val params: WindowsSandboxSetupCompletedNotification,
     @SerialName("emittedAtMs")
@@ -145,7 +145,7 @@ public data class ServerNotificationWindowsSandboxSetupCompletedNotification(
 }
 
 @Serializable
-public data class ServerNotificationAccountLoginCompletedNotification(
+internal data class ServerNotificationAccountLoginCompletedNotification(
     @SerialName("params")
     public val params: AccountLoginCompletedNotification,
     @SerialName("emittedAtMs")
@@ -156,7 +156,7 @@ public data class ServerNotificationAccountLoginCompletedNotification(
     init { require(method == "account/login/completed") }
 }
 
-public object ServerNotificationSerializer : JsonContentPolymorphicSerializer<ServerNotification>(ServerNotification::class) {
+internal object ServerNotificationSerializer : JsonContentPolymorphicSerializer<ServerNotification>(ServerNotification::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ServerNotification> =
         when (element.jsonObject["method"]?.jsonPrimitive?.content) {
             "error" -> ServerNotificationErrorNotification.serializer()

@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ResponseItemAgentMessageResponseItem(
+internal data class ResponseItemAgentMessageResponseItem(
     @SerialName("author")
     public val author: String,
     @SerialName("content")
@@ -31,7 +31,7 @@ public data class ResponseItemAgentMessageResponseItem(
 }
 
 @Serializable
-public data class ResponseItemReasoningResponseItem(
+internal data class ResponseItemReasoningResponseItem(
     @SerialName("summary")
     public val summary: List<ReasoningItemReasoningSummary>,
     @SerialName("content")
@@ -49,7 +49,7 @@ public data class ResponseItemReasoningResponseItem(
 }
 
 @Serializable
-public data class ResponseItemLocalShellCallResponseItem(
+internal data class ResponseItemLocalShellCallResponseItem(
     @SerialName("action")
     public val action: LocalShellAction,
     @SerialName("status")
@@ -67,7 +67,7 @@ public data class ResponseItemLocalShellCallResponseItem(
 }
 
 @Serializable
-public data class ResponseItemFunctionCallResponseItem(
+internal data class ResponseItemFunctionCallResponseItem(
     @SerialName("arguments")
     public val arguments: String,
     @SerialName("call_id")
@@ -87,7 +87,7 @@ public data class ResponseItemFunctionCallResponseItem(
 }
 
 @Serializable
-public data class ResponseItemToolSearchCallResponseItem(
+internal data class ResponseItemToolSearchCallResponseItem(
     @SerialName("arguments")
     public val arguments: JsonElement,
     @SerialName("execution")
@@ -107,7 +107,7 @@ public data class ResponseItemToolSearchCallResponseItem(
 }
 
 @Serializable
-public data class ResponseItemFunctionCallOutputResponseItem(
+internal data class ResponseItemFunctionCallOutputResponseItem(
     @SerialName("call_id")
     public val call_id: String,
     @SerialName("output")
@@ -123,7 +123,7 @@ public data class ResponseItemFunctionCallOutputResponseItem(
 }
 
 @Serializable
-public data class ResponseItemCustomToolCallResponseItem(
+internal data class ResponseItemCustomToolCallResponseItem(
     @SerialName("call_id")
     public val call_id: String,
     @SerialName("input")
@@ -145,7 +145,7 @@ public data class ResponseItemCustomToolCallResponseItem(
 }
 
 @Serializable
-public data class ResponseItemCustomToolCallOutputResponseItem(
+internal data class ResponseItemCustomToolCallOutputResponseItem(
     @SerialName("call_id")
     public val call_id: String,
     @SerialName("output")
@@ -163,7 +163,7 @@ public data class ResponseItemCustomToolCallOutputResponseItem(
 }
 
 @Serializable
-public data class ResponseItemToolSearchOutputResponseItem(
+internal data class ResponseItemToolSearchOutputResponseItem(
     @SerialName("execution")
     public val execution: String,
     @SerialName("status")
@@ -183,7 +183,7 @@ public data class ResponseItemToolSearchOutputResponseItem(
 }
 
 @Serializable
-public data class ResponseItemWebSearchCallResponseItem(
+internal data class ResponseItemWebSearchCallResponseItem(
     @SerialName("action")
     public val action: ResponsesApiWebSearchAction? = null,
     @SerialName("id")
@@ -199,7 +199,7 @@ public data class ResponseItemWebSearchCallResponseItem(
 }
 
 @Serializable
-public data class ResponseItemImageGenerationCallResponseItem(
+internal data class ResponseItemImageGenerationCallResponseItem(
     @SerialName("result")
     public val result: String,
     @SerialName("status")
@@ -217,7 +217,7 @@ public data class ResponseItemImageGenerationCallResponseItem(
 }
 
 @Serializable
-public data class ResponseItemCompactionResponseItem(
+internal data class ResponseItemCompactionResponseItem(
     @SerialName("encrypted_content")
     public val encrypted_content: String,
     @SerialName("id")

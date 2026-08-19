@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,22 +33,24 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -118,6 +119,7 @@ internal suspend fun CodexAgentClient.authenticateAction(
         loginStarting = true
         loginCompletedDuringStart = null
     }
+    var startedLoginId: String? = null
     try {
         val result = connection.request(
             AppServerClientMethods.AccountLoginStart,
@@ -130,37 +132,57 @@ internal suspend fun CodexAgentClient.authenticateAction(
                 is CodexAuthenticationMethod.ApiKey -> error("API-key login is handled synchronously")
             },
         )
-        val startedLoginId = when (result) {
+        startedLoginId = when (result) {
             is LoginAccountResponseChatgpt -> result.loginId
             is LoginAccountResponseChatgptDeviceCode -> result.loginId
             else -> error("App-server returned an unexpected login method")
         }
-        val earlyCompletion = loginStateLock.withLock {
-            loginStarting = false
-            loginCompletedDuringStart
-                ?.takeIf { it.loginId == startedLoginId }
-                .also { loginCompletedDuringStart = null }
-                .also {
-                    loginId = if (it == null && !stateLock.withLock { authenticated }) startedLoginId else null
-                }
+        withContext(NonCancellable) {
+            val earlyCompletion = loginStateLock.withLock {
+                loginStarting = false
+                loginCompletedDuringStart
+                    ?.takeIf { it.loginId == startedLoginId }
+                    .also { loginCompletedDuringStart = null }
+                    .also {
+                        loginId = if (it == null && !stateLock.withLock { authenticated }) startedLoginId else null
+                    }
+            }
+            when {
+                earlyCompletion != null -> applyLoginCompletion(earlyCompletion)
+                stateLock.withLock { authenticated } -> Unit
+                result is LoginAccountResponseChatgpt -> eventsChannel.send(
+                    AgentEvent.AuthenticationRequired(result.authUrl),
+                )
+                result is LoginAccountResponseChatgptDeviceCode -> eventsChannel.send(
+                    AgentEvent.DeviceCodeAuthenticationRequired(
+                        verificationUrl = result.verificationUrl,
+                        userCode = result.userCode,
+                    ),
+                )
+            }
         }
-        when {
-            earlyCompletion != null -> applyLoginCompletion(earlyCompletion)
-            stateLock.withLock { authenticated } -> Unit
-            result is LoginAccountResponseChatgpt -> eventsChannel.send(
-                AgentEvent.AuthenticationRequired(result.authUrl),
-            )
-            result is LoginAccountResponseChatgptDeviceCode -> eventsChannel.send(
-                AgentEvent.DeviceCodeAuthenticationRequired(
-                    verificationUrl = result.verificationUrl,
-                    userCode = result.userCode,
-                ),
-            )
-        }
+        currentCoroutineContext().ensureActive()
     } catch (error: Exception) {
-        loginStateLock.withLock {
-            loginStarting = false
-            loginCompletedDuringStart = null
+        withContext(NonCancellable) {
+            val acquiredLoginId = loginStateLock.withLock {
+                loginStarting = false
+                loginCompletedDuringStart = null
+                startedLoginId?.takeIf { loginId == it }?.also {
+                    loginId = null
+                    cancelledLoginIds += it
+                }
+            }
+            if (acquiredLoginId != null) {
+                runCatching {
+                    val status = connection.request(
+                        AppServerClientMethods.AccountLoginCancel,
+                        CancelLoginAccountParams(acquiredLoginId),
+                    ).status
+                    if (status == CancelLoginAccountStatus.NOT_FOUND) {
+                        loginStateLock.withLock { cancelledLoginIds -= acquiredLoginId }
+                    }
+                }
+            }
         }
         throw error
     }
@@ -179,12 +201,16 @@ internal suspend fun CodexAgentClient.cancelAuthenticationAction() = authMutex.w
         check(status == CancelLoginAccountStatus.CANCELED || status == CancelLoginAccountStatus.NOT_FOUND) {
             "Unexpected login cancellation status: $status"
         }
-        loginStateLock.withLock {
-            if (loginId == activeLoginId) loginId = null
-            if (status == CancelLoginAccountStatus.NOT_FOUND) cancelledLoginIds -= activeLoginId
+        withContext(NonCancellable) {
+            loginStateLock.withLock {
+                if (loginId == activeLoginId) loginId = null
+                if (status == CancelLoginAccountStatus.NOT_FOUND) cancelledLoginIds -= activeLoginId
+            }
         }
     } catch (error: Exception) {
-        loginStateLock.withLock { cancelledLoginIds -= activeLoginId }
+        withContext(NonCancellable) {
+            loginStateLock.withLock { cancelledLoginIds -= activeLoginId }
+        }
         throw error
     }
 }
@@ -203,16 +229,20 @@ internal suspend fun CodexAgentClient.signOutAction() {
     }
     clearPluginCache()
     turnStateLock.withLock {
+        shellStartupCompletions.values.forEach { it.complete(false) }
+        shellStartupCompletions.clear()
         activeTurns.clear()
         startingTurns.clear()
-        terminalDuringStart.clear()
+        pendingTerminalsDuringStart.clear()
+        recentTerminalTurnIds.clear()
         cancellingTurns.clear()
     }
     stateLock.withLock {
         userShellItems.clear()
         knownSkillPaths.clear()
-        openedSessions.clear()
-        sessionRuntimeSettings.clear()
+        openedConversations.clear()
+        conversationOwners.clear()
+        conversationRuntimeSettings.clear()
     }
 }
 
@@ -232,14 +262,7 @@ internal suspend fun CodexAgentClient.applyLoginCompletionAction(completion: Log
     if (completion.success) {
         emitAuthenticated()
     } else {
-        eventsChannel.send(
-            AgentEvent.Failure(
-                null,
-                "authentication_failed",
-                completion.error ?: "Authentication failed",
-                recoverable = true,
-            ),
-        )
+        eventsChannel.send(AgentEvent.AuthenticationFailed(completion.error ?: "Authentication failed"))
     }
 }
 
@@ -253,9 +276,12 @@ internal suspend fun CodexAgentClient.handleConnectionFailureAction(code: String
         cancelledLoginIds.clear()
     }
     turnStateLock.withLock {
+        shellStartupCompletions.values.forEach { it.complete(false) }
+        shellStartupCompletions.clear()
         activeTurns.clear()
         startingTurns.clear()
-        terminalDuringStart.clear()
+        pendingTerminalsDuringStart.clear()
+        recentTerminalTurnIds.clear()
         cancellingTurns.clear()
         cancelledTurns.clear()
     }
@@ -267,8 +293,9 @@ internal suspend fun CodexAgentClient.handleConnectionFailureAction(code: String
         userShellItems.clear()
         commentaryItems.clear()
         knownSkillPaths.clear()
-        openedSessions.clear()
-        sessionRuntimeSettings.clear()
+        openedConversations.clear()
+        conversationOwners.clear()
+        conversationRuntimeSettings.clear()
     }
-    eventsChannel.send(AgentEvent.Failure(null, code, message, recoverable = true))
+    eventsChannel.send(AgentEvent.Failure(null, code, message, isRecoverable = true))
 }

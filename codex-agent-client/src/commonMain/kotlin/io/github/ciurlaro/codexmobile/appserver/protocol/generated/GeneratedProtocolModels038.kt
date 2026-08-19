@@ -13,13 +13,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class SkillMigration(
+internal data class SkillMigration(
     @SerialName("name")
     public val name: String,
 )
 
 @Serializable
-public enum class SkillScope {
+internal enum class SkillScope {
     @SerialName("user") USER,
     @SerialName("repo") REPO,
     @SerialName("system") SYSTEM,
@@ -27,7 +27,7 @@ public enum class SkillScope {
 }
 
 @Serializable
-public data class SkillSummary(
+internal data class SkillSummary(
     @SerialName("description")
     public val description: String,
     @SerialName("enabled")
@@ -43,7 +43,7 @@ public data class SkillSummary(
 )
 
 @Serializable
-public data class SkillToolDependency(
+internal data class SkillToolDependency(
     @SerialName("type")
     public val type: String,
     @SerialName("value")
@@ -59,10 +59,10 @@ public data class SkillToolDependency(
 )
 
 @Serializable
-public class SkillsChangedNotification
+internal class SkillsChangedNotification
 
 @Serializable
-public data class SkillsConfigWriteParams(
+internal data class SkillsConfigWriteParams(
     @SerialName("enabled")
     public val enabled: Boolean,
     @SerialName("name")
@@ -72,22 +72,22 @@ public data class SkillsConfigWriteParams(
 )
 
 @Serializable
-public data class SkillsConfigWriteResponse(
+internal data class SkillsConfigWriteResponse(
     @SerialName("effectiveEnabled")
     public val effectiveEnabled: Boolean,
 )
 
 @Serializable
-public data class SkillsExtraRootsSetParams(
+internal data class SkillsExtraRootsSetParams(
     @SerialName("extraRoots")
     public val extraRoots: List<AbsolutePathBuf>,
 )
 
 @Serializable
-public class SkillsExtraRootsSetResponse
+internal class SkillsExtraRootsSetResponse
 
 @Serializable
-public data class SkillsListEntry(
+internal data class SkillsListEntry(
     @SerialName("cwd")
     public val cwd: String,
     @SerialName("errors")
@@ -97,7 +97,7 @@ public data class SkillsListEntry(
 )
 
 @Serializable
-public data class SkillsListParams(
+internal data class SkillsListParams(
     @SerialName("cwds")
     public val cwds: List<String>? = null,
     @SerialName("forceReload")
@@ -105,19 +105,19 @@ public data class SkillsListParams(
 )
 
 @Serializable
-public data class SkillsListResponse(
+internal data class SkillsListResponse(
     @SerialName("data")
     public val data: List<SkillsListEntry>,
 )
 
 @Serializable
-public enum class SortDirection {
+internal enum class SortDirection {
     @SerialName("asc") ASC,
     @SerialName("desc") DESC,
 }
 
 @Serializable
-public data class SpendControlLimitSnapshot(
+internal data class SpendControlLimitSnapshot(
     @SerialName("limit")
     public val limit: String,
     @SerialName("remainingPercent")
@@ -129,22 +129,22 @@ public data class SpendControlLimitSnapshot(
 )
 
 @Serializable
-public enum class SubAgentActivityKind {
+internal enum class SubAgentActivityKind {
     @SerialName("started") STARTED,
     @SerialName("interacted") INTERACTED,
     @SerialName("interrupted") INTERRUPTED,
 }
 
-public typealias SubAgentSource = JsonElement
+internal typealias SubAgentSource = JsonElement
 
 @Serializable
-public data class SubagentMigration(
+internal data class SubagentMigration(
     @SerialName("name")
     public val name: String,
 )
 
 @Serializable
-public data class TerminalInteractionNotification(
+internal data class TerminalInteractionNotification(
     @SerialName("itemId")
     public val itemId: String,
     @SerialName("processId")
@@ -158,7 +158,7 @@ public data class TerminalInteractionNotification(
 )
 
 @Serializable
-public data class TextElement(
+internal data class TextElement(
     @SerialName("byteRange")
     public val byteRange: ByteRange,
     @SerialName("placeholder")
@@ -166,7 +166,7 @@ public data class TextElement(
 )
 
 @Serializable
-public data class TextPosition(
+internal data class TextPosition(
     @SerialName("column")
     public val column: Long,
     @SerialName("line")
@@ -174,7 +174,7 @@ public data class TextPosition(
 )
 
 @Serializable
-public data class TextRange(
+internal data class TextRange(
     @SerialName("end")
     public val end: TextPosition,
     @SerialName("start")
@@ -182,7 +182,7 @@ public data class TextRange(
 )
 
 @Serializable
-public data class Thread(
+internal data class Thread(
     @SerialName("cliVersion")
     public val cliVersion: String,
     @SerialName("createdAt")

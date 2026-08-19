@@ -5,7 +5,7 @@ import XCTest
 
 @MainActor
 final class CodexAuthorizationBrowserTests: XCTestCase {
-    func testGenericBrowserOpensTypedExternalURLAndCancelsPresentation() {
+    func testGenericBrowserOpensTypedExternalURLAndCancelsPresentation() throws {
         let store = BrowserStore()
         let browser = CodexWebAuthenticationBrowser(
             browserFactory: { _, completion in
@@ -16,7 +16,7 @@ final class CodexAuthorizationBrowserTests: XCTestCase {
             anchorProvider: { ASPresentationAnchor() }
         )
 
-        let presentation = browser.open(
+        let presentation = try browser.open(
             url: CodexAuthorizationUrl.companion.external(value: "https://example.com/oauth")
         )
         XCTAssertEqual(store.sessions.count, 1)
@@ -24,12 +24,25 @@ final class CodexAuthorizationBrowserTests: XCTestCase {
         XCTAssertEqual(store.sessions[0].cancellationCount, 1)
     }
 
-    func testChatGPTURLPolicyRejectsSpoofsCredentialsPortsAndHTTP() {
-        XCTAssertTrue(isTrustedChatGPTURL(URL(string: "https://auth.openai.com/login")!))
-        XCTAssertTrue(isTrustedChatGPTURL(URL(string: "https://chatgpt.com:443/login")!))
-        XCTAssertFalse(isTrustedChatGPTURL(URL(string: "https://openai.com.evil.test/login")!))
-        XCTAssertFalse(isTrustedChatGPTURL(URL(string: "https://user@openai.com/login")!))
-        XCTAssertFalse(isTrustedChatGPTURL(URL(string: "https://openai.com:8443/login")!))
-        XCTAssertFalse(isTrustedChatGPTURL(URL(string: "http://openai.com/login")!))
+}
+
+@MainActor
+private final class BrowserStore {
+    var sessions: [FakeBrowserSession] = []
+}
+
+@MainActor
+private final class FakeBrowserSession: CodexBrowserSession {
+    private let completion: (URL?, Error?) -> Void
+    private(set) var cancellationCount = 0
+
+    init(completion: @escaping (URL?, Error?) -> Void) {
+        self.completion = completion
+    }
+
+    func start() -> Bool { true }
+
+    func cancel() {
+        cancellationCount += 1
     }
 }

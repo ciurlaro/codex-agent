@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -61,7 +59,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.FileSystem
 import okio.Path.Companion.toPath
-import okio.buffer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -117,34 +114,30 @@ internal suspend fun CodexAgentClient.listSkillsAction(
             .distinctBy { it.path },
         errors = entries.flatMap { it.errors }.map { "${it.path}: ${it.message}" },
     ).also { catalog ->
-        knownSkillPaths.clear()
-        catalog.skills.mapTo(knownSkillPaths, io.github.ciurlaro.codexmobile.agent.AgentSkill::path)
+        stateLock.withLock {
+            knownSkillPaths.clear()
+            catalog.skills.mapTo(knownSkillPaths, io.github.ciurlaro.codexmobile.agent.AgentSkill::path)
+        }
     }
 }
 
 internal suspend fun CodexAgentClient.readSkillAction(path: String, offset: Long): AgentSkillChunk = withContext(coroutineDispatcher) {
-    require(path in knownSkillPaths) { "Skill was not returned by skills/list" }
+    require(stateLock.withLock { path in knownSkillPaths }) { "Skill was not returned by skills/list" }
     require(offset >= 0) { "Offset must not be negative" }
     val fileSystem = requireFileSystem()
     val file = path.toPath()
-    val total = fileSystem.metadataOrNull(file)?.takeIf { it.isRegularFile }?.size
+    val total = fileSystem.size(file)
     require(total != null) { "Skill source is not readable" }
-    val source = fileSystem.source(file).buffer()
-    try {
-        require(offset <= total) { "Offset exceeds skill source size" }
-        source.skip(offset)
-        val count = minOf(SKILL_CHUNK_BYTES.toLong(), total - offset).toInt()
-        val bytes = source.readByteArray(count.toLong())
-        val complete = if (offset + count < total) completeUtf8Length(bytes, count) else count
-        val next = (offset + complete).takeIf { it < total }
-        AgentSkillChunk(
-            content = bytes.decodeToString(0, complete, throwOnInvalidSequence = true),
-            nextOffset = next,
-            totalBytes = total,
-        )
-    } finally {
-        source.close()
-    }
+    require(offset <= total) { "Offset exceeds skill source size" }
+    val count = minOf(SKILL_CHUNK_BYTES.toLong(), total - offset).toInt()
+    val bytes = fileSystem.readBytes(file, offset, count)
+    val complete = if (offset + count < total) completeUtf8Length(bytes, count) else count
+    val next = (offset + complete).takeIf { it < total }
+    AgentSkillChunk(
+        content = bytes.decodeToString(0, complete, throwOnInvalidSequence = true),
+        nextOffset = next,
+        totalBytes = total,
+    )
 }
 
 internal suspend fun CodexAgentClient.setSkillEnabledAction(path: String, enabled: Boolean) {

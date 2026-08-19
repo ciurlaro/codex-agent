@@ -1,39 +1,40 @@
 package io.github.ciurlaro.codexmobile.agent
 
-enum class CodexAuthorizationPurpose {
+public enum class CodexAuthorizationPurpose {
     CHAT_GPT,
     EXTERNAL,
 }
 
-class CodexAuthorizationUrl private constructor(
-    val value: String,
-    val purpose: CodexAuthorizationPurpose,
+public class CodexAuthorizationUrl private constructor(
+    public val value: String,
+    public val purpose: CodexAuthorizationPurpose,
 ) {
-    companion object {
-        fun chatGpt(value: String): CodexAuthorizationUrl =
+    public companion object {
+        public fun chatGpt(value: String): CodexAuthorizationUrl =
             CodexAuthorizationUrl(validateAuthorizationUrl(value, chatGpt = true), CodexAuthorizationPurpose.CHAT_GPT)
 
-        fun external(value: String): CodexAuthorizationUrl =
+        public fun external(value: String): CodexAuthorizationUrl =
             CodexAuthorizationUrl(validateAuthorizationUrl(value, chatGpt = false), CodexAuthorizationPurpose.EXTERNAL)
     }
 
-    override fun equals(other: Any?): Boolean =
+    public override fun equals(other: Any?): Boolean =
         other is CodexAuthorizationUrl && value == other.value && purpose == other.purpose
 
-    override fun hashCode(): Int = 31 * value.hashCode() + purpose.hashCode()
+    public override fun hashCode(): Int = 31 * value.hashCode() + purpose.hashCode()
 
-    override fun toString(): String = "CodexAuthorizationUrl(purpose=$purpose)"
+    public override fun toString(): String = "CodexAuthorizationUrl(purpose=$purpose)"
 }
 
-fun interface CodexAuthorizationBrowser {
-    fun open(url: CodexAuthorizationUrl): CodexAuthorizationPresentation
+public fun interface CodexAuthorizationBrowser {
+    @Throws(Exception::class)
+    public fun open(url: CodexAuthorizationUrl): CodexAuthorizationPresentation
 }
 
-fun interface CodexAuthorizationPresentation : AutoCloseable {
-    override fun close()
+public fun interface CodexAuthorizationPresentation : AutoCloseable {
+    public override fun close()
 
-    companion object {
-        val None: CodexAuthorizationPresentation = CodexAuthorizationPresentation {}
+    public companion object {
+        public val None: CodexAuthorizationPresentation = CodexAuthorizationPresentation {}
     }
 }
 

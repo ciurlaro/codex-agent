@@ -21,6 +21,23 @@ class MavenRepositoryTasksTest {
     }
 
     @Test
+    fun `Gradle transport metadata is excluded from verification and inventory`() =
+        withRepository { repository, inventory ->
+            writeExactRepository(repository, signed = true)
+            val coordinate = repository.resolve("io/github/ciurlaro/codex-agent-client")
+            coordinate.resolve("maven-metadata.xml").writeText("<metadata/>")
+            coordinate.resolve("maven-metadata.xml.sha256").writeText("0".repeat(64))
+            val primary = coordinate.resolve("$VERSION/codex-agent-client-$VERSION.jar")
+            primary.resolveSibling(primary.name + ".asc.sha256").writeText("0".repeat(64))
+
+            verifyMavenRepository(repository, GROUP, VERSION, true, inventory)
+
+            val inventoryText = inventory.readText()
+            assertTrue(!inventoryText.contains("maven-metadata.xml"))
+            assertTrue(!inventoryText.contains(".asc.sha256"))
+        }
+
+    @Test
     fun `missing module or target binary is rejected`() = withRepository { repository, inventory ->
         writeExactRepository(repository)
         val group = repository.resolve("io/github/ciurlaro")

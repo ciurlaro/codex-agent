@@ -30,6 +30,6 @@ internal fun CodexAgentClient.applyBuiltInPluginEnablementAction(
 ) {
     builtInPluginEnabled.keys.forEach { pluginId ->
         val plugin = catalog.plugins.singleOrNull { it.reference.id == pluginId }
-        builtInPluginEnabled[pluginId] = plugin?.let { it.installed && it.enabled } == true
+        builtInPluginEnabled[pluginId] = plugin?.let { it.isInstalled && it.isEnabled } == true
     }
 }

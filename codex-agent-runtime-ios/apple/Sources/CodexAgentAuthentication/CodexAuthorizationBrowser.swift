@@ -2,6 +2,19 @@ import AuthenticationServices
 import CodexAgent
 import UIKit
 
+@MainActor
+protocol CodexBrowserSession: AnyObject {
+    func start() -> Bool
+    func cancel()
+}
+
+extension ASWebAuthenticationSession: CodexBrowserSession {}
+
+typealias CodexBrowserSessionFactory = (
+    URL,
+    @escaping (URL?, Error?) -> Void
+) -> CodexBrowserSession
+
 public final class CodexWebAuthenticationBrowser: NSObject, CodexAuthorizationBrowser {
     private let browserFactory: CodexBrowserSessionFactory
     private let anchorProvider: () -> ASPresentationAnchor?
@@ -28,7 +41,7 @@ public final class CodexWebAuthenticationBrowser: NSObject, CodexAuthorizationBr
         super.init()
     }
 
-    public func open(url: CodexAuthorizationUrl) -> any CodexAuthorizationPresentation {
+    public func open(url: CodexAuthorizationUrl) throws -> any CodexAuthorizationPresentation {
         onMain {
             guard let nativeURL = URL(string: url.value), let anchor = anchorProvider() else {
                 return CodexClosedAuthorizationPresentation()

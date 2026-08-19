@@ -85,7 +85,7 @@ private fun executeIosWorkspaceToolDirect(
 
 private fun coordinateIosWorkspace(
     configuration: IosCodexRuntimeConfiguration,
-    mutation: Boolean,
+    isMutation: Boolean,
     operation: (IosCodexRuntimeConfiguration) -> BuiltInToolResult,
 ): BuiltInToolResult = memScoped {
     val error = alloc<ObjCObjectVar<NSError?>>()
@@ -102,7 +102,7 @@ private fun coordinateIosWorkspace(
     }
     val coordinator = NSFileCoordinator(null)
     val workspaceUrl = NSURL.fileURLWithPath(configuration.workspacePath)
-    if (mutation) {
+    if (isMutation) {
         coordinator.coordinateWritingItemAtURL(workspaceUrl, 0u, error.ptr, accessor)
     } else {
         coordinator.coordinateReadingItemAtURL(workspaceUrl, 0u, error.ptr, accessor)
@@ -195,11 +195,11 @@ private data class NativeWorkspaceToolResult(
     val text: String,
 )
 
-class IosCodexRuntimeException(message: String) : IllegalStateException(message)
+internal class IosCodexRuntimeException(message: String) : IllegalStateException(message)
 
 private val RUNTIME_JSON = Json {
     encodeDefaults = true
     ignoreUnknownKeys = false
 }
 
-private val IOS_MUTATING_TOOLS = setOf("apply_patch", "write_file")
+internal val IOS_MUTATING_TOOLS = setOf("apply_patch", "write_file")

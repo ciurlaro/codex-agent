@@ -8,7 +8,7 @@ import io.github.ciurlaro.codexmobile.agent.CodexAuthorizationBrowser
 import io.github.ciurlaro.codexmobile.agent.CodexAuthorizationPresentation
 import io.github.ciurlaro.codexmobile.agent.CodexAuthorizationUrl
 
-class AndroidCodexAuthorizationBrowser(context: Context) : CodexAuthorizationBrowser {
+internal class AndroidCodexAuthorizationBrowser(context: Context) : CodexAuthorizationBrowser {
     private val appContext = context.applicationContext
 
     override fun open(url: CodexAuthorizationUrl): CodexAuthorizationPresentation {

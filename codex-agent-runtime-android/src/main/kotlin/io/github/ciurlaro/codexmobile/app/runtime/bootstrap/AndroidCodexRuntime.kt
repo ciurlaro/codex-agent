@@ -34,10 +34,14 @@ import okio.Path
 
 internal class AndroidCodexRuntime(
     private val configuration: CodexRuntimeConfiguration,
+    private val startProcess: suspend (ProcessBuilder) -> Process = { builder ->
+        withContext(Dispatchers.IO) { builder.start() }
+    },
 ) : CodexRuntime {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val eventChannel = Channel<CodexRuntimeEvent>(EVENT_BUFFER_SIZE)
     private val sendMutex = Mutex()
+    private val resourceLock = Any()
     private val started = AtomicBoolean()
     private val closed = AtomicBoolean()
 
@@ -63,12 +67,18 @@ internal class AndroidCodexRuntime(
             FileSystem.SYSTEM.createDirectories(configuration.temporaryDirectory)
             val preparedCertificateBundle =
                 prepareRuntimeCertificateBundle(configuration.certificateSources, codexHome)
-            certificateBundle = preparedCertificateBundle
+            synchronized(resourceLock) {
+                certificateBundle = preparedCertificateBundle
+                check(!closed.get()) { "Codex runtime was closed while starting" }
+            }
             val logsDatabase = codexHome / LOGS_DATABASE_FILE
             sanitizeExistingRuntimeLogs(logsDatabase)
 
             val startedProxy = LoopbackConnectProxy(configuration.proxyPassword)
-            proxy = startedProxy
+            synchronized(resourceLock) {
+                proxy = startedProxy
+                check(!closed.get()) { "Codex runtime was closed while starting" }
+            }
             val environment = buildMinimalRuntimeEnvironment(
                 platform = configuration.platformEnvironment,
                 applicationDirectory = configuration.applicationDirectory,
@@ -77,17 +87,19 @@ internal class AndroidCodexRuntime(
                 certificateBundle = preparedCertificateBundle,
                 proxyUrl = startedProxy.url,
             )
-            val startedProcess = withContext(Dispatchers.IO) {
+            val startedProcess = startProcess(
                 ProcessBuilder(configuration.executable.toString())
                     .directory(File(configuration.applicationDirectory.toString()))
                     .redirectErrorStream(false)
                     .apply {
                         environment().clear()
                         environment().putAll(environment)
-                    }
-                    .start()
+                    },
+            )
+            synchronized(resourceLock) {
+                process = startedProcess
+                check(!closed.get()) { "Codex runtime was closed while starting" }
             }
-            process = startedProcess
             watch(startedProcess)
             awaitRuntimeLogPrivacyGuard(logsDatabase, startedProcess)
         } catch (error: Exception) {
@@ -203,7 +215,7 @@ internal class AndroidCodexRuntime(
         eventChannel.close()
     }
 
-    private fun closeResources() {
+    private fun closeResources() = synchronized(resourceLock) {
         val current = process
         process = null
         runCatching { current?.outputStream?.close() }

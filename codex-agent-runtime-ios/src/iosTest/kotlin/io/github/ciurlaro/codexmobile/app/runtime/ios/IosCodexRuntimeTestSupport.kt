@@ -2,9 +2,11 @@
 
 package io.github.ciurlaro.codexmobile.app.runtime.ios
 
+import io.github.ciurlaro.codexmobile.agent.runtime.IosCodexCredentialProtection
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolCall
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolContent
 import io.github.ciurlaro.codexmobile.agent.BuiltInToolResult
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -16,13 +18,10 @@ internal class TestWorkspace : AutoCloseable {
     val sandboxRoot = "${NSTemporaryDirectory().trimEnd('/')}/codex-agent-ios-${NSUUID().UUIDString}"
     val workspace = "$sandboxRoot/workspace"
     val codexHome = "$sandboxRoot/Library/Application Support/CodexAgent"
-    val unusedTemporaryPath = "$sandboxRoot/deprecated-unused-temporary-path"
-    @Suppress("DEPRECATION")
     val configuration = IosCodexRuntimeConfiguration(
         sandboxRootPath = sandboxRoot,
         workspacePath = workspace,
         credentialProtection = IosCodexCredentialProtection.WHEN_UNLOCKED,
-        temporaryPath = unusedTemporaryPath,
     )
 
     init {
@@ -50,15 +49,15 @@ internal suspend fun IosCodexWorkspaceTools.call(
     tool: String,
     arguments: JsonObject,
     workspace: String = test.workspace,
-) = execute(
+) = executeForTest(
     BuiltInToolCall(
-        threadId = "thread",
+        conversationId = ConversationId("thread"),
         turnId = "turn",
         callId = "call-$tool",
         pluginId = "ios-local-workspace",
         tool = tool,
         arguments = arguments,
-        workspace = workspace,
+        workspacePath = workspace,
         argumentsHash = "test",
     ),
 )
