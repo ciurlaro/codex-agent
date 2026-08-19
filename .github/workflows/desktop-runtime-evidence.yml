@@ -104,7 +104,7 @@ jobs:
           test "${#archives[@]}" -eq 1
           supervisor="codex-agent-runtime-desktop/build/supervisor/${{ matrix.target }}/${{ matrix.supervisor }}"
           test -x "$supervisor"
-          printf 'archive=%s\n' "${archives[0]}" >> "$GITHUB_OUTPUT"
+          printf 'archive=%s/%s\n' "$GITHUB_WORKSPACE" "${archives[0]}" >> "$GITHUB_OUTPUT"
       - name: Run JVM, Node JS, and Node Wasm against that classifier
         shell: bash
         run: >-

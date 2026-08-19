@@ -42,7 +42,7 @@ class NodeDesktopWorkflowContractTest {
             "node-runtime-evidence/node-wasm-runtime-${'$'}{{ matrix.target }}.json",
             "codex-agent-ci-desktop-classifier-${'$'}{{ matrix.target }}",
         ).forEach { assertTrue(it in runtime, it) }
-        assertTrue("printf 'archive=%s\\n' \"${'$'}{archives[0]}\"" in runtime)
+        assertTrue("printf 'archive=%s/%s\\n' \"${'$'}GITHUB_WORKSPACE\" \"${'$'}{archives[0]}\"" in runtime)
         assertFalse("printf 'archive=%s/%s\\n' \"${'$'}PWD\"" in runtime)
         val arm = desktop.substringAfter("\n  linux-arm64-cross-build:")
         assertTrue("codex-agent-ci-desktop-classifier-linuxArm64" in arm)
