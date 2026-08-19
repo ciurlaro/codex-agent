@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -156,6 +154,48 @@ internal suspend fun CodexAgentClient.listAvailablePluginsAction(
     }
 }
 
+internal suspend fun CodexAgentClient.listMergedPluginsAction(
+    workingDirectory: String?,
+    forceRefresh: Boolean,
+): AgentPluginCatalog = mergePluginCatalogs(
+    available = listAvailablePluginsAction(workingDirectory, forceRefresh),
+    installed = listInstalledPluginsAction(workingDirectory, forceRefresh),
+)
+
+internal fun mergePluginCatalogs(
+    available: AgentPluginCatalog,
+    installed: AgentPluginCatalog,
+): AgentPluginCatalog {
+    val installedById = installed.plugins.associateBy { it.reference.id }
+    val availableIds = available.plugins.mapTo(mutableSetOf()) { it.reference.id }
+    val plugins = available.plugins.map { candidate ->
+        installedById[candidate.reference.id]?.let { installedPlugin ->
+            candidate.copy(
+                isInstalled = installedPlugin.isInstalled,
+                isEnabled = installedPlugin.isEnabled,
+                installPolicy = installedPlugin.installPolicy,
+                authPolicy = installedPlugin.authPolicy,
+            )
+        } ?: candidate
+    } + installed.plugins.filterNot { it.reference.id in availableIds }
+    return AgentPluginCatalog(
+        plugins = plugins,
+        errors = (available.errors + installed.errors).distinct(),
+        freshness = leastFresh(available.freshness, installed.freshness),
+    )
+}
+
+private fun leastFresh(
+    first: AgentCatalogFreshness,
+    second: AgentCatalogFreshness,
+): AgentCatalogFreshness = when {
+    first == AgentCatalogFreshness.STALE_CACHE || second == AgentCatalogFreshness.STALE_CACHE ->
+        AgentCatalogFreshness.STALE_CACHE
+    first == AgentCatalogFreshness.FRESH_CACHE || second == AgentCatalogFreshness.FRESH_CACHE ->
+        AgentCatalogFreshness.FRESH_CACHE
+    else -> AgentCatalogFreshness.LIVE
+}
+
 internal suspend fun CodexAgentClient.requestAvailablePluginsAction(workingDirectory: String?, cache: Path?): AgentPluginCatalog =
     listPlugins(
         workingDirectory,
@@ -179,7 +219,7 @@ internal suspend fun <P, R> CodexAgentClient.listPluginsAction(
     val result = pluginRequest(method, params, timeoutMillis ?: pluginRequestTimeoutMillis)
     val errors = loadErrors(result).orEmpty().map { it.message }.distinct()
     val catalog = AgentPluginCatalog(parsePluginMarketplaces(marketplaces(result)), errors)
-    if (builtInToolDispatcher != null) {
+    if (toolProvider != null) {
         builtInToolGate.withLock {
             applyBuiltInPluginEnablement(catalog)
             builtInEnablementLoaded = true
@@ -205,7 +245,7 @@ internal suspend fun <P, R> CodexAgentClient.pluginRequestAction(
 
 internal fun CodexAgentClient.pluginCacheFileAction(workingDirectory: String?, kind: String): Path? {
     val directory = pluginCacheDirectory ?: return null
-    val key = "$clientVersion\u0000${workingDirectory.orEmpty()}\u0000$kind".sha256Hex()
+    val key = "${clientInfo.name}\u0000${clientInfo.title}\u0000${clientInfo.version}\u0000${workingDirectory.orEmpty()}\u0000$kind".sha256Hex()
     return directory / "$key.json"
 }
 
@@ -243,7 +283,7 @@ internal fun <T> CodexAgentClient.writePluginCacheAction(file: Path?, serializer
 }
 
 internal fun CodexAgentClient.validateWorkingDirectoryAction(workingDirectory: String?) {
-    require(workingDirectory == null || workingDirectory.startsWith('/')) {
+    require(workingDirectory == null || workingDirectory.isAbsoluteHostPath()) {
         "Working directory must be absolute"
     }
 }
@@ -251,10 +291,7 @@ internal fun CodexAgentClient.validateWorkingDirectoryAction(workingDirectory: S
 internal fun CodexAgentClient.clearPluginCacheAction() {
     val directory = pluginCacheDirectory ?: return
     val fileSystem = requireFileSystem()
-    directory.takeIf { fileSystem.metadataOrNull(it)?.isDirectory == true }
-        ?.let(fileSystem::list)
-        .orEmpty()
-        .forEach { it.deleteIfPresent(fileSystem) }
+    fileSystem.clearDirectory(directory)
 }
 
 private fun Path.cacheTimestamp(): Path = checkNotNull(parent) / "$name.timestamp"

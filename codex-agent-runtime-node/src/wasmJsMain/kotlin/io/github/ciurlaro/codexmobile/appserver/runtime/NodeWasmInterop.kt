@@ -9,6 +9,7 @@ import kotlin.js.JsString
 internal external interface WasmNodeStats : JsAny {
     fun isFile(): Boolean
     fun isDirectory(): Boolean
+    fun isSymbolicLink(): Boolean
 }
 
 internal external interface WasmNodeHash : JsAny {
@@ -18,12 +19,22 @@ internal external interface WasmNodeHash : JsAny {
 
 internal fun wasmFsRealpathSync(path: String): String = realpathSync(path)
 internal fun wasmFsStatSync(path: String): WasmNodeStats = statSync(path)
+internal fun wasmFsLstatSync(path: String): WasmNodeStats = lstatSync(path)
+internal fun wasmFsExistsSync(path: String): Boolean = existsSync(path)
+internal fun wasmFsSize(path: String): Double = js("statSync(path).size")
 internal fun wasmFsAccessSync(path: String, mode: Int): Unit = accessSync(path, mode)
 internal fun wasmFsReadFileSync(path: String): JsAny = readFileSync(path)
 internal fun wasmFsWriteFileSync(path: String, value: String): Unit = writeFileSync(path, value)
 internal fun wasmFsChmodSync(path: String, mode: Int): Unit = chmodSync(path, mode)
 internal fun wasmFsMkdtempSync(prefix: String): String = mkdtempSync(prefix)
 internal fun wasmFsRmSync(path: String, options: JsAny): Unit = rmSync(path, options)
+internal fun wasmFsRenameSync(source: String, destination: String): Unit = renameSync(source, destination)
+internal fun wasmFsMkdirRecursive(path: String): Unit = js("mkdirSync(path, { recursive: true })")
+internal fun wasmFsListSize(path: String): Int = js("readdirSync(path).length")
+internal fun wasmFsListEntry(path: String, index: Int): String = js("readdirSync(path)[index]")
+internal fun wasmFsWriteBytes(path: String, bytes: JsAny): Unit = js("writeFileSync(path, bytes)")
+internal fun wasmInflateRaw(bytes: JsAny, maxOutputLength: Int): JsAny =
+    js("require('node:zlib').inflateRawSync(bytes, { maxOutputLength })")
 internal fun wasmPathIsAbsolute(path: String): Boolean = isAbsolute(path)
 internal fun wasmPathResolve(path: String): String = resolve(path)
 internal fun wasmPathBaseName(path: String): String = basename(path)
@@ -48,6 +59,18 @@ internal fun wasmProcessArgumentCount(): Int = js("process.argv.length")
 internal fun wasmProcessArgument(index: Int): String = js("process.argv[index]")
 internal fun wasmProcessExit(code: Int): Unit = js("process.exit(code)")
 internal fun wasmConsoleError(message: String): Unit = js("console.error(message)")
+internal fun wasmOpenUrl(url: String, platform: String): Unit = js("""
+    (() => {
+        const command = platform === 'darwin' ? 'open' : platform === 'win32' ? 'explorer.exe' : 'xdg-open';
+        const child = require('node:child_process').spawn(command, [url], {
+            detached: true,
+            shell: false,
+            stdio: 'ignore'
+        });
+        child.once('error', error => console.error(error?.message ?? 'Unable to open the authorization URL'));
+        child.unref();
+    })()
+""")
 
 internal fun wasmChildStdout(child: JsAny): JsAny = js("child.stdout")
 internal fun wasmChildStderr(child: JsAny): JsAny = js("child.stderr")
@@ -61,6 +84,8 @@ internal fun wasmStreamDestroyed(stream: JsAny): Boolean = js("stream.destroyed 
 internal fun wasmStreamEnd(stream: JsAny): Unit = js("stream.end()")
 internal fun wasmBufferLength(value: JsAny): Int = js("value.length")
 internal fun wasmBufferByte(value: JsAny, index: Int): Int = js("value[index]")
+internal fun wasmBufferAllocate(size: Int): JsAny = js("Buffer.alloc(size)")
+internal fun wasmBufferSet(value: JsAny, index: Int, byte: Int): Unit = js("value[index] = byte")
 internal fun wasmCloseCode(value: JsAny?): Int = js("typeof value === 'number' ? value : -1")
 internal fun wasmErrorMessage(value: JsAny?, fallback: String): String =
     js("value?.message?.toString() ?? fallback")

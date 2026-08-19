@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -78,36 +76,38 @@ import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.KSerializer
 
 
-internal fun CodexAgentClient.handleBuiltInToolCallAction(id: JsonElement, params: DynamicToolCallParams) {
+internal suspend fun CodexAgentClient.handleBuiltInToolCallAction(id: JsonElement, params: DynamicToolCallParams) {
     val pending = runCatching {
-        checkNotNull(builtInToolDispatcher) { "Built-in tools are unavailable" }
+        checkNotNull(toolProvider) { "Built-in tools are unavailable" }
         check(params.namespace == null) { "Built-in tools do not use namespaces" }
         val tool = params.tool
         val definition = builtInToolsByName[tool] ?: error("Unknown built-in tool")
         val pluginId = definition.pluginId
-        val sessionId = SessionId(params.threadId)
-        check(sessionId in openedSessions) { "Tool call session is not open" }
-        val runtimeSettings = sessionRuntimeSettings[sessionId]
-            ?: error("Tool call session settings are unavailable")
+        val conversationId = ConversationId(params.threadId)
+        val runtimeSettings = stateLock.withLock {
+            check(conversationId in openedConversations) { "Tool call conversation is not open" }
+            conversationRuntimeSettings[conversationId]
+                ?: error("Tool call conversation settings are unavailable")
+        }
         val workspace = runtimeSettings.workspace
             ?: error("A selected workspace is required")
         val arguments = params.arguments as? JsonObject
             ?: error("Tool arguments must be an object")
         val call = BuiltInToolCall(
-            threadId = sessionId.value,
+            conversationId = conversationId,
             turnId = params.turnId,
             callId = params.callId,
             pluginId = pluginId,
             tool = tool,
             arguments = arguments,
-            workspace = workspace,
+            workspacePath = workspace,
             argumentsHash = sha256(canonicalJson(arguments)),
             deadlineEpochMillis = currentEpochMillis() + BUILT_IN_TOOL_DEADLINE_MILLIS,
         )
         PendingBuiltInApproval(
             wireId = id,
             call = call,
-            requiresPermit = definition.mutation &&
+            requiresPermit = definition.isMutation &&
                 typedMutationAuthority(runtimeSettings.approvalPreset) ==
                 TypedMutationAuthority.USER_APPROVAL,
         )
@@ -122,31 +122,33 @@ internal fun CodexAgentClient.handleBuiltInToolCallAction(id: JsonElement, param
 }
 
 internal suspend fun CodexAgentClient.continueBuiltInToolCallAction(pending: PendingBuiltInApproval) {
-    val replay = try {
-        builtInToolGate.withLock {
-            validateBuiltInCall(pending)
-            checkNotNull(builtInToolDispatcher).replay(pending.call)
-        }
-    } catch (error: Exception) {
-        respondBuiltInResult(pending.wireId, BuiltInToolResult.text(error.visibleMessage(), false))
-        return
-    }
-    if (replay != null) {
-        respondBuiltInResult(pending.wireId, replay)
-        return
-    }
-
-    val runtimeSettings = sessionRuntimeSettings[SessionId(pending.call.threadId)]
-        ?: return respondBuiltInResult(
-            pending.wireId,
-            BuiltInToolResult.text("Tool call session settings are unavailable", false),
-        )
-    if (builtInToolsByName[pending.call.tool]?.mutation == true) {
+    val runtimeSettings = stateLock.withLock {
+        conversationRuntimeSettings[pending.call.conversationId]
+            ?.takeIf { pending.call.conversationId in openedConversations }
+    } ?: return respondBuiltInResult(
+        pending.wireId,
+        BuiltInToolResult.text("Tool call conversation settings are unavailable", false),
+    )
+    if (builtInToolsByName[pending.call.tool]?.isMutation == true) {
         when (typedMutationAuthority(runtimeSettings.approvalPreset)) {
             TypedMutationAuthority.USER_APPROVAL -> {
                 val call = pending.call
-                val requestId = "builtin:${call.threadId}:${call.turnId}:${call.callId}"
-                if (pendingBuiltInApprovals.putIfMissing(requestId, pending) != null) {
+                val requestId = "builtin:${call.conversationId.value}:${call.turnId}:${call.callId}"
+                val inserted = stateLock.withLock {
+                    if (call.conversationId !in openedConversations) {
+                        null
+                    } else {
+                        pendingBuiltInApprovals.putIfMissing(requestId, pending) == null
+                    }
+                }
+                if (inserted == null) {
+                    respondBuiltInResult(
+                        pending.wireId,
+                        BuiltInToolResult.text("Tool call conversation is closed", false),
+                    )
+                    return
+                }
+                if (!inserted) {
                     respondBuiltInResult(
                         pending.wireId,
                         BuiltInToolResult.text("Duplicate approval request", false),
@@ -155,10 +157,10 @@ internal suspend fun CodexAgentClient.continueBuiltInToolCallAction(pending: Pen
                 }
                 eventsChannel.send(
                     AgentEvent.ApprovalRequested(
-                        sessionId = SessionId(call.threadId),
+                        conversationId = call.conversationId,
                         requestId = requestId,
-                        title = "Approve ${call.tool.replace('_', ' ')}?",
-                        details = "Plugin: ${call.pluginId}\nWorkspace: ${call.workspace}",
+                        title = "Approve ${call.tool.replace('_', ' ')}?".safeApprovalText(),
+                        details = "Plugin: ${call.pluginId}\nWorkspace: ${call.workspacePath}".safeApprovalText(),
                     ),
                 )
                 return
@@ -173,23 +175,31 @@ internal suspend fun CodexAgentClient.executeBuiltInToolAction(pending: PendingB
     val result = runCatching {
         builtInToolGate.withLock {
             validateBuiltInCall(pending)
-            checkNotNull(builtInToolDispatcher).execute(
+            val definition = checkNotNull(builtInToolsByName[pending.call.tool])
+            val result = checkNotNull(toolProvider).execute(
                 pending.call,
-                checkActive = { validateBuiltInCall(pending) },
-                beforeMutationDispatch = {
-                    validateBuiltInCall(pending)
-                    check(!pending.dispatch) {
-                        "Built-in mutation dispatch was already used"
-                    }
-                    pending.dispatch = true
-                    if (pending.requiresPermit) {
-                        check(pending.permit) {
-                            "Built-in mutation approval is missing or was already used"
+                CodexToolExecutionContext(
+                    checkActiveAction = { validateBuiltInCall(pending) },
+                    beforeMutationAction = {
+                        validateBuiltInCall(pending)
+                        check(definition.isMutation) { "Only mutation tools may dispatch mutations" }
+                        check(!pending.dispatch) {
+                            "Built-in mutation dispatch was already used"
                         }
-                        pending.permit = false
-                    }
-                },
+                        pending.dispatch = true
+                        if (pending.requiresPermit) {
+                            check(pending.permit) {
+                                "Built-in mutation approval is missing or was already used"
+                            }
+                            pending.permit = false
+                        }
+                    },
+                ),
             )
+            check(!definition.isMutation || pending.dispatch) {
+                "Mutation tools must call context.beforeMutation() before dispatch"
+            }
+            result
         }
     }.getOrElse { error -> BuiltInToolResult.text(error.visibleMessage(), false) }
     runCatching { respondBuiltInResult(pending.wireId, result) }
@@ -204,23 +214,23 @@ internal suspend fun CodexAgentClient.validateBuiltInCallAction(pending: Pending
     check(currentEpochMillis() <= call.deadlineEpochMillis) {
         "Built-in tool call deadline expired"
     }
-    val sessionId = SessionId(call.threadId)
+    val conversationId = call.conversationId
     val active = turnStateLock.withLock {
-        (activeTurns[sessionId] == call.turnId || sessionId in startingTurns) &&
-            cancelledTurns[sessionId] != call.turnId
+        (activeTurns[conversationId] == call.turnId || conversationId in startingTurns) &&
+            cancelledTurns[conversationId] != call.turnId
     }
     check(active) { "Built-in tool call is no longer active" }
 }
 
 internal suspend fun CodexAgentClient.cancelPendingBuiltInToolsAction(
-    sessionId: SessionId,
+    conversationId: ConversationId,
     turnId: String?,
     message: String,
 ) {
     val cancelled = stateLock.withLock {
         pendingBuiltInApprovals.entries
         .filter { (_, pending) ->
-            pending.call.threadId == sessionId.value &&
+            pending.call.conversationId == conversationId &&
                 (turnId == null || pending.call.turnId == turnId)
         }
         .mapNotNull { (requestId, pending) ->

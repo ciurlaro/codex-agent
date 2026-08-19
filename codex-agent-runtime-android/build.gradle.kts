@@ -37,26 +37,24 @@ extensions.configure<LibraryExtension> {
     }
 }
 
+kotlin {
+    explicitApi()
+}
+
 dependencies {
     api(project(":codex-agent-client"))
-    api(libs.androidx.sqlite)
-    api(libs.okio)
+    implementation(libs.androidx.browser)
+    implementation(libs.androidx.sqlite)
     implementation(libs.androidx.sqlite.framework)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.okio)
 
     testImplementation(kotlin("test-junit"))
     testImplementation(bundledSqliteTest)
 }
 
-val prepareRuntime = tasks.named<PrepareCodexRuntimeTask>("prepareCodexRuntime")
 extensions.getByType<LibraryAndroidComponentsExtension>().apply {
     beforeVariants(selector().all()) { variant -> variant.enableAndroidTest = false }
-    onVariants { variant ->
-        variant.sources.jniLibs?.addGeneratedSourceDirectory(
-            prepareRuntime,
-            PrepareCodexRuntimeTask::outputDirectory,
-        )
-    }
 }
 
 mavenPublishing {
@@ -68,7 +66,6 @@ mavenPublishing {
         ),
     )
     coordinates("io.github.ciurlaro", "codex-agent-runtime-android", project.version.toString())
-    publishToMavenCentral(automaticRelease = true)
     if (
         providers.gradleProperty("signingInMemoryKey").isPresent ||
         providers.gradleProperty("signing.secretKeyRingFile").isPresent

@@ -17,6 +17,8 @@ pub(crate) struct RuntimeConfiguration {
     pub(crate) sandbox_root_path: PathBuf,
     pub(crate) workspace_path: PathBuf,
     pub(crate) codex_home_path: PathBuf,
+    #[serde(default)]
+    pub(crate) security_scoped_workspace: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -46,7 +48,11 @@ impl RuntimeConfiguration {
         if !sandbox.is_dir() {
             return Err("iOS sandbox root must be an existing directory".to_string());
         }
-        let workspace = existing_directory_in_sandbox(&sandbox, &self.workspace_path)?;
+        let workspace = if self.security_scoped_workspace {
+            self.workspace_path.canonicalize().map_err(display_error)?
+        } else {
+            existing_directory_in_sandbox(&sandbox, &self.workspace_path)?
+        };
         if !workspace.is_dir() {
             return Err("iOS workspace must be an existing directory".to_string());
         }

@@ -2,9 +2,10 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.promise
+import kotlinx.coroutines.withTimeout
 import okio.Path.Companion.toPath
 
 @OptIn(DelicateCoroutinesApi::class)
@@ -82,6 +84,27 @@ class NodeCodexRuntimeTest {
     }
 
     @Test
+    fun closeKeepsRuntimeEventsOpenUntilTheOwnedProcessExits() = GlobalScope.promise {
+        val process = ControlledNodeProcess(exitOnClose = false)
+        val runtime = NodeCodexRuntime(
+            NodeCodexRuntimeConfiguration(
+                "unused".toPath(), "unused".toPath(), "unused".toPath(), "0".repeat(64),
+            ),
+            prepare = { NodeLaunchSpec("unused", emptyArray(), "unused", false, "linuxX64") },
+            launcher = NodeProcessLauncher { process },
+        )
+        runtime.start()
+        val eventsCompleted = async { runtime.events.toList() }
+
+        runtime.close()
+        delay(1)
+        assertFalse(eventsCompleted.isCompleted)
+
+        process.exit(0)
+        withTimeout(5_000) { eventsCompleted.await() }
+    }
+
+    @Test
     fun detachedLeaderExitStillForcesGroupKill() = GlobalScope.promise {
         val exitCode = CompletableDeferred<Int>()
         val signals = mutableListOf<String>()
@@ -110,12 +133,16 @@ class NodeCodexRuntimeTest {
     }
 }
 
-private class ControlledNodeProcess : NodeOwnedProcess {
+private class ControlledNodeProcess(
+    private val exitOnClose: Boolean = true,
+) : NodeOwnedProcess {
     private val output = Channel<ByteArray>(1)
     override val stdout: Flow<ByteArray> = output.receiveAsFlow()
     override val exitCode = CompletableDeferred<Int>()
     override suspend fun write(line: String): Unit = error("write after exit")
-    override fun close() = exit(0)
+    override fun close() {
+        if (exitOnClose) exit(0)
+    }
     fun exit(code: Int) {
         output.close()
         if (!exitCode.isCompleted) exitCode.complete(code)

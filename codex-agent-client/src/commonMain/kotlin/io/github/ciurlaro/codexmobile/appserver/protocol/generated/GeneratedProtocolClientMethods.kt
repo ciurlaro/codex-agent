@@ -6,7 +6,7 @@ package io.github.ciurlaro.codexmobile.appserver.protocol.generated
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.serializer
 
-public object AppServerClientMethods {
+internal object AppServerClientMethods {
     public data object AccountLoginCancel : AppServerMethod<CancelLoginAccountParams, CancelLoginAccountResponse> {
         override val descriptor = AppServerProtocolDescriptors.clientRequests.getValue("account/login/cancel"); override val paramsSerializer = CancelLoginAccountParams.serializer(); override val responseSerializer = CancelLoginAccountResponse.serializer() }
 

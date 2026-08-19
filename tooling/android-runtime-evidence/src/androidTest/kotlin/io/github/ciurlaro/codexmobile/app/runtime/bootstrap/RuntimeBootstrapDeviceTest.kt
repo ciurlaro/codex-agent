@@ -109,7 +109,7 @@ class RuntimeBootstrapDeviceTest {
     }
 
     private suspend fun startAndInitializeRuntime(whileRunning: () -> Unit = {}) = coroutineScope {
-        val runtime = AndroidCodexRuntimeFactory(context).create()
+        val runtime = createRuntimeWithOverride(null)
         try {
             runtime.start()
             val initialized = async {
@@ -141,7 +141,7 @@ class RuntimeBootstrapDeviceTest {
         assertTrue("Expected runtime startup failure for ${executable.name}", failure != null)
     }
 
-    private fun createRuntimeWithOverride(executable: File): CodexRuntime {
+    private fun createRuntimeWithOverride(executable: File?): CodexRuntime {
         val type = Class.forName(
             "io.github.ciurlaro.codexmobile.app.runtime.bootstrap.AndroidRuntimeBootstrap",
         )

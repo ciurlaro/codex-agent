@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class LoginAccountParamsAmazonBedrock(
+internal data class LoginAccountParamsAmazonBedrock(
     @SerialName("apiKey")
     public val apiKey: String,
     @SerialName("region")
@@ -24,7 +24,7 @@ public data class LoginAccountParamsAmazonBedrock(
     init { require(type == "amazonBedrock") }
 }
 
-public object LoginAccountParamsSerializer : JsonContentPolymorphicSerializer<LoginAccountParams>(LoginAccountParams::class) {
+internal object LoginAccountParamsSerializer : JsonContentPolymorphicSerializer<LoginAccountParams>(LoginAccountParams::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<LoginAccountParams> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "apiKey" -> LoginAccountParamsApiKey.serializer()
@@ -37,10 +37,10 @@ public object LoginAccountParamsSerializer : JsonContentPolymorphicSerializer<Lo
 }
 
 @Serializable(with = LoginAccountResponseSerializer::class)
-public sealed interface LoginAccountResponse
+internal sealed interface LoginAccountResponse
 
 @Serializable
-public data class LoginAccountResponseApiKey(
+internal data class LoginAccountResponseApiKey(
     @SerialName("type")
     public val type: String = "apiKey",
 ) : LoginAccountResponse {
@@ -48,7 +48,7 @@ public data class LoginAccountResponseApiKey(
 }
 
 @Serializable
-public data class LoginAccountResponseChatgpt(
+internal data class LoginAccountResponseChatgpt(
     @SerialName("authUrl")
     public val authUrl: String,
     @SerialName("loginId")
@@ -60,7 +60,7 @@ public data class LoginAccountResponseChatgpt(
 }
 
 @Serializable
-public data class LoginAccountResponseChatgptDeviceCode(
+internal data class LoginAccountResponseChatgptDeviceCode(
     @SerialName("loginId")
     public val loginId: String,
     @SerialName("userCode")
@@ -74,7 +74,7 @@ public data class LoginAccountResponseChatgptDeviceCode(
 }
 
 @Serializable
-public data class LoginAccountResponseChatgptAuthTokens(
+internal data class LoginAccountResponseChatgptAuthTokens(
     @SerialName("type")
     public val type: String = "chatgptAuthTokens",
 ) : LoginAccountResponse {
@@ -82,14 +82,14 @@ public data class LoginAccountResponseChatgptAuthTokens(
 }
 
 @Serializable
-public data class LoginAccountResponseAmazonBedrock(
+internal data class LoginAccountResponseAmazonBedrock(
     @SerialName("type")
     public val type: String = "amazonBedrock",
 ) : LoginAccountResponse {
     init { require(type == "amazonBedrock") }
 }
 
-public object LoginAccountResponseSerializer : JsonContentPolymorphicSerializer<LoginAccountResponse>(LoginAccountResponse::class) {
+internal object LoginAccountResponseSerializer : JsonContentPolymorphicSerializer<LoginAccountResponse>(LoginAccountResponse::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<LoginAccountResponse> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "apiKey" -> LoginAccountResponseApiKey.serializer()
@@ -102,16 +102,16 @@ public object LoginAccountResponseSerializer : JsonContentPolymorphicSerializer<
 }
 
 @Serializable
-public enum class LoginAppBrand {
+internal enum class LoginAppBrand {
     @SerialName("codex") CODEX,
     @SerialName("chatgpt") CHATGPT,
 }
 
 @Serializable
-public class LogoutAccountResponse
+internal class LogoutAccountResponse
 
 @Serializable
-public data class ManagedHooksRequirements(
+internal data class ManagedHooksRequirements(
     @SerialName("PermissionRequest")
     public val PermissionRequest: List<ConfiguredHookMatcherGroup>,
     @SerialName("PostCompact")
@@ -141,7 +141,7 @@ public data class ManagedHooksRequirements(
 )
 
 @Serializable
-public data class MarketplaceAddParams(
+internal data class MarketplaceAddParams(
     @SerialName("source")
     public val source: String,
     @SerialName("refName")
@@ -151,7 +151,7 @@ public data class MarketplaceAddParams(
 )
 
 @Serializable
-public data class MarketplaceAddResponse(
+internal data class MarketplaceAddResponse(
     @SerialName("alreadyAdded")
     public val alreadyAdded: Boolean,
     @SerialName("installedRoot")
@@ -161,13 +161,13 @@ public data class MarketplaceAddResponse(
 )
 
 @Serializable
-public data class MarketplaceInterface(
+internal data class MarketplaceInterface(
     @SerialName("displayName")
     public val displayName: String? = null,
 )
 
 @Serializable
-public data class MarketplaceLoadErrorInfo(
+internal data class MarketplaceLoadErrorInfo(
     @SerialName("marketplacePath")
     public val marketplacePath: AbsolutePathBuf,
     @SerialName("message")
@@ -175,13 +175,13 @@ public data class MarketplaceLoadErrorInfo(
 )
 
 @Serializable
-public data class MarketplaceRemoveParams(
+internal data class MarketplaceRemoveParams(
     @SerialName("marketplaceName")
     public val marketplaceName: String,
 )
 
 @Serializable
-public data class MarketplaceRemoveResponse(
+internal data class MarketplaceRemoveResponse(
     @SerialName("marketplaceName")
     public val marketplaceName: String,
     @SerialName("installedRoot")
@@ -189,7 +189,7 @@ public data class MarketplaceRemoveResponse(
 )
 
 @Serializable
-public data class MarketplaceUpgradeErrorInfo(
+internal data class MarketplaceUpgradeErrorInfo(
     @SerialName("marketplaceName")
     public val marketplaceName: String,
     @SerialName("message")
@@ -197,13 +197,13 @@ public data class MarketplaceUpgradeErrorInfo(
 )
 
 @Serializable
-public data class MarketplaceUpgradeParams(
+internal data class MarketplaceUpgradeParams(
     @SerialName("marketplaceName")
     public val marketplaceName: String? = null,
 )
 
 @Serializable
-public data class MarketplaceUpgradeResponse(
+internal data class MarketplaceUpgradeResponse(
     @SerialName("errors")
     public val errors: List<MarketplaceUpgradeErrorInfo>,
     @SerialName("selectedMarketplaces")
@@ -213,7 +213,7 @@ public data class MarketplaceUpgradeResponse(
 )
 
 @Serializable
-public enum class McpAuthStatus {
+internal enum class McpAuthStatus {
     @SerialName("unsupported") UNSUPPORTED,
     @SerialName("notLoggedIn") NOT_LOGGED_IN,
     @SerialName("bearerToken") BEARER_TOKEN,

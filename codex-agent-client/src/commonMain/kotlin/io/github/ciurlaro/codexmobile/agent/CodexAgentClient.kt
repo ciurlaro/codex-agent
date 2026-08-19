@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
 import io.github.ciurlaro.codexmobile.agent.AgentConversation
@@ -25,89 +24,106 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
-import okio.FileSystem
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import okio.Path
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.KSerializer
 
-class CodexAgentClient(
+internal class CodexAgentClient(
     runtimeFactory: CodexRuntimeFactory,
-    requestTimeoutMillis: Long = 20_000,
-    internal val clientVersion: String = "test",
+    internal val clientInfo: CodexClientInfo,
+    internal val requestTimeoutMillis: Long = 20_000,
     internal val pluginCacheDirectory: Path? = null,
     shellTranscriptDirectory: Path? = null,
     turnInputMetadataDirectory: Path? = null,
-    internal val builtInToolDispatcher: BuiltInToolDispatcher? = null,
+    internal val toolProvider: CodexToolProvider? = null,
     internal val pluginRequestTimeoutMillis: Long = 120_000,
     internal val emptyPluginCatalogRetryDelaysMillis: List<Long> = EMPTY_PLUGIN_CATALOG_RETRY_DELAYS_MILLIS,
-    clientName: String = "codex_mobile",
-    clientTitle: String = "Codex Mobile",
     coroutineDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    fileSystem: FileSystem? = null,
-) : AgentClient {
+    fileSystem: AgentFileStore? = null,
+) : AutoCloseable {
     internal val coroutineDispatcher = coroutineDispatcher
     internal val fileSystem = fileSystem
+    internal val builtInToolDefinitions = toolProvider?.definitions().orEmpty().toList()
+    internal val builtInToolsByName = builtInToolDefinitions.associateBy(BuiltInToolDefinition::name)
     internal val scope = CoroutineScope(SupervisorJob() + coroutineDispatcher)
-    internal val eventsChannel = Channel<AgentEvent>(capacity = EVENT_BUFFER_SIZE)
+    internal val eventsChannel = BoundedEventBroadcast<AgentEvent>(
+        capacity = EVENT_BUFFER_SIZE,
+        observerOverflow = {
+            AgentEvent.Failure(
+                conversationId = null,
+                code = "event_observer_overflow",
+                message = "The event observer was closed because its 64-event mailbox overflowed.",
+                isRecoverable = true,
+            )
+        },
+        backlogOverflow = {
+            AgentEvent.Failure(
+                conversationId = null,
+                code = "event_backlog_overflow",
+                message = "The event backlog overflowed while no observers were registered.",
+                isRecoverable = true,
+            )
+        },
+    )
     internal val authMutex = Mutex()
     internal val loginStateLock = Mutex()
     internal val stateLock = Mutex()
+    internal val conversationOwnershipLock = Mutex()
     internal val cancelledLoginIds = mutableSetOf<String>()
     internal val pendingApprovalRequests = mutableMapOf<String, PendingApproval>()
     internal val pendingBuiltInApprovals = mutableMapOf<String, PendingBuiltInApproval>()
     internal val pendingElicitationRequests = mutableMapOf<String, PendingElicitation>()
-    internal val workItems = mutableMapOf<String, Pair<SessionId, AgentWorkActivity>>()
+    internal val workItems = mutableMapOf<String, Pair<ConversationId, AgentWorkActivity>>()
     internal val userShellItems = mutableSetOf<String>()
     internal val commentaryItems = mutableSetOf<String>()
     internal val knownSkillPaths = mutableSetOf<String>()
-    internal val openedSessions = mutableSetOf<SessionId>()
-    internal val sessionRuntimeSettings = mutableMapOf<SessionId, SessionRuntimeSettings>()
+    internal val openedConversations = mutableSetOf<ConversationId>()
+    internal val conversationOwners = mutableMapOf<ConversationId, Any>()
+    internal val conversationRuntimeSettings = mutableMapOf<ConversationId, ConversationRuntimeSettings>()
     internal val shellTranscriptStore = ShellTranscriptStore(shellTranscriptDirectory, fileSystem)
     internal val turnInputMetadataStore = TurnInputMetadataStore(turnInputMetadataDirectory, fileSystem)
-    @Volatile
-    internal var builtInToolDefinitions = builtInToolDispatcher?.definitions().orEmpty()
-    @Volatile
-    internal var builtInToolsByName = builtInToolDefinitions.associateBy(BuiltInToolDefinition::name)
     internal val builtInPluginEnabled = mutableMapOf<String, Boolean>().apply {
         builtInToolDefinitions.filter(BuiltInToolDefinition::requiresEnabledPlugin)
             .map(BuiltInToolDefinition::pluginId).distinct().forEach { put(it, true) }
     }
     internal val builtInToolGate = Mutex()
     internal val pluginRequestMutex = Mutex()
+    private val extensionMutationGate = Mutex()
     internal var builtInEnablementLoaded = false
     internal val turnStateLock = Mutex()
-    internal val activeTurns = mutableMapOf<SessionId, String>()
-    internal val startingTurns = mutableSetOf<SessionId>()
-    internal val terminalDuringStart = mutableMapOf<SessionId, String>()
-    internal val cancellingTurns = mutableSetOf<SessionId>()
-    internal val cancelledTurns = mutableMapOf<SessionId, String>()
+    internal val activeTurns = mutableMapOf<ConversationId, String>()
+    internal val startingTurns = mutableSetOf<ConversationId>()
+    internal val pendingTerminalsDuringStart = mutableMapOf<Pair<ConversationId, String>, AgentEvent>()
+    internal val recentTerminalTurnIds = mutableMapOf<ConversationId, ArrayDeque<String>>()
+    internal val shellStartupCompletions = mutableMapOf<ConversationId, CompletableDeferred<Boolean>>()
+    internal val cancellingTurns = mutableSetOf<ConversationId>()
+    internal val cancelledTurns = mutableMapOf<ConversationId, String>()
     internal var authenticated = false
     internal var closed = false
     internal val connection = AppServerConnection(
         runtimeFactory = runtimeFactory,
         initializeParams = InitializeParams(
-            clientInfo = ClientInfo(clientName, clientVersion, clientTitle),
+            clientInfo = ClientInfo(clientInfo.name, clientInfo.version, clientInfo.title),
             capabilities = InitializeCapabilities(
                 experimentalApi = true,
                 mcpServerOpenaiFormElicitation = false,
@@ -146,18 +162,42 @@ class CodexAgentClient(
     internal var loginStarting = false
     internal var loginCompletedDuringStart: LoginCompletion? = null
 
-    override val events: Flow<AgentEvent> = eventsChannel.receiveAsFlow()
+    internal val events: Flow<AgentEvent> = eventsChannel.events
 
-    override suspend fun authenticate() = authenticateAction(CodexAuthenticationMethod.ChatGptBrowser)
-    suspend fun authenticate(method: CodexAuthenticationMethod) = authenticateAction(method)
-    override suspend fun cancelAuthentication() = cancelAuthenticationAction()
-    override suspend fun signOut() = signOutAction()
-    override suspend fun listModels(): List<AgentModel> = listModelsAction()
-    override suspend fun listSkills( workingDirectory: String, forceReload: Boolean, ): AgentSkillCatalog = listSkillsAction(workingDirectory, forceReload)
-    override suspend fun readSkill(path: String, offset: Long): AgentSkillChunk = readSkillAction(path, offset)
-    override suspend fun setSkillEnabled(path: String, enabled: Boolean) = setSkillEnabledAction(path, enabled)
-    override suspend fun listInstalledPlugins( workingDirectory: String?, forceRefresh: Boolean, ): AgentPluginCatalog = listInstalledPluginsAction(workingDirectory, forceRefresh)
-    override suspend fun listAvailablePlugins( workingDirectory: String?, forceRefresh: Boolean, ): AgentPluginCatalog = listAvailablePluginsAction(workingDirectory, forceRefresh)
+    internal suspend fun start(): Unit {
+        connection.ensureStarted()
+    }
+
+    internal suspend fun authenticate(
+        method: CodexAuthenticationMethod = CodexAuthenticationMethod.ChatGptBrowser,
+    ) = authenticateAction(method)
+    internal suspend fun cancelAuthentication() = cancelAuthenticationAction()
+    internal suspend fun signOut() = signOutAction()
+    internal suspend fun listModels(): List<AgentModel> = listModelsAction()
+    internal suspend fun listSkills(
+        workingDirectory: String,
+        forceReload: Boolean = false,
+    ): AgentSkillCatalog =
+        listSkillsAction(workingDirectory, forceReload)
+    internal suspend fun readSkill(path: String, offset: Long): AgentSkillChunk = readSkillAction(path, offset)
+    internal suspend fun setSkillEnabled(path: String, isEnabled: Boolean) = mutateExtension {
+        setSkillEnabledAction(path, isEnabled)
+    }
+    internal suspend fun listInstalledPlugins(
+        workingDirectory: String? = null,
+        forceRefresh: Boolean = false,
+    ): AgentPluginCatalog =
+        listInstalledPluginsAction(workingDirectory, forceRefresh)
+    internal suspend fun listAvailablePlugins(
+        workingDirectory: String? = null,
+        forceRefresh: Boolean = false,
+    ): AgentPluginCatalog =
+        listAvailablePluginsAction(workingDirectory, forceRefresh)
+    internal suspend fun listMergedPlugins(
+        workingDirectory: String? = null,
+        forceRefresh: Boolean = false,
+    ): AgentPluginCatalog =
+        listMergedPluginsAction(workingDirectory, forceRefresh)
     internal suspend fun requestAvailablePlugins(workingDirectory: String?, cache: Path?): AgentPluginCatalog = requestAvailablePluginsAction(workingDirectory, cache)
     internal suspend fun <P, R> listPlugins( workingDirectory: String?, method: AppServerMethod<P, R>, params: P, timeoutMillis: Long? = null, marketplaces: (R) -> List<PluginMarketplaceEntry>, loadErrors: (R) -> List<MarketplaceLoadErrorInfo>?, onResponse: (R) -> Unit = {}, ): AgentPluginCatalog = listPluginsAction(workingDirectory, method, params, timeoutMillis, marketplaces, loadErrors, onResponse)
     internal suspend fun <P, R> pluginRequest( method: AppServerMethod<P, R>, params: P, timeoutMillis: Long = pluginRequestTimeoutMillis, retryOnTimeout: Boolean = false, ): R = pluginRequestAction(method, params, timeoutMillis, retryOnTimeout)
@@ -166,37 +206,70 @@ class CodexAgentClient(
     internal fun <T> writePluginCache(file: Path?, serializer: KSerializer<T>, response: T) = writePluginCacheAction(file, serializer, response)
     internal fun validateWorkingDirectory(workingDirectory: String?) = validateWorkingDirectoryAction(workingDirectory)
     internal fun clearPluginCache() = clearPluginCacheAction()
-    override suspend fun readPlugin(plugin: AgentPluginReference): AgentPluginDetail = readPluginAction(plugin)
-    override suspend fun installPlugin(plugin: AgentPluginReference): AgentPluginInstallResult = installPluginAction(plugin)
-    override suspend fun uninstallPlugin(plugin: AgentPluginReference): AgentPluginRemovalResult = uninstallPluginAction(plugin)
-    override suspend fun setPluginEnabled(pluginId: String, enabled: Boolean) = setPluginEnabledAction(pluginId, enabled)
-    override suspend fun listConnectors( sessionId: SessionId?, forceReload: Boolean, ): List<AgentConnector> = listConnectorsAction(sessionId, forceReload)
-    override suspend fun listMcpServers(): List<AgentMcpServer> = listMcpServersAction()
-    override suspend fun listHooks(workingDirectory: String): AgentHookCatalog = listHooksAction(workingDirectory)
-    override suspend fun setHookEnabled(key: String, enabled: Boolean) = setHookEnabledAction(key, enabled)
-    override suspend fun trustHook(key: String, currentHash: String) = trustHookAction(key, currentHash)
+    internal suspend fun readPlugin(plugin: AgentPluginReference): AgentPluginDetail = readPluginAction(plugin)
+    internal suspend fun installPlugin(plugin: AgentPluginReference): AgentPluginInstallResult = mutateExtension {
+        installPluginAction(plugin)
+    }
+    internal suspend fun uninstallPlugin(plugin: AgentPluginReference): Unit = mutateExtension {
+        uninstallPluginAction(plugin)
+    }
+    internal suspend fun setPluginEnabled(pluginId: String, isEnabled: Boolean) = mutateExtension {
+        setPluginEnabledAction(pluginId, isEnabled)
+    }
+    internal suspend fun listConnectors(
+        conversationId: ConversationId? = null,
+        forceReload: Boolean = false,
+    ): List<AgentConnector> =
+        listConnectorsAction(conversationId, forceReload)
+    internal suspend fun listMcpServers(): List<AgentMcpServer> = listMcpServersAction()
+    internal suspend fun listHooks(workingDirectory: String): AgentHookCatalog = listHooksAction(workingDirectory)
+    internal suspend fun setHookEnabled(key: String, isEnabled: Boolean) = mutateExtension {
+        setHookEnabledAction(key, isEnabled)
+    }
+    internal suspend fun trustHook(key: String, currentHash: String) = mutateExtension {
+        trustHookAction(key, currentHash)
+    }
     internal suspend fun writeHookState(key: String, state: JsonObjectBuilder.() -> Unit) = writeHookStateAction(key, state)
-    override suspend fun startMcpOauth(serverName: String, sessionId: SessionId?): String = startMcpOauthAction(serverName, sessionId)
-    override suspend fun listSessions(): List<AgentConversationSummary> = listSessionsAction()
-    override suspend fun readSession(sessionId: SessionId): AgentConversation = readSessionAction(sessionId)
-    override suspend fun renameSession(sessionId: SessionId, name: String) = renameSessionAction(sessionId, name)
-    override suspend fun deleteSession(sessionId: SessionId) = deleteSessionAction(sessionId)
-    override suspend fun openSession(previous: SessionId?, settings: AgentRuntimeSettings): SessionId = openSessionAction(previous, settings)
-    override suspend fun sendTurn(sessionId: SessionId, request: AgentTurnRequest) = sendTurnAction(sessionId, request)
-    override suspend fun runShellCommand(sessionId: SessionId, command: String) = runShellCommandAction(sessionId, command)
-    override suspend fun cancelTurn(sessionId: SessionId) = cancelTurnAction(sessionId)
-    override suspend fun resolveApproval(requestId: String, decision: AgentApprovalDecision) = resolveApprovalAction(requestId, decision)
-    override suspend fun resolveElicitation( requestId: String, response: AgentElicitationResponse, ) = resolveElicitationAction(requestId, response)
-    override fun close() = closeAction()
+    internal suspend fun startMcpOauth(
+        serverName: String,
+        conversationId: ConversationId? = null,
+    ): String = startMcpOauthAction(serverName, conversationId)
+    internal suspend fun listConversations(): List<AgentConversationSummary> = listConversationsAction()
+    internal suspend fun readConversation(conversationId: ConversationId): AgentConversation = readConversationAction(conversationId)
+    internal suspend fun renameConversation(conversationId: ConversationId, name: String) = renameConversationAction(conversationId, name)
+    internal suspend fun deleteConversation(conversationId: ConversationId) = deleteConversationAction(conversationId)
+    internal suspend fun detachConversation(
+        conversationId: ConversationId,
+        owner: Any = DEFAULT_CONVERSATION_OWNER,
+    ): ConversationDetachResult = detachConversationAction(conversationId, owner)
+    internal suspend fun openConversation(
+        conversationId: ConversationId?,
+        settings: AgentConversationSettings,
+        workingDirectory: String,
+        features: Set<CodexRuntimeFeature> = CodexRuntimeFeature.entries.toSet(),
+        owner: Any = DEFAULT_CONVERSATION_OWNER,
+    ): ConversationId = openConversationAction(conversationId, settings, workingDirectory, features, owner)
+    internal suspend fun sendTurn(
+        conversationId: ConversationId,
+        request: AgentTurnRequest,
+        workingDirectory: String,
+    ) = sendTurnAction(conversationId, request, workingDirectory)
+    internal suspend fun runShellCommand(conversationId: ConversationId, command: String) = runShellCommandAction(conversationId, command)
+    internal suspend fun cancelTurn(conversationId: ConversationId) = cancelTurnAction(conversationId)
+    internal suspend fun resolveApproval(requestId: String, decision: AgentApprovalDecision) = resolveApprovalAction(requestId, decision)
+    internal suspend fun resolveElicitation(requestId: String, response: AgentElicitationResponse) =
+        resolveElicitationAction(requestId, response)
+    override fun close(): Unit = closeAction()
     internal suspend fun refreshBuiltInPluginEnablement(workingDirectory: String) = refreshBuiltInPluginEnablementAction(workingDirectory)
     internal fun applyBuiltInPluginEnablement(catalog: AgentPluginCatalog) = applyBuiltInPluginEnablementAction(catalog)
     internal suspend fun handleConnectionEvent(event: AppServerEvent) = handleConnectionEventAction(event)
     internal suspend fun handleServerRequest(request: ServerRequest, method: String) = handleServerRequestAction(request, method)
-    internal fun handleBuiltInToolCall(id: JsonElement, params: DynamicToolCallParams) = handleBuiltInToolCallAction(id, params)
+    internal suspend fun handleBuiltInToolCall(id: JsonElement, params: DynamicToolCallParams) =
+        handleBuiltInToolCallAction(id, params)
     internal suspend fun continueBuiltInToolCall(pending: PendingBuiltInApproval) = continueBuiltInToolCallAction(pending)
     internal suspend fun executeBuiltInTool(pending: PendingBuiltInApproval) = executeBuiltInToolAction(pending)
     internal suspend fun validateBuiltInCall(pending: PendingBuiltInApproval) = validateBuiltInCallAction(pending)
-    internal suspend fun cancelPendingBuiltInTools(sessionId: SessionId, turnId: String?, message: String) = cancelPendingBuiltInToolsAction(sessionId, turnId, message)
+    internal suspend fun cancelPendingBuiltInTools(conversationId: ConversationId, turnId: String?, message: String) = cancelPendingBuiltInToolsAction(conversationId, turnId, message)
     internal suspend fun respondBuiltInResult(id: JsonElement, result: BuiltInToolResult) = respondBuiltInResultAction(id, result)
     internal suspend fun handleElicitationRequest( id: JsonElement, params: McpServerElicitationRequestParams, ) = handleElicitationRequestAction(id, params)
     internal suspend fun handleUserInputRequest(id: JsonElement, params: ToolRequestUserInputParams) = handleUserInputRequestAction(id, params)
@@ -206,7 +279,11 @@ class CodexAgentClient(
     internal suspend fun handleNotification(notification: ServerNotification) = handleNotificationAction(notification)
     internal suspend fun emitAuthenticated() = emitAuthenticatedAction()
     internal suspend fun applyLoginCompletion(completion: LoginCompletion) = applyLoginCompletionAction(completion)
-    internal suspend fun finishTurn(sessionId: SessionId, turnId: String?) = finishTurnAction(sessionId, turnId)
+    internal suspend fun finishTurn(
+        conversationId: ConversationId,
+        turnId: String,
+        event: AgentEvent,
+    ): Boolean = finishTurnAction(conversationId, turnId, event)
     internal suspend fun updateItemActivity( threadId: String, turnId: String, item: ThreadItem, started: Boolean, ) = updateItemActivityAction(threadId, turnId, item, started)
     internal suspend fun completeUserShellItem(threadId: String, turnId: String, item: ThreadItem) = completeUserShellItemAction(threadId, turnId, item)
     internal suspend fun handleConnectionFailure(code: String, message: String) = handleConnectionFailureAction(code, message)
@@ -218,6 +295,47 @@ class CodexAgentClient(
     internal fun pluginEnablementParams(pluginId: String, enabled: Boolean) = pluginEnablementParamsAction(pluginId, enabled)
     internal fun approvalsReviewer(preset: AgentApprovalPreset) = approvalsReviewerAction(preset)
     internal fun elicitationResponse(response: AgentElicitationResponse): McpServerElicitationRequestResponse = elicitationResponseAction(response)
+
+    private suspend fun <T> mutateExtension(block: suspend () -> T): T = extensionMutationGate.withLock {
+        val hasActiveTurn = turnStateLock.withLock {
+            startingTurns.isNotEmpty() || activeTurns.isNotEmpty() || cancellingTurns.isNotEmpty()
+        }
+        check(!hasActiveTurn) { "Extensions cannot be changed while a turn is active" }
+        block()
+    }
+
+    internal suspend fun markTurnStarting(conversationId: ConversationId, clearCancellation: Boolean = false) {
+        extensionMutationGate.withLock {
+            stateLock.withLock {
+                check(conversationId in openedConversations) { "Conversation is not open" }
+                turnStateLock.withLock {
+                    check(conversationId !in startingTurns && !activeTurns.containsKey(conversationId)) {
+                        "A turn is already active for this conversation"
+                    }
+                    if (clearCancellation) cancelledTurns -= conversationId
+                    startingTurns += conversationId
+                }
+            }
+        }
+    }
+
+    internal suspend fun markShellTurnStarting(conversationId: ConversationId): CompletableDeferred<Boolean> {
+        val completion = CompletableDeferred<Boolean>()
+        extensionMutationGate.withLock {
+            stateLock.withLock {
+                check(conversationId in openedConversations) { "Conversation is not open" }
+                turnStateLock.withLock {
+                    check(conversationId !in startingTurns && !activeTurns.containsKey(conversationId)) {
+                        "A turn is already active for this conversation"
+                    }
+                    startingTurns += conversationId
+                    cancelledTurns -= conversationId
+                    shellStartupCompletions[conversationId] = completion
+                }
+            }
+        }
+        return completion
+    }
 
     internal fun AgentPluginCatalog.asStale(message: String): AgentPluginCatalog = copy(
         freshness = AgentCatalogFreshness.STALE_CACHE,
@@ -263,3 +381,10 @@ class CodexAgentClient(
             this
         }
 }
+
+private data object DEFAULT_CONVERSATION_OWNER
+
+internal data class ConversationDetachResult(
+    val owned: Boolean,
+    val failure: Throwable? = null,
+)

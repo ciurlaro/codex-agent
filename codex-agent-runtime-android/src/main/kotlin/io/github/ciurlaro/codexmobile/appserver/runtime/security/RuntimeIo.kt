@@ -6,7 +6,7 @@ import androidx.sqlite.execSQL
 internal fun Throwable.visibleMessage(): String =
     message?.take(500)?.takeIf(String::isNotBlank) ?: this::class.simpleName ?: "Codex failure"
 
-fun installRuntimeLogPrivacyGuard(database: SQLiteConnection) {
+internal fun installRuntimeLogPrivacyGuard(database: SQLiteConnection) {
     database.execSQL("PRAGMA secure_delete=ON")
     database.execSQL("BEGIN IMMEDIATE")
     try {

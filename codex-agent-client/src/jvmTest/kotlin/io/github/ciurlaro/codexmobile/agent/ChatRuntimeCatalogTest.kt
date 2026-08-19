@@ -125,20 +125,20 @@ class ChatRuntimeCatalogTest {
             assertEquals("low", models.first().defaultEffort)
             assertTrue(models.first().isDefault)
 
-            val summaries = client.listSessions()
+            val summaries = client.listConversations()
             assertEquals(listOf(null, "threads-2"), threadCursors)
             assertEquals(listOf("Pinned title", "Second title"), summaries.map { it.title })
 
-            val conversation = client.readSession(SessionId("thread-b"))
+            val conversation = client.readConversation(ConversationId("thread-b"))
             assertEquals("Question", conversation.summary.title)
             assertEquals(2, conversation.messages.size)
             val user = conversation.messages[0]
             assertEquals("user-1", user.id)
-            assertEquals("client-1", user.clientId)
+            assertEquals("client-1", user.clientMessageId)
             assertEquals(AgentMessageRole.USER, user.role)
             assertEquals("Question", user.text)
             assertEquals(setOf(AgentCapability.WEB_SEARCH), user.capabilities)
-            assertEquals(AgentMessageRole.CODEX, conversation.messages[1].role)
+            assertEquals(AgentMessageRole.ASSISTANT, conversation.messages[1].role)
             assertEquals("Answer", conversation.messages[1].text)
             assertEquals("Checked the sources\n\nChecking the result", conversation.messages[1].reasoning)
         } finally {

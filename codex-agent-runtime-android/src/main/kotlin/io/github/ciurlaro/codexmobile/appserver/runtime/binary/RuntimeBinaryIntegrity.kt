@@ -6,10 +6,10 @@ import okio.Path
 import okio.blackholeSink
 import okio.buffer
 
-fun Path.isRegularFile(): Boolean =
+internal fun Path.isRegularFile(): Boolean =
     FileSystem.SYSTEM.metadataOrNull(this)?.isRegularFile == true
 
-fun Path.sha256(): String {
+internal fun Path.sha256(): String {
     val hashingSource = HashingSource.sha256(FileSystem.SYSTEM.source(this))
     hashingSource.use { source -> source.buffer().use { it.readAll(blackholeSink()) } }
     return hashingSource.hash.hex()

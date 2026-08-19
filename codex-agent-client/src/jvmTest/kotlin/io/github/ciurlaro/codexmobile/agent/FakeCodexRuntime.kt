@@ -220,6 +220,7 @@ internal class FakeCodexRuntime(
             "ephemeral" to JsonPrimitive(false),
             "modelProvider" to JsonPrimitive("openai"),
             "preview" to JsonPrimitive(""),
+            "conversationId" to id,
             "sessionId" to id,
             "source" to JsonPrimitive("cli"),
             "status" to buildJsonObject { put("type", "idle") },

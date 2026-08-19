@@ -13,14 +13,14 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ConfigLayerSourceLegacyManagedConfigTomlFromMdmConfigLayerSource(
+internal data class ConfigLayerSourceLegacyManagedConfigTomlFromMdmConfigLayerSource(
     @SerialName("type")
     public val type: String = "legacyManagedConfigTomlFromMdm",
 ) : ConfigLayerSource {
     init { require(type == "legacyManagedConfigTomlFromMdm") }
 }
 
-public object ConfigLayerSourceSerializer : JsonContentPolymorphicSerializer<ConfigLayerSource>(ConfigLayerSource::class) {
+internal object ConfigLayerSourceSerializer : JsonContentPolymorphicSerializer<ConfigLayerSource>(ConfigLayerSource::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ConfigLayerSource> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "mdm" -> ConfigLayerSourceMdmConfigLayerSource.serializer()
@@ -36,7 +36,7 @@ public object ConfigLayerSourceSerializer : JsonContentPolymorphicSerializer<Con
 }
 
 @Serializable
-public data class ConfigReadParams(
+internal data class ConfigReadParams(
     @SerialName("cwd")
     public val cwd: String? = null,
     @SerialName("includeLayers")
@@ -44,7 +44,7 @@ public data class ConfigReadParams(
 )
 
 @Serializable
-public data class ConfigReadResponse(
+internal data class ConfigReadResponse(
     @SerialName("config")
     public val config: Config,
     @SerialName("origins")
@@ -54,7 +54,7 @@ public data class ConfigReadResponse(
 )
 
 @Serializable
-public data class ConfigRequirements(
+internal data class ConfigRequirements(
     @SerialName("allowAppshots")
     public val allowAppshots: Boolean? = null,
     @SerialName("allowManagedHooksOnly")
@@ -84,13 +84,13 @@ public data class ConfigRequirements(
 )
 
 @Serializable
-public data class ConfigRequirementsReadResponse(
+internal data class ConfigRequirementsReadResponse(
     @SerialName("requirements")
     public val requirements: ConfigRequirements? = null,
 )
 
 @Serializable
-public data class ConfigValueWriteParams(
+internal data class ConfigValueWriteParams(
     @SerialName("keyPath")
     public val keyPath: String,
     @SerialName("mergeStrategy")
@@ -104,7 +104,7 @@ public data class ConfigValueWriteParams(
 )
 
 @Serializable
-public data class ConfigWarningNotification(
+internal data class ConfigWarningNotification(
     @SerialName("summary")
     public val summary: String,
     @SerialName("details")
@@ -116,7 +116,7 @@ public data class ConfigWarningNotification(
 )
 
 @Serializable
-public data class ConfigWriteResponse(
+internal data class ConfigWriteResponse(
     @SerialName("filePath")
     public val filePath: AbsolutePathBuf,
     @SerialName("status")
@@ -128,10 +128,10 @@ public data class ConfigWriteResponse(
 )
 
 @Serializable(with = ConfiguredHookHandlerSerializer::class)
-public sealed interface ConfiguredHookHandler
+internal sealed interface ConfiguredHookHandler
 
 @Serializable
-public data class ConfiguredHookHandlerCommandConfiguredHookHandler(
+internal data class ConfiguredHookHandlerCommandConfiguredHookHandler(
     @SerialName("async")
     public val async: Boolean,
     @SerialName("command")
@@ -151,7 +151,7 @@ public data class ConfiguredHookHandlerCommandConfiguredHookHandler(
 }
 
 @Serializable
-public data class ConfiguredHookHandlerPromptConfiguredHookHandler(
+internal data class ConfiguredHookHandlerPromptConfiguredHookHandler(
     @SerialName("type")
     public val type: String = "prompt",
 ) : ConfiguredHookHandler {
@@ -159,14 +159,14 @@ public data class ConfiguredHookHandlerPromptConfiguredHookHandler(
 }
 
 @Serializable
-public data class ConfiguredHookHandlerAgentConfiguredHookHandler(
+internal data class ConfiguredHookHandlerAgentConfiguredHookHandler(
     @SerialName("type")
     public val type: String = "agent",
 ) : ConfiguredHookHandler {
     init { require(type == "agent") }
 }
 
-public object ConfiguredHookHandlerSerializer : JsonContentPolymorphicSerializer<ConfiguredHookHandler>(ConfiguredHookHandler::class) {
+internal object ConfiguredHookHandlerSerializer : JsonContentPolymorphicSerializer<ConfiguredHookHandler>(ConfiguredHookHandler::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ConfiguredHookHandler> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "command" -> ConfiguredHookHandlerCommandConfiguredHookHandler.serializer()
@@ -177,7 +177,7 @@ public object ConfiguredHookHandlerSerializer : JsonContentPolymorphicSerializer
 }
 
 @Serializable
-public data class ConfiguredHookMatcherGroup(
+internal data class ConfiguredHookMatcherGroup(
     @SerialName("hooks")
     public val hooks: List<ConfiguredHookHandler>,
     @SerialName("matcher")
@@ -185,7 +185,7 @@ public data class ConfiguredHookMatcherGroup(
 )
 
 @Serializable
-public data class ConnectorMetadata(
+internal data class ConnectorMetadata(
     @SerialName("id")
     public val id: String,
     @SerialName("name")
@@ -206,10 +206,10 @@ public data class ConnectorMetadata(
     public val toolSummaries: List<AppToolSummary>? = null,
 )
 
-public typealias ConsumeAccountRateLimitResetCreditOutcome = JsonElement
+internal typealias ConsumeAccountRateLimitResetCreditOutcome = JsonElement
 
 @Serializable
-public data class ConsumeAccountRateLimitResetCreditParams(
+internal data class ConsumeAccountRateLimitResetCreditParams(
     @SerialName("idempotencyKey")
     public val idempotencyKey: String,
     @SerialName("creditId")
@@ -217,7 +217,7 @@ public data class ConsumeAccountRateLimitResetCreditParams(
 )
 
 @Serializable
-public data class ConsumeAccountRateLimitResetCreditResponse(
+internal data class ConsumeAccountRateLimitResetCreditResponse(
     @SerialName("outcome")
     public val outcome: ConsumeAccountRateLimitResetCreditOutcome,
 )

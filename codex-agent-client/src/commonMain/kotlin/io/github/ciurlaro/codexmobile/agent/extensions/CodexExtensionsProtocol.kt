@@ -35,7 +35,7 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginSkill
 import io.github.ciurlaro.codexmobile.agent.AgentPluginSummary
 import io.github.ciurlaro.codexmobile.agent.AgentSkill
 import io.github.ciurlaro.codexmobile.agent.AgentSkillScope
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -66,7 +66,7 @@ internal fun parseSkill(item: SkillMetadata): AgentSkill {
             SkillScope.REPO -> AgentSkillScope.REPO
             SkillScope.ADMIN -> AgentSkillScope.ADMIN
         },
-        enabled = item.enabled,
+        isEnabled = item.enabled,
         brandColor = interfaceInfo?.brandColor,
         dependencies = item.dependencies?.tools.orEmpty().map { it.value },
     )
@@ -90,11 +90,11 @@ internal fun parsePluginSummary(
         displayName = interfaceInfo?.displayName
             ?: name.replace('-', ' ').replaceFirstChar(Char::uppercase),
         description = interfaceInfo?.shortDescription ?: interfaceInfo?.longDescription.orEmpty(),
-        installed = item.installed,
-        enabled = item.enabled,
+        isInstalled = item.installed,
+        isEnabled = item.enabled,
         installPolicy = enumValueOf(item.installPolicy.name),
         authPolicy = enumValueOf(item.authPolicy.name),
-        available = (item.availability as? JsonPrimitive)?.contentOrNull != "DISABLED_BY_ADMIN" &&
+        isAvailable = (item.availability as? JsonPrimitive)?.contentOrNull != "DISABLED_BY_ADMIN" &&
             item.installPolicy != PluginInstallPolicy.NOT_AVAILABLE,
         capabilities = interfaceInfo?.capabilities.orEmpty(),
         brandColor = interfaceInfo?.brandColor,
@@ -124,7 +124,7 @@ internal fun parsePluginDetail(plugin: PluginDetail): AgentPluginDetail {
             AgentPluginSkill(
                 name = skill.name,
                 description = skill.description,
-                enabled = skill.enabled,
+                isEnabled = skill.enabled,
                 path = skill.path,
             )
         },
@@ -138,7 +138,7 @@ internal fun parseConnector(item: AppInfo) = AgentConnector(
     id = item.id,
     name = item.name,
     description = item.description.orEmpty(),
-    installUrl = item.installUrl,
+    installUrl = item.installUrl?.also(::requireSafeAuthUrl),
     isAccessible = item.isAccessible ?: false,
     isEnabled = item.isEnabled ?: true,
     pluginNames = item.pluginDisplayNames.orEmpty(),
@@ -148,7 +148,7 @@ internal fun parseConnector(item: AppSummary) = AgentConnector(
     id = item.id,
     name = item.name,
     description = item.description.orEmpty(),
-    installUrl = item.installUrl,
+    installUrl = item.installUrl?.also(::requireSafeAuthUrl),
     isAccessible = false,
     isEnabled = true,
     pluginNames = emptyList(),
@@ -178,24 +178,6 @@ internal fun parseInvocation(item: JsonObject): AgentInvocation? = when (item.op
     "mention" -> item.requiredString("path").takeIf { it.startsWith("plugin://") }
         ?.let { AgentInvocation.Plugin(item.requiredString("name"), it) }
     else -> null
-}
-
-internal fun requireSafeAuthUrl(value: String): String {
-    val scheme = value.substringBefore("://", "").lowercase()
-    val remainder = value.substringAfter("://", "")
-    val authority = remainder.substringBefore('/').substringBefore('?').substringBefore('#')
-    require(authority.isNotBlank() && '@' !in authority && authority.none(Char::isWhitespace)) {
-        "Authorization URL is invalid"
-    }
-    val host = when {
-        authority.startsWith('[') -> authority.substringAfter('[').substringBefore(']')
-        authority.count { it == ':' } <= 1 -> authority.substringBefore(':')
-        else -> ""
-    }
-    val secure = scheme == "https" && host.isNotBlank()
-    val loopback = scheme == "http" && host.lowercase() in setOf("localhost", "127.0.0.1", "::1")
-    require(secure || loopback) { "Authorization URL is not HTTPS or loopback HTTP" }
-    return value
 }
 
 internal fun JsonObject.optionalObject(name: String): JsonObject? =

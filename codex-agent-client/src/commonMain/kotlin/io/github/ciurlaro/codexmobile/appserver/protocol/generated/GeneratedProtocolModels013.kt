@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class DynamicToolSpecNamespaceDynamicToolSpec(
+internal data class DynamicToolSpecNamespaceDynamicToolSpec(
     @SerialName("description")
     public val description: String,
     @SerialName("name")
@@ -26,7 +26,7 @@ public data class DynamicToolSpecNamespaceDynamicToolSpec(
     init { require(type == "namespace") }
 }
 
-public object DynamicToolSpecSerializer : JsonContentPolymorphicSerializer<DynamicToolSpec>(DynamicToolSpec::class) {
+internal object DynamicToolSpecSerializer : JsonContentPolymorphicSerializer<DynamicToolSpec>(DynamicToolSpec::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<DynamicToolSpec> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "function" -> DynamicToolSpecFunctionDynamicToolSpec.serializer()
@@ -36,7 +36,7 @@ public object DynamicToolSpecSerializer : JsonContentPolymorphicSerializer<Dynam
 }
 
 @Serializable
-public data class EnvironmentConnectionNotification(
+internal data class EnvironmentConnectionNotification(
     @SerialName("environmentId")
     public val environmentId: String,
     @SerialName("threadId")
@@ -44,7 +44,7 @@ public data class EnvironmentConnectionNotification(
 )
 
 @Serializable
-public data class ErrorNotification(
+internal data class ErrorNotification(
     @SerialName("error")
     public val error: TurnError,
     @SerialName("threadId")
@@ -56,7 +56,7 @@ public data class ErrorNotification(
 )
 
 @Serializable
-public data class ExecCommandApprovalParams(
+internal data class ExecCommandApprovalParams(
     @SerialName("callId")
     public val callId: String,
     @SerialName("command")
@@ -74,13 +74,13 @@ public data class ExecCommandApprovalParams(
 )
 
 @Serializable
-public data class ExecCommandApprovalResponse(
+internal data class ExecCommandApprovalResponse(
     @SerialName("decision")
     public val decision: ReviewDecision,
 )
 
 @Serializable
-public data class ExperimentalFeature(
+internal data class ExperimentalFeature(
     @SerialName("defaultEnabled")
     public val defaultEnabled: Boolean,
     @SerialName("enabled")
@@ -98,19 +98,19 @@ public data class ExperimentalFeature(
 )
 
 @Serializable
-public data class ExperimentalFeatureEnablementSetParams(
+internal data class ExperimentalFeatureEnablementSetParams(
     @SerialName("enablement")
     public val enablement: Map<String, Boolean>,
 )
 
 @Serializable
-public data class ExperimentalFeatureEnablementSetResponse(
+internal data class ExperimentalFeatureEnablementSetResponse(
     @SerialName("enablement")
     public val enablement: Map<String, Boolean>,
 )
 
 @Serializable
-public data class ExperimentalFeatureListParams(
+internal data class ExperimentalFeatureListParams(
     @SerialName("cursor")
     public val cursor: String? = null,
     @SerialName("limit")
@@ -120,17 +120,17 @@ public data class ExperimentalFeatureListParams(
 )
 
 @Serializable
-public data class ExperimentalFeatureListResponse(
+internal data class ExperimentalFeatureListResponse(
     @SerialName("data")
     public val data: List<ExperimentalFeature>,
     @SerialName("nextCursor")
     public val nextCursor: String? = null,
 )
 
-public typealias ExperimentalFeatureStage = JsonElement
+internal typealias ExperimentalFeatureStage = JsonElement
 
 @Serializable
-public data class ExternalAgentConfigDetectParams(
+internal data class ExternalAgentConfigDetectParams(
     @SerialName("cwds")
     public val cwds: List<String>? = null,
     @SerialName("includeHome")
@@ -142,13 +142,13 @@ public data class ExternalAgentConfigDetectParams(
 )
 
 @Serializable
-public data class ExternalAgentConfigDetectResponse(
+internal data class ExternalAgentConfigDetectResponse(
     @SerialName("items")
     public val items: List<ExternalAgentConfigMigrationItem>,
 )
 
 @Serializable
-public data class ExternalAgentConfigImportCompletedNotification(
+internal data class ExternalAgentConfigImportCompletedNotification(
     @SerialName("importId")
     public val importId: String,
     @SerialName("itemTypeResults")
@@ -156,7 +156,7 @@ public data class ExternalAgentConfigImportCompletedNotification(
 )
 
 @Serializable
-public data class ExternalAgentConfigImportHistoriesReadResponse(
+internal data class ExternalAgentConfigImportHistoriesReadResponse(
     @SerialName("connectors")
     public val connectors: List<ExternalAgentImportedConnectorCandidate>,
     @SerialName("data")
@@ -164,7 +164,7 @@ public data class ExternalAgentConfigImportHistoriesReadResponse(
 )
 
 @Serializable
-public data class ExternalAgentConfigImportHistory(
+internal data class ExternalAgentConfigImportHistory(
     @SerialName("completedAtMs")
     public val completedAtMs: Long,
     @SerialName("failures")
@@ -176,7 +176,7 @@ public data class ExternalAgentConfigImportHistory(
 )
 
 @Serializable
-public data class ExternalAgentConfigImportItemTypeFailure(
+internal data class ExternalAgentConfigImportItemTypeFailure(
     @SerialName("failureStage")
     public val failureStage: String,
     @SerialName("itemType")
@@ -194,7 +194,7 @@ public data class ExternalAgentConfigImportItemTypeFailure(
 )
 
 @Serializable
-public data class ExternalAgentConfigImportItemTypeSuccess(
+internal data class ExternalAgentConfigImportItemTypeSuccess(
     @SerialName("itemType")
     public val itemType: ExternalAgentConfigMigrationItemType,
     @SerialName("cwd")
@@ -206,7 +206,7 @@ public data class ExternalAgentConfigImportItemTypeSuccess(
 )
 
 @Serializable
-public data class ExternalAgentConfigImportParams(
+internal data class ExternalAgentConfigImportParams(
     @SerialName("migrationItems")
     public val migrationItems: List<ExternalAgentConfigMigrationItem>,
     @SerialName("migrationSource")
@@ -216,7 +216,7 @@ public data class ExternalAgentConfigImportParams(
 )
 
 @Serializable
-public data class ExternalAgentConfigImportProgressNotification(
+internal data class ExternalAgentConfigImportProgressNotification(
     @SerialName("importId")
     public val importId: String,
     @SerialName("itemTypeResults")

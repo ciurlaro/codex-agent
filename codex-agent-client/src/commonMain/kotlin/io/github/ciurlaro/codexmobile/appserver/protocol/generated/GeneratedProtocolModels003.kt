@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class AppsDefaultConfig(
+internal data class AppsDefaultConfig(
     @SerialName("approvals_reviewer")
     public val approvals_reviewer: ApprovalsReviewer? = null,
     @SerialName("default_tools_approval_mode")
@@ -27,7 +27,7 @@ public data class AppsDefaultConfig(
 )
 
 @Serializable
-public data class AppsInstalledParams(
+internal data class AppsInstalledParams(
     @SerialName("forceRefresh")
     public val forceRefresh: Boolean? = null,
     @SerialName("threadId")
@@ -35,13 +35,13 @@ public data class AppsInstalledParams(
 )
 
 @Serializable
-public data class AppsInstalledResponse(
+internal data class AppsInstalledResponse(
     @SerialName("apps")
     public val apps: List<InstalledApp>,
 )
 
 @Serializable
-public data class AppsListParams(
+internal data class AppsListParams(
     @SerialName("cursor")
     public val cursor: String? = null,
     @SerialName("forceRefetch")
@@ -53,7 +53,7 @@ public data class AppsListParams(
 )
 
 @Serializable
-public data class AppsListResponse(
+internal data class AppsListResponse(
     @SerialName("data")
     public val data: List<AppInfo>,
     @SerialName("nextCursor")
@@ -61,7 +61,7 @@ public data class AppsListResponse(
 )
 
 @Serializable
-public data class AppsReadParams(
+internal data class AppsReadParams(
     @SerialName("appIds")
     public val appIds: List<String>,
     @SerialName("includeTools")
@@ -69,35 +69,35 @@ public data class AppsReadParams(
 )
 
 @Serializable
-public data class AppsReadResponse(
+internal data class AppsReadResponse(
     @SerialName("apps")
     public val apps: List<ConnectorMetadata>,
     @SerialName("missingAppIds")
     public val missingAppIds: List<String>,
 )
 
-public typealias AskForApproval = JsonElement
+internal typealias AskForApproval = JsonElement
 
 @Serializable
-public class AttestationGenerateParams
+internal class AttestationGenerateParams
 
 @Serializable
-public data class AttestationGenerateResponse(
+internal data class AttestationGenerateResponse(
     @SerialName("token")
     public val token: String,
 )
 
-public typealias AuthMode = JsonElement
+internal typealias AuthMode = JsonElement
 
-public typealias AutoCompactTokenLimitScope = JsonElement
+internal typealias AutoCompactTokenLimitScope = JsonElement
 
 @Serializable
-public enum class AutoReviewDecisionSource {
+internal enum class AutoReviewDecisionSource {
     @SerialName("agent") AGENT,
 }
 
 @Serializable
-public data class ByteRange(
+internal data class ByteRange(
     @SerialName("end")
     public val end: Long,
     @SerialName("start")
@@ -105,28 +105,28 @@ public data class ByteRange(
 )
 
 @Serializable
-public data class CancelLoginAccountParams(
+internal data class CancelLoginAccountParams(
     @SerialName("loginId")
     public val loginId: String,
 )
 
 @Serializable
-public data class CancelLoginAccountResponse(
+internal data class CancelLoginAccountResponse(
     @SerialName("status")
     public val status: CancelLoginAccountStatus,
 )
 
 @Serializable
-public enum class CancelLoginAccountStatus {
+internal enum class CancelLoginAccountStatus {
     @SerialName("canceled") CANCELED,
     @SerialName("notFound") NOT_FOUND,
 }
 
 @Serializable(with = CapabilityRootLocationSerializer::class)
-public sealed interface CapabilityRootLocation
+internal sealed interface CapabilityRootLocation
 
 @Serializable
-public data class CapabilityRootLocationEnvironmentCapabilityRootLocation(
+internal data class CapabilityRootLocationEnvironmentCapabilityRootLocation(
     @SerialName("environmentId")
     public val environmentId: String,
     @SerialName("path")
@@ -137,7 +137,7 @@ public data class CapabilityRootLocationEnvironmentCapabilityRootLocation(
     init { require(type == "environment") }
 }
 
-public object CapabilityRootLocationSerializer : JsonContentPolymorphicSerializer<CapabilityRootLocation>(CapabilityRootLocation::class) {
+internal object CapabilityRootLocationSerializer : JsonContentPolymorphicSerializer<CapabilityRootLocation>(CapabilityRootLocation::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<CapabilityRootLocation> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "environment" -> CapabilityRootLocationEnvironmentCapabilityRootLocation.serializer()
@@ -146,17 +146,17 @@ public object CapabilityRootLocationSerializer : JsonContentPolymorphicSerialize
 }
 
 @Serializable
-public data class ChatgptAuthTokensRefreshParams(
+internal data class ChatgptAuthTokensRefreshParams(
     @SerialName("reason")
     public val reason: ChatgptAuthTokensRefreshReason,
     @SerialName("previousAccountId")
     public val previousAccountId: String? = null,
 )
 
-public typealias ChatgptAuthTokensRefreshReason = JsonElement
+internal typealias ChatgptAuthTokensRefreshReason = JsonElement
 
 @Serializable
-public data class ChatgptAuthTokensRefreshResponse(
+internal data class ChatgptAuthTokensRefreshResponse(
     @SerialName("accessToken")
     public val accessToken: String,
     @SerialName("chatgptAccountId")
@@ -166,7 +166,7 @@ public data class ChatgptAuthTokensRefreshResponse(
 )
 
 @Serializable
-public data class ClientInfo(
+internal data class ClientInfo(
     @SerialName("name")
     public val name: String,
     @SerialName("version")
@@ -176,17 +176,17 @@ public data class ClientInfo(
 )
 
 @Serializable(with = ClientNotificationSerializer::class)
-public sealed interface ClientNotification
+internal sealed interface ClientNotification
 
 @Serializable
-public data class ClientNotificationInitializedNotification(
+internal data class ClientNotificationInitializedNotification(
     @SerialName("method")
     public val method: String = "initialized",
 ) : ClientNotification {
     init { require(method == "initialized") }
 }
 
-public object ClientNotificationSerializer : JsonContentPolymorphicSerializer<ClientNotification>(ClientNotification::class) {
+internal object ClientNotificationSerializer : JsonContentPolymorphicSerializer<ClientNotification>(ClientNotification::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ClientNotification> =
         when (element.jsonObject["method"]?.jsonPrimitive?.content) {
             "initialized" -> ClientNotificationInitializedNotification.serializer()
@@ -195,10 +195,10 @@ public object ClientNotificationSerializer : JsonContentPolymorphicSerializer<Cl
 }
 
 @Serializable(with = ClientRequestSerializer::class)
-public sealed interface ClientRequest
+internal sealed interface ClientRequest
 
 @Serializable
-public data class ClientRequestInitializeRequest(
+internal data class ClientRequestInitializeRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -210,7 +210,7 @@ public data class ClientRequestInitializeRequest(
 }
 
 @Serializable
-public data class ClientRequestThreadStartRequest(
+internal data class ClientRequestThreadStartRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")

@@ -13,13 +13,13 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public enum class ThreadActiveFlag {
+internal enum class ThreadActiveFlag {
     @SerialName("waitingOnApproval") WAITING_ON_APPROVAL,
     @SerialName("waitingOnUserInput") WAITING_ON_USER_INPUT,
 }
 
 @Serializable
-public data class ThreadApproveGuardianDeniedActionParams(
+internal data class ThreadApproveGuardianDeniedActionParams(
     @SerialName("event")
     public val event: JsonElement,
     @SerialName("threadId")
@@ -27,58 +27,58 @@ public data class ThreadApproveGuardianDeniedActionParams(
 )
 
 @Serializable
-public class ThreadApproveGuardianDeniedActionResponse
+internal class ThreadApproveGuardianDeniedActionResponse
 
 @Serializable
-public data class ThreadArchiveParams(
+internal data class ThreadArchiveParams(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public class ThreadArchiveResponse
+internal class ThreadArchiveResponse
 
 @Serializable
-public data class ThreadArchivedNotification(
+internal data class ThreadArchivedNotification(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public data class ThreadClosedNotification(
+internal data class ThreadClosedNotification(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public data class ThreadCompactStartParams(
+internal data class ThreadCompactStartParams(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public class ThreadCompactStartResponse
+internal class ThreadCompactStartResponse
 
 @Serializable
-public data class ThreadDeleteParams(
+internal data class ThreadDeleteParams(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public class ThreadDeleteResponse
+internal class ThreadDeleteResponse
 
 @Serializable
-public data class ThreadDeletedNotification(
+internal data class ThreadDeletedNotification(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public class ThreadExtra
+internal class ThreadExtra
 
 @Serializable
-public data class ThreadForkParams(
+internal data class ThreadForkParams(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("approvalPolicy")
@@ -110,7 +110,7 @@ public data class ThreadForkParams(
 )
 
 @Serializable
-public data class ThreadForkResponse(
+internal data class ThreadForkResponse(
     @SerialName("approvalPolicy")
     public val approvalPolicy: AskForApproval,
     @SerialName("approvalsReviewer")
@@ -134,7 +134,7 @@ public data class ThreadForkResponse(
 )
 
 @Serializable
-public data class ThreadGoal(
+internal data class ThreadGoal(
     @SerialName("createdAt")
     public val createdAt: Long,
     @SerialName("objective")
@@ -154,37 +154,37 @@ public data class ThreadGoal(
 )
 
 @Serializable
-public data class ThreadGoalClearParams(
+internal data class ThreadGoalClearParams(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public data class ThreadGoalClearResponse(
+internal data class ThreadGoalClearResponse(
     @SerialName("cleared")
     public val cleared: Boolean,
 )
 
 @Serializable
-public data class ThreadGoalClearedNotification(
+internal data class ThreadGoalClearedNotification(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public data class ThreadGoalGetParams(
+internal data class ThreadGoalGetParams(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public data class ThreadGoalGetResponse(
+internal data class ThreadGoalGetResponse(
     @SerialName("goal")
     public val goal: ThreadGoal? = null,
 )
 
 @Serializable
-public data class ThreadGoalSetParams(
+internal data class ThreadGoalSetParams(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("objective")
@@ -196,13 +196,13 @@ public data class ThreadGoalSetParams(
 )
 
 @Serializable
-public data class ThreadGoalSetResponse(
+internal data class ThreadGoalSetResponse(
     @SerialName("goal")
     public val goal: ThreadGoal,
 )
 
 @Serializable
-public enum class ThreadGoalStatus {
+internal enum class ThreadGoalStatus {
     @SerialName("active") ACTIVE,
     @SerialName("paused") PAUSED,
     @SerialName("blocked") BLOCKED,
@@ -212,7 +212,7 @@ public enum class ThreadGoalStatus {
 }
 
 @Serializable
-public data class ThreadGoalUpdatedNotification(
+internal data class ThreadGoalUpdatedNotification(
     @SerialName("goal")
     public val goal: ThreadGoal,
     @SerialName("threadId")

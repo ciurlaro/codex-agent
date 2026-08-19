@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class WebSearchToolConfig(
+internal data class WebSearchToolConfig(
     @SerialName("allowed_domains")
     public val allowed_domains: List<String>? = null,
     @SerialName("context_size")
@@ -23,20 +23,20 @@ public data class WebSearchToolConfig(
 )
 
 @Serializable
-public enum class WindowsSandboxReadiness {
+internal enum class WindowsSandboxReadiness {
     @SerialName("ready") READY,
     @SerialName("notConfigured") NOT_CONFIGURED,
     @SerialName("updateRequired") UPDATE_REQUIRED,
 }
 
 @Serializable
-public data class WindowsSandboxReadinessResponse(
+internal data class WindowsSandboxReadinessResponse(
     @SerialName("status")
     public val status: WindowsSandboxReadiness,
 )
 
 @Serializable
-public data class WindowsSandboxSetupCompletedNotification(
+internal data class WindowsSandboxSetupCompletedNotification(
     @SerialName("mode")
     public val mode: WindowsSandboxSetupMode,
     @SerialName("success")
@@ -46,13 +46,13 @@ public data class WindowsSandboxSetupCompletedNotification(
 )
 
 @Serializable
-public enum class WindowsSandboxSetupMode {
+internal enum class WindowsSandboxSetupMode {
     @SerialName("elevated") ELEVATED,
     @SerialName("unelevated") UNELEVATED,
 }
 
 @Serializable
-public data class WindowsSandboxSetupStartParams(
+internal data class WindowsSandboxSetupStartParams(
     @SerialName("mode")
     public val mode: WindowsSandboxSetupMode,
     @SerialName("cwd")
@@ -60,13 +60,13 @@ public data class WindowsSandboxSetupStartParams(
 )
 
 @Serializable
-public data class WindowsSandboxSetupStartResponse(
+internal data class WindowsSandboxSetupStartResponse(
     @SerialName("started")
     public val started: Boolean,
 )
 
 @Serializable
-public data class WindowsWorldWritableWarningNotification(
+internal data class WindowsWorldWritableWarningNotification(
     @SerialName("extraCount")
     public val extraCount: Long,
     @SerialName("failedScan")
@@ -76,7 +76,7 @@ public data class WindowsWorldWritableWarningNotification(
 )
 
 @Serializable
-public data class WorkspaceMessage(
+internal data class WorkspaceMessage(
     @SerialName("messageBody")
     public val messageBody: String,
     @SerialName("messageId")
@@ -90,14 +90,14 @@ public data class WorkspaceMessage(
 )
 
 @Serializable
-public enum class WorkspaceMessageType {
+internal enum class WorkspaceMessageType {
     @SerialName("headline") HEADLINE,
     @SerialName("announcement") ANNOUNCEMENT,
     @SerialName("unknown") UNKNOWN,
 }
 
 @Serializable
-public enum class WriteStatus {
+internal enum class WriteStatus {
     @SerialName("ok") OK,
     @SerialName("okOverridden") OK_OVERRIDDEN,
 }

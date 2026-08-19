@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ClientRequestModelProviderCapabilitiesReadRequest(
+internal data class ClientRequestModelProviderCapabilitiesReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -25,7 +25,7 @@ public data class ClientRequestModelProviderCapabilitiesReadRequest(
 }
 
 @Serializable
-public data class ClientRequestExperimentalFeatureListRequest(
+internal data class ClientRequestExperimentalFeatureListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -37,7 +37,7 @@ public data class ClientRequestExperimentalFeatureListRequest(
 }
 
 @Serializable
-public data class ClientRequestPermissionProfileListRequest(
+internal data class ClientRequestPermissionProfileListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -49,7 +49,7 @@ public data class ClientRequestPermissionProfileListRequest(
 }
 
 @Serializable
-public data class ClientRequestExperimentalFeatureEnablementSetRequest(
+internal data class ClientRequestExperimentalFeatureEnablementSetRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -61,7 +61,7 @@ public data class ClientRequestExperimentalFeatureEnablementSetRequest(
 }
 
 @Serializable
-public data class ClientRequestMcpServerOauthLoginRequest(
+internal data class ClientRequestMcpServerOauthLoginRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -73,7 +73,7 @@ public data class ClientRequestMcpServerOauthLoginRequest(
 }
 
 @Serializable
-public data class ClientRequestConfigMcpServerReloadRequest(
+internal data class ClientRequestConfigMcpServerReloadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")
@@ -85,7 +85,7 @@ public data class ClientRequestConfigMcpServerReloadRequest(
 }
 
 @Serializable
-public data class ClientRequestMcpServerStatusListRequest(
+internal data class ClientRequestMcpServerStatusListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -97,7 +97,7 @@ public data class ClientRequestMcpServerStatusListRequest(
 }
 
 @Serializable
-public data class ClientRequestMcpServerResourceReadRequest(
+internal data class ClientRequestMcpServerResourceReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -109,7 +109,7 @@ public data class ClientRequestMcpServerResourceReadRequest(
 }
 
 @Serializable
-public data class ClientRequestMcpServerToolCallRequest(
+internal data class ClientRequestMcpServerToolCallRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -121,7 +121,7 @@ public data class ClientRequestMcpServerToolCallRequest(
 }
 
 @Serializable
-public data class ClientRequestWindowsSandboxSetupStartRequest(
+internal data class ClientRequestWindowsSandboxSetupStartRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -133,7 +133,7 @@ public data class ClientRequestWindowsSandboxSetupStartRequest(
 }
 
 @Serializable
-public data class ClientRequestWindowsSandboxReadinessRequest(
+internal data class ClientRequestWindowsSandboxReadinessRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")
@@ -145,7 +145,7 @@ public data class ClientRequestWindowsSandboxReadinessRequest(
 }
 
 @Serializable
-public data class ClientRequestAccountLoginStartRequest(
+internal data class ClientRequestAccountLoginStartRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -157,7 +157,7 @@ public data class ClientRequestAccountLoginStartRequest(
 }
 
 @Serializable
-public data class ClientRequestAccountLoginCancelRequest(
+internal data class ClientRequestAccountLoginCancelRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -169,7 +169,7 @@ public data class ClientRequestAccountLoginCancelRequest(
 }
 
 @Serializable
-public data class ClientRequestAccountLogoutRequest(
+internal data class ClientRequestAccountLogoutRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")
@@ -181,7 +181,7 @@ public data class ClientRequestAccountLogoutRequest(
 }
 
 @Serializable
-public data class ClientRequestAccountRateLimitsReadRequest(
+internal data class ClientRequestAccountRateLimitsReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")
@@ -193,7 +193,7 @@ public data class ClientRequestAccountRateLimitsReadRequest(
 }
 
 @Serializable
-public data class ClientRequestAccountRateLimitResetCreditConsumeRequest(
+internal data class ClientRequestAccountRateLimitResetCreditConsumeRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -205,7 +205,7 @@ public data class ClientRequestAccountRateLimitResetCreditConsumeRequest(
 }
 
 @Serializable
-public data class ClientRequestAccountUsageReadRequest(
+internal data class ClientRequestAccountUsageReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")
@@ -217,7 +217,7 @@ public data class ClientRequestAccountUsageReadRequest(
 }
 
 @Serializable
-public data class ClientRequestAccountWorkspaceMessagesReadRequest(
+internal data class ClientRequestAccountWorkspaceMessagesReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")

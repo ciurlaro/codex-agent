@@ -2,7 +2,7 @@
 
 The release build pins its Apple and Rust toolchains and its iOS deployment
 target in the build configuration. Stable machine-readable limits are in
-`release/ios-resource-policy.json`; host-specific measurements are generated
+`gradle/release/ios-resource-policy.json`; host-specific measurements are generated
 under the protected candidate's ignored build directory.
 
 Artifact gates allow at most 110% of the recorded compressed XCFramework,

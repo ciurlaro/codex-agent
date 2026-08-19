@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
-public object ThreadStatusSerializer : JsonContentPolymorphicSerializer<ThreadStatus>(ThreadStatus::class) {
+internal object ThreadStatusSerializer : JsonContentPolymorphicSerializer<ThreadStatus>(ThreadStatus::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ThreadStatus> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "notLoaded" -> ThreadStatusNotLoadedThreadStatus.serializer()
@@ -24,7 +24,7 @@ public object ThreadStatusSerializer : JsonContentPolymorphicSerializer<ThreadSt
 }
 
 @Serializable
-public data class ThreadStatusChangedNotification(
+internal data class ThreadStatusChangedNotification(
     @SerialName("status")
     public val status: ThreadStatus,
     @SerialName("threadId")
@@ -32,7 +32,7 @@ public data class ThreadStatusChangedNotification(
 )
 
 @Serializable
-public data class ThreadTokenUsage(
+internal data class ThreadTokenUsage(
     @SerialName("last")
     public val last: TokenUsageBreakdown,
     @SerialName("total")
@@ -42,7 +42,7 @@ public data class ThreadTokenUsage(
 )
 
 @Serializable
-public data class ThreadTokenUsageUpdatedNotification(
+internal data class ThreadTokenUsageUpdatedNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("tokenUsage")
@@ -52,44 +52,44 @@ public data class ThreadTokenUsageUpdatedNotification(
 )
 
 @Serializable
-public data class ThreadUnarchiveParams(
+internal data class ThreadUnarchiveParams(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public data class ThreadUnarchiveResponse(
+internal data class ThreadUnarchiveResponse(
     @SerialName("thread")
     public val thread: Thread,
 )
 
 @Serializable
-public data class ThreadUnarchivedNotification(
+internal data class ThreadUnarchivedNotification(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public data class ThreadUnsubscribeParams(
+internal data class ThreadUnsubscribeParams(
     @SerialName("threadId")
     public val threadId: String,
 )
 
 @Serializable
-public data class ThreadUnsubscribeResponse(
+internal data class ThreadUnsubscribeResponse(
     @SerialName("status")
     public val status: ThreadUnsubscribeStatus,
 )
 
 @Serializable
-public enum class ThreadUnsubscribeStatus {
+internal enum class ThreadUnsubscribeStatus {
     @SerialName("notLoaded") NOT_LOADED,
     @SerialName("notSubscribed") NOT_SUBSCRIBED,
     @SerialName("unsubscribed") UNSUBSCRIBED,
 }
 
 @Serializable
-public data class TokenUsageBreakdown(
+internal data class TokenUsageBreakdown(
     @SerialName("cachedInputTokens")
     public val cachedInputTokens: Long,
     @SerialName("inputTokens")
@@ -105,7 +105,7 @@ public data class TokenUsageBreakdown(
 )
 
 @Serializable
-public data class Tool(
+internal data class Tool(
     @SerialName("inputSchema")
     public val inputSchema: JsonElement,
     @SerialName("name")
@@ -125,13 +125,13 @@ public data class Tool(
 )
 
 @Serializable
-public data class ToolRequestUserInputAnswer(
+internal data class ToolRequestUserInputAnswer(
     @SerialName("answers")
     public val answers: List<String>,
 )
 
 @Serializable
-public data class ToolRequestUserInputOption(
+internal data class ToolRequestUserInputOption(
     @SerialName("description")
     public val description: String,
     @SerialName("label")
@@ -139,7 +139,7 @@ public data class ToolRequestUserInputOption(
 )
 
 @Serializable
-public data class ToolRequestUserInputParams(
+internal data class ToolRequestUserInputParams(
     @SerialName("itemId")
     public val itemId: String,
     @SerialName("questions")
@@ -153,7 +153,7 @@ public data class ToolRequestUserInputParams(
 )
 
 @Serializable
-public data class ToolRequestUserInputQuestion(
+internal data class ToolRequestUserInputQuestion(
     @SerialName("header")
     public val header: String,
     @SerialName("id")
@@ -169,19 +169,19 @@ public data class ToolRequestUserInputQuestion(
 )
 
 @Serializable
-public data class ToolRequestUserInputResponse(
+internal data class ToolRequestUserInputResponse(
     @SerialName("answers")
     public val answers: Map<String, ToolRequestUserInputAnswer>,
 )
 
 @Serializable
-public data class ToolsV2(
+internal data class ToolsV2(
     @SerialName("web_search")
     public val web_search: WebSearchToolConfig? = null,
 )
 
 @Serializable
-public data class Turn(
+internal data class Turn(
     @SerialName("id")
     public val id: String,
     @SerialName("items")
@@ -201,7 +201,7 @@ public data class Turn(
 )
 
 @Serializable
-public data class TurnCompletedNotification(
+internal data class TurnCompletedNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("turn")
@@ -209,7 +209,7 @@ public data class TurnCompletedNotification(
 )
 
 @Serializable
-public data class TurnDiffUpdatedNotification(
+internal data class TurnDiffUpdatedNotification(
     @SerialName("diff")
     public val diff: String,
     @SerialName("threadId")

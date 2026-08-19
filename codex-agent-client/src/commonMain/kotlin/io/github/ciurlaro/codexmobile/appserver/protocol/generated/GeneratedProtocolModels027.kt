@@ -13,16 +13,16 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public class PluginShareListParams
+internal class PluginShareListParams
 
 @Serializable
-public data class PluginShareListResponse(
+internal data class PluginShareListResponse(
     @SerialName("data")
     public val data: List<PluginShareListItem>,
 )
 
 @Serializable
-public data class PluginSharePrincipal(
+internal data class PluginSharePrincipal(
     @SerialName("name")
     public val name: String,
     @SerialName("principalId")
@@ -34,21 +34,21 @@ public data class PluginSharePrincipal(
 )
 
 @Serializable
-public enum class PluginSharePrincipalRole {
+internal enum class PluginSharePrincipalRole {
     @SerialName("reader") READER,
     @SerialName("editor") EDITOR,
     @SerialName("owner") OWNER,
 }
 
 @Serializable
-public enum class PluginSharePrincipalType {
+internal enum class PluginSharePrincipalType {
     @SerialName("user") USER,
     @SerialName("group") GROUP,
     @SerialName("workspace") WORKSPACE,
 }
 
 @Serializable
-public data class PluginShareSaveParams(
+internal data class PluginShareSaveParams(
     @SerialName("pluginPath")
     public val pluginPath: AbsolutePathBuf,
     @SerialName("discoverability")
@@ -60,7 +60,7 @@ public data class PluginShareSaveParams(
 )
 
 @Serializable
-public data class PluginShareSaveResponse(
+internal data class PluginShareSaveResponse(
     @SerialName("remotePluginId")
     public val remotePluginId: String,
     @SerialName("shareUrl")
@@ -68,7 +68,7 @@ public data class PluginShareSaveResponse(
 )
 
 @Serializable
-public data class PluginShareTarget(
+internal data class PluginShareTarget(
     @SerialName("principalId")
     public val principalId: String,
     @SerialName("principalType")
@@ -78,20 +78,20 @@ public data class PluginShareTarget(
 )
 
 @Serializable
-public enum class PluginShareTargetRole {
+internal enum class PluginShareTargetRole {
     @SerialName("reader") READER,
     @SerialName("editor") EDITOR,
 }
 
 @Serializable
-public enum class PluginShareUpdateDiscoverability {
+internal enum class PluginShareUpdateDiscoverability {
     @SerialName("UNLISTED") UNLISTED,
     @SerialName("PRIVATE") PRIVATE,
     @SerialName("LISTED") LISTED,
 }
 
 @Serializable
-public data class PluginShareUpdateTargetsParams(
+internal data class PluginShareUpdateTargetsParams(
     @SerialName("discoverability")
     public val discoverability: PluginShareUpdateDiscoverability,
     @SerialName("remotePluginId")
@@ -101,7 +101,7 @@ public data class PluginShareUpdateTargetsParams(
 )
 
 @Serializable
-public data class PluginShareUpdateTargetsResponse(
+internal data class PluginShareUpdateTargetsResponse(
     @SerialName("discoverability")
     public val discoverability: PluginShareDiscoverability,
     @SerialName("principals")
@@ -109,7 +109,7 @@ public data class PluginShareUpdateTargetsResponse(
 )
 
 @Serializable
-public data class PluginSkillReadParams(
+internal data class PluginSkillReadParams(
     @SerialName("remoteMarketplaceName")
     public val remoteMarketplaceName: String,
     @SerialName("remotePluginId")
@@ -119,16 +119,16 @@ public data class PluginSkillReadParams(
 )
 
 @Serializable
-public data class PluginSkillReadResponse(
+internal data class PluginSkillReadResponse(
     @SerialName("contents")
     public val contents: String? = null,
 )
 
 @Serializable(with = PluginSourceSerializer::class)
-public sealed interface PluginSource
+internal sealed interface PluginSource
 
 @Serializable
-public data class PluginSourceLocalPluginSource(
+internal data class PluginSourceLocalPluginSource(
     @SerialName("path")
     public val path: AbsolutePathBuf,
     @SerialName("type")
@@ -138,7 +138,7 @@ public data class PluginSourceLocalPluginSource(
 }
 
 @Serializable
-public data class PluginSourceGitPluginSource(
+internal data class PluginSourceGitPluginSource(
     @SerialName("url")
     public val url: String,
     @SerialName("path")
@@ -154,7 +154,7 @@ public data class PluginSourceGitPluginSource(
 }
 
 @Serializable
-public data class PluginSourceNpmPluginSource(
+internal data class PluginSourceNpmPluginSource(
     @SerialName("package")
     public val package_: String,
     @SerialName("registry")
@@ -168,14 +168,14 @@ public data class PluginSourceNpmPluginSource(
 }
 
 @Serializable
-public data class PluginSourceRemotePluginSource(
+internal data class PluginSourceRemotePluginSource(
     @SerialName("type")
     public val type: String = "remote",
 ) : PluginSource {
     init { require(type == "remote") }
 }
 
-public object PluginSourceSerializer : JsonContentPolymorphicSerializer<PluginSource>(PluginSource::class) {
+internal object PluginSourceSerializer : JsonContentPolymorphicSerializer<PluginSource>(PluginSource::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<PluginSource> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "local" -> PluginSourceLocalPluginSource.serializer()
@@ -187,7 +187,7 @@ public object PluginSourceSerializer : JsonContentPolymorphicSerializer<PluginSo
 }
 
 @Serializable
-public data class PluginSummary(
+internal data class PluginSummary(
     @SerialName("authPolicy")
     public val authPolicy: PluginAuthPolicy,
     @SerialName("enabled")

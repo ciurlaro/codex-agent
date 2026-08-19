@@ -13,10 +13,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable(with = ServerRequestSerializer::class)
-public sealed interface ServerRequest
+internal sealed interface ServerRequest
 
 @Serializable
-public data class ServerRequestItemCommandExecutionRequestApprovalRequest(
+internal data class ServerRequestItemCommandExecutionRequestApprovalRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -28,7 +28,7 @@ public data class ServerRequestItemCommandExecutionRequestApprovalRequest(
 }
 
 @Serializable
-public data class ServerRequestItemFileChangeRequestApprovalRequest(
+internal data class ServerRequestItemFileChangeRequestApprovalRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -40,7 +40,7 @@ public data class ServerRequestItemFileChangeRequestApprovalRequest(
 }
 
 @Serializable
-public data class ServerRequestItemToolRequestUserInputRequest(
+internal data class ServerRequestItemToolRequestUserInputRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -52,7 +52,7 @@ public data class ServerRequestItemToolRequestUserInputRequest(
 }
 
 @Serializable
-public data class ServerRequestMcpServerElicitationRequestRequest(
+internal data class ServerRequestMcpServerElicitationRequestRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -64,7 +64,7 @@ public data class ServerRequestMcpServerElicitationRequestRequest(
 }
 
 @Serializable
-public data class ServerRequestItemPermissionsRequestApprovalRequest(
+internal data class ServerRequestItemPermissionsRequestApprovalRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -76,7 +76,7 @@ public data class ServerRequestItemPermissionsRequestApprovalRequest(
 }
 
 @Serializable
-public data class ServerRequestItemToolCallRequest(
+internal data class ServerRequestItemToolCallRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -88,7 +88,7 @@ public data class ServerRequestItemToolCallRequest(
 }
 
 @Serializable
-public data class ServerRequestAccountChatgptAuthTokensRefreshRequest(
+internal data class ServerRequestAccountChatgptAuthTokensRefreshRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -100,7 +100,7 @@ public data class ServerRequestAccountChatgptAuthTokensRefreshRequest(
 }
 
 @Serializable
-public data class ServerRequestAttestationGenerateRequest(
+internal data class ServerRequestAttestationGenerateRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -112,7 +112,7 @@ public data class ServerRequestAttestationGenerateRequest(
 }
 
 @Serializable
-public data class ServerRequestApplyPatchApprovalRequest(
+internal data class ServerRequestApplyPatchApprovalRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -124,7 +124,7 @@ public data class ServerRequestApplyPatchApprovalRequest(
 }
 
 @Serializable
-public data class ServerRequestExecCommandApprovalRequest(
+internal data class ServerRequestExecCommandApprovalRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -135,7 +135,7 @@ public data class ServerRequestExecCommandApprovalRequest(
     init { require(method == "execCommandApproval") }
 }
 
-public object ServerRequestSerializer : JsonContentPolymorphicSerializer<ServerRequest>(ServerRequest::class) {
+internal object ServerRequestSerializer : JsonContentPolymorphicSerializer<ServerRequest>(ServerRequest::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ServerRequest> =
         when (element.jsonObject["method"]?.jsonPrimitive?.content) {
             "item/commandExecution/requestApproval" -> ServerRequestItemCommandExecutionRequestApprovalRequest.serializer()
@@ -153,7 +153,7 @@ public object ServerRequestSerializer : JsonContentPolymorphicSerializer<ServerR
 }
 
 @Serializable
-public data class ServerRequestResolvedNotification(
+internal data class ServerRequestResolvedNotification(
     @SerialName("requestId")
     public val requestId: RequestId,
     @SerialName("threadId")
@@ -161,7 +161,7 @@ public data class ServerRequestResolvedNotification(
 )
 
 @Serializable
-public data class SessionMigration(
+internal data class SessionMigration(
     @SerialName("cwd")
     public val cwd: String,
     @SerialName("path")
@@ -170,10 +170,10 @@ public data class SessionMigration(
     public val title: String? = null,
 )
 
-public typealias SessionSource = JsonElement
+internal typealias SessionSource = JsonElement
 
 @Serializable
-public data class Settings(
+internal data class Settings(
     @SerialName("model")
     public val model: String,
     @SerialName("developer_instructions")
@@ -183,13 +183,13 @@ public data class Settings(
 )
 
 @Serializable
-public data class SkillDependencies(
+internal data class SkillDependencies(
     @SerialName("tools")
     public val tools: List<SkillToolDependency>,
 )
 
 @Serializable
-public data class SkillErrorInfo(
+internal data class SkillErrorInfo(
     @SerialName("message")
     public val message: String,
     @SerialName("path")
@@ -197,7 +197,7 @@ public data class SkillErrorInfo(
 )
 
 @Serializable
-public data class SkillInterface(
+internal data class SkillInterface(
     @SerialName("brandColor")
     public val brandColor: String? = null,
     @SerialName("defaultPrompt")
@@ -213,7 +213,7 @@ public data class SkillInterface(
 )
 
 @Serializable
-public data class SkillMetadata(
+internal data class SkillMetadata(
     @SerialName("description")
     public val description: String,
     @SerialName("enabled")

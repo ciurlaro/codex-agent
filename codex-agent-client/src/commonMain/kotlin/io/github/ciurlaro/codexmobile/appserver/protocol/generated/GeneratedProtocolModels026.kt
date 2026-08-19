@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class PluginInstallParams(
+internal data class PluginInstallParams(
     @SerialName("pluginName")
     public val pluginName: String,
     @SerialName("marketplacePath")
@@ -23,20 +23,20 @@ public data class PluginInstallParams(
 )
 
 @Serializable
-public enum class PluginInstallPolicy {
+internal enum class PluginInstallPolicy {
     @SerialName("NOT_AVAILABLE") NOT_AVAILABLE,
     @SerialName("AVAILABLE") AVAILABLE,
     @SerialName("INSTALLED_BY_DEFAULT") INSTALLED_BY_DEFAULT,
 }
 
 @Serializable
-public enum class PluginInstallPolicySource {
+internal enum class PluginInstallPolicySource {
     @SerialName("WORKSPACE_SETTING") WORKSPACE_SETTING,
     @SerialName("IMPLICIT_CANONICAL_APP") IMPLICIT_CANONICAL_APP,
 }
 
 @Serializable
-public data class PluginInstallResponse(
+internal data class PluginInstallResponse(
     @SerialName("appsNeedingAuth")
     public val appsNeedingAuth: List<AppSummary>,
     @SerialName("authPolicy")
@@ -44,7 +44,7 @@ public data class PluginInstallResponse(
 )
 
 @Serializable
-public data class PluginInstalledParams(
+internal data class PluginInstalledParams(
     @SerialName("cwds")
     public val cwds: List<AbsolutePathBuf>? = null,
     @SerialName("installSuggestionPluginNames")
@@ -52,7 +52,7 @@ public data class PluginInstalledParams(
 )
 
 @Serializable
-public data class PluginInstalledResponse(
+internal data class PluginInstalledResponse(
     @SerialName("marketplaces")
     public val marketplaces: List<PluginMarketplaceEntry>,
     @SerialName("marketplaceLoadErrors")
@@ -60,7 +60,7 @@ public data class PluginInstalledResponse(
 )
 
 @Serializable
-public data class PluginInterface(
+internal data class PluginInterface(
     @SerialName("capabilities")
     public val capabilities: List<String>,
     @SerialName("screenshotUrls")
@@ -102,7 +102,7 @@ public data class PluginInterface(
 )
 
 @Serializable
-public enum class PluginListMarketplaceKind {
+internal enum class PluginListMarketplaceKind {
     @SerialName("local") LOCAL,
     @SerialName("vertical") VERTICAL,
     @SerialName("workspace-directory") WORKSPACE_DIRECTORY,
@@ -111,7 +111,7 @@ public enum class PluginListMarketplaceKind {
 }
 
 @Serializable
-public data class PluginListParams(
+internal data class PluginListParams(
     @SerialName("cwds")
     public val cwds: List<AbsolutePathBuf>? = null,
     @SerialName("marketplaceKinds")
@@ -119,7 +119,7 @@ public data class PluginListParams(
 )
 
 @Serializable
-public data class PluginListResponse(
+internal data class PluginListResponse(
     @SerialName("marketplaces")
     public val marketplaces: List<PluginMarketplaceEntry>,
     @SerialName("featuredPluginIds")
@@ -129,7 +129,7 @@ public data class PluginListResponse(
 )
 
 @Serializable
-public data class PluginMarketplaceEntry(
+internal data class PluginMarketplaceEntry(
     @SerialName("name")
     public val name: String,
     @SerialName("plugins")
@@ -141,7 +141,7 @@ public data class PluginMarketplaceEntry(
 )
 
 @Serializable
-public data class PluginReadParams(
+internal data class PluginReadParams(
     @SerialName("pluginName")
     public val pluginName: String,
     @SerialName("marketplacePath")
@@ -151,19 +151,19 @@ public data class PluginReadParams(
 )
 
 @Serializable
-public data class PluginReadResponse(
+internal data class PluginReadResponse(
     @SerialName("plugin")
     public val plugin: PluginDetail,
 )
 
 @Serializable
-public data class PluginShareCheckoutParams(
+internal data class PluginShareCheckoutParams(
     @SerialName("remotePluginId")
     public val remotePluginId: String,
 )
 
 @Serializable
-public data class PluginShareCheckoutResponse(
+internal data class PluginShareCheckoutResponse(
     @SerialName("marketplaceName")
     public val marketplaceName: String,
     @SerialName("marketplacePath")
@@ -181,7 +181,7 @@ public data class PluginShareCheckoutResponse(
 )
 
 @Serializable
-public data class PluginShareContext(
+internal data class PluginShareContext(
     @SerialName("remotePluginId")
     public val remotePluginId: String,
     @SerialName("creatorAccountUserId")
@@ -199,23 +199,23 @@ public data class PluginShareContext(
 )
 
 @Serializable
-public data class PluginShareDeleteParams(
+internal data class PluginShareDeleteParams(
     @SerialName("remotePluginId")
     public val remotePluginId: String,
 )
 
 @Serializable
-public class PluginShareDeleteResponse
+internal class PluginShareDeleteResponse
 
 @Serializable
-public enum class PluginShareDiscoverability {
+internal enum class PluginShareDiscoverability {
     @SerialName("LISTED") LISTED,
     @SerialName("UNLISTED") UNLISTED,
     @SerialName("PRIVATE") PRIVATE,
 }
 
 @Serializable
-public data class PluginShareListItem(
+internal data class PluginShareListItem(
     @SerialName("plugin")
     public val plugin: PluginSummary,
     @SerialName("localPluginPath")

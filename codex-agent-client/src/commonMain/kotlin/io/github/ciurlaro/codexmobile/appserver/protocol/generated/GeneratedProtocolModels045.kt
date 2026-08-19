@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class TurnEnvironmentParams(
+internal data class TurnEnvironmentParams(
     @SerialName("cwd")
     public val cwd: LegacyAppPathString,
     @SerialName("environmentId")
@@ -23,7 +23,7 @@ public data class TurnEnvironmentParams(
 )
 
 @Serializable
-public data class TurnError(
+internal data class TurnError(
     @SerialName("message")
     public val message: String,
     @SerialName("additionalDetails")
@@ -33,7 +33,7 @@ public data class TurnError(
 )
 
 @Serializable
-public data class TurnInterruptParams(
+internal data class TurnInterruptParams(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("turnId")
@@ -41,12 +41,12 @@ public data class TurnInterruptParams(
 )
 
 @Serializable
-public class TurnInterruptResponse
+internal class TurnInterruptResponse
 
-public typealias TurnItemsView = JsonElement
+internal typealias TurnItemsView = JsonElement
 
 @Serializable
-public data class TurnModerationMetadataNotification(
+internal data class TurnModerationMetadataNotification(
     @SerialName("metadata")
     public val metadata: JsonElement,
     @SerialName("threadId")
@@ -56,7 +56,7 @@ public data class TurnModerationMetadataNotification(
 )
 
 @Serializable
-public data class TurnPlanStep(
+internal data class TurnPlanStep(
     @SerialName("status")
     public val status: TurnPlanStepStatus,
     @SerialName("step")
@@ -64,14 +64,14 @@ public data class TurnPlanStep(
 )
 
 @Serializable
-public enum class TurnPlanStepStatus {
+internal enum class TurnPlanStepStatus {
     @SerialName("pending") PENDING,
     @SerialName("inProgress") IN_PROGRESS,
     @SerialName("completed") COMPLETED,
 }
 
 @Serializable
-public data class TurnPlanUpdatedNotification(
+internal data class TurnPlanUpdatedNotification(
     @SerialName("plan")
     public val plan: List<TurnPlanStep>,
     @SerialName("threadId")
@@ -83,7 +83,7 @@ public data class TurnPlanUpdatedNotification(
 )
 
 @Serializable
-public data class TurnStartParams(
+internal data class TurnStartParams(
     @SerialName("input")
     public val input: List<UserInput>,
     @SerialName("threadId")
@@ -115,13 +115,13 @@ public data class TurnStartParams(
 )
 
 @Serializable
-public data class TurnStartResponse(
+internal data class TurnStartResponse(
     @SerialName("turn")
     public val turn: Turn,
 )
 
 @Serializable
-public data class TurnStartedNotification(
+internal data class TurnStartedNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("turn")
@@ -129,7 +129,7 @@ public data class TurnStartedNotification(
 )
 
 @Serializable
-public enum class TurnStatus {
+internal enum class TurnStatus {
     @SerialName("completed") COMPLETED,
     @SerialName("interrupted") INTERRUPTED,
     @SerialName("failed") FAILED,
@@ -137,7 +137,7 @@ public enum class TurnStatus {
 }
 
 @Serializable
-public data class TurnSteerParams(
+internal data class TurnSteerParams(
     @SerialName("expectedTurnId")
     public val expectedTurnId: String,
     @SerialName("input")
@@ -151,13 +151,13 @@ public data class TurnSteerParams(
 )
 
 @Serializable
-public data class TurnSteerResponse(
+internal data class TurnSteerResponse(
     @SerialName("turnId")
     public val turnId: String,
 )
 
 @Serializable
-public data class TurnsPage(
+internal data class TurnsPage(
     @SerialName("data")
     public val data: List<Turn>,
     @SerialName("backwardsCursor")
@@ -167,10 +167,10 @@ public data class TurnsPage(
 )
 
 @Serializable(with = UserInputSerializer::class)
-public sealed interface UserInput
+internal sealed interface UserInput
 
 @Serializable
-public data class UserInputTextUserInput(
+internal data class UserInputTextUserInput(
     @SerialName("text")
     public val text: String,
     @SerialName("text_elements")
@@ -182,7 +182,7 @@ public data class UserInputTextUserInput(
 }
 
 @Serializable
-public data class UserInputImageUserInput(
+internal data class UserInputImageUserInput(
     @SerialName("url")
     public val url: String,
     @SerialName("detail")
@@ -194,7 +194,7 @@ public data class UserInputImageUserInput(
 }
 
 @Serializable
-public data class UserInputLocalImageUserInput(
+internal data class UserInputLocalImageUserInput(
     @SerialName("path")
     public val path: String,
     @SerialName("detail")
@@ -206,7 +206,7 @@ public data class UserInputLocalImageUserInput(
 }
 
 @Serializable
-public data class UserInputAudioUserInput(
+internal data class UserInputAudioUserInput(
     @SerialName("url")
     public val url: String,
     @SerialName("type")
@@ -216,7 +216,7 @@ public data class UserInputAudioUserInput(
 }
 
 @Serializable
-public data class UserInputLocalAudioUserInput(
+internal data class UserInputLocalAudioUserInput(
     @SerialName("path")
     public val path: String,
     @SerialName("type")

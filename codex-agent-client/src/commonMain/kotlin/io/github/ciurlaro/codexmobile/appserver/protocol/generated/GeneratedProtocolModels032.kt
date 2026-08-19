@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class SandboxPolicyReadOnlySandboxPolicy(
+internal data class SandboxPolicyReadOnlySandboxPolicy(
     @SerialName("networkAccess")
     public val networkAccess: Boolean? = null,
     @SerialName("type")
@@ -23,7 +23,7 @@ public data class SandboxPolicyReadOnlySandboxPolicy(
 }
 
 @Serializable
-public data class SandboxPolicyExternalSandboxSandboxPolicy(
+internal data class SandboxPolicyExternalSandboxSandboxPolicy(
     @SerialName("networkAccess")
     public val networkAccess: NetworkAccess? = null,
     @SerialName("type")
@@ -33,7 +33,7 @@ public data class SandboxPolicyExternalSandboxSandboxPolicy(
 }
 
 @Serializable
-public data class SandboxPolicyWorkspaceWriteSandboxPolicy(
+internal data class SandboxPolicyWorkspaceWriteSandboxPolicy(
     @SerialName("excludeSlashTmp")
     public val excludeSlashTmp: Boolean? = null,
     @SerialName("excludeTmpdirEnvVar")
@@ -48,7 +48,7 @@ public data class SandboxPolicyWorkspaceWriteSandboxPolicy(
     init { require(type == "workspaceWrite") }
 }
 
-public object SandboxPolicySerializer : JsonContentPolymorphicSerializer<SandboxPolicy>(SandboxPolicy::class) {
+internal object SandboxPolicySerializer : JsonContentPolymorphicSerializer<SandboxPolicy>(SandboxPolicy::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<SandboxPolicy> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "dangerFullAccess" -> SandboxPolicyDangerFullAccessSandboxPolicy.serializer()
@@ -60,7 +60,7 @@ public object SandboxPolicySerializer : JsonContentPolymorphicSerializer<Sandbox
 }
 
 @Serializable
-public data class SandboxWorkspaceWrite(
+internal data class SandboxWorkspaceWrite(
     @SerialName("exclude_slash_tmp")
     public val exclude_slash_tmp: Boolean? = null,
     @SerialName("exclude_tmpdir_env_var")
@@ -72,10 +72,10 @@ public data class SandboxWorkspaceWrite(
 )
 
 @Serializable(with = ScheduledTaskScheduleSerializer::class)
-public sealed interface ScheduledTaskSchedule
+internal sealed interface ScheduledTaskSchedule
 
 @Serializable
-public data class ScheduledTaskScheduleHourlyScheduledTaskSchedule(
+internal data class ScheduledTaskScheduleHourlyScheduledTaskSchedule(
     @SerialName("intervalHours")
     public val intervalHours: Long,
     @SerialName("days")
@@ -87,7 +87,7 @@ public data class ScheduledTaskScheduleHourlyScheduledTaskSchedule(
 }
 
 @Serializable
-public data class ScheduledTaskScheduleDailyScheduledTaskSchedule(
+internal data class ScheduledTaskScheduleDailyScheduledTaskSchedule(
     @SerialName("time")
     public val time: String,
     @SerialName("type")
@@ -97,7 +97,7 @@ public data class ScheduledTaskScheduleDailyScheduledTaskSchedule(
 }
 
 @Serializable
-public data class ScheduledTaskScheduleWeekdaysScheduledTaskSchedule(
+internal data class ScheduledTaskScheduleWeekdaysScheduledTaskSchedule(
     @SerialName("time")
     public val time: String,
     @SerialName("type")
@@ -107,7 +107,7 @@ public data class ScheduledTaskScheduleWeekdaysScheduledTaskSchedule(
 }
 
 @Serializable
-public data class ScheduledTaskScheduleWeeklyScheduledTaskSchedule(
+internal data class ScheduledTaskScheduleWeeklyScheduledTaskSchedule(
     @SerialName("days")
     public val days: List<ScheduledTaskWeekday>,
     @SerialName("time")
@@ -118,7 +118,7 @@ public data class ScheduledTaskScheduleWeeklyScheduledTaskSchedule(
     init { require(type == "weekly") }
 }
 
-public object ScheduledTaskScheduleSerializer : JsonContentPolymorphicSerializer<ScheduledTaskSchedule>(ScheduledTaskSchedule::class) {
+internal object ScheduledTaskScheduleSerializer : JsonContentPolymorphicSerializer<ScheduledTaskSchedule>(ScheduledTaskSchedule::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ScheduledTaskSchedule> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "hourly" -> ScheduledTaskScheduleHourlyScheduledTaskSchedule.serializer()
@@ -130,7 +130,7 @@ public object ScheduledTaskScheduleSerializer : JsonContentPolymorphicSerializer
 }
 
 @Serializable
-public data class ScheduledTaskSummary(
+internal data class ScheduledTaskSummary(
     @SerialName("key")
     public val key: String,
     @SerialName("name")
@@ -142,7 +142,7 @@ public data class ScheduledTaskSummary(
 )
 
 @Serializable
-public enum class ScheduledTaskWeekday {
+internal enum class ScheduledTaskWeekday {
     @SerialName("MO") MO,
     @SerialName("TU") TU,
     @SerialName("WE") WE,
@@ -153,7 +153,7 @@ public enum class ScheduledTaskWeekday {
 }
 
 @Serializable
-public data class SelectedCapabilityRoot(
+internal data class SelectedCapabilityRoot(
     @SerialName("id")
     public val id: String,
     @SerialName("location")
@@ -161,22 +161,22 @@ public data class SelectedCapabilityRoot(
 )
 
 @Serializable
-public data class SendAddCreditsNudgeEmailParams(
+internal data class SendAddCreditsNudgeEmailParams(
     @SerialName("creditType")
     public val creditType: AddCreditsNudgeCreditType,
 )
 
 @Serializable
-public data class SendAddCreditsNudgeEmailResponse(
+internal data class SendAddCreditsNudgeEmailResponse(
     @SerialName("status")
     public val status: AddCreditsNudgeEmailStatus,
 )
 
 @Serializable(with = ServerNotificationSerializer::class)
-public sealed interface ServerNotification
+internal sealed interface ServerNotification
 
 @Serializable
-public data class ServerNotificationErrorNotification(
+internal data class ServerNotificationErrorNotification(
     @SerialName("params")
     public val params: ErrorNotification,
     @SerialName("emittedAtMs")
@@ -188,7 +188,7 @@ public data class ServerNotificationErrorNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadStartedNotification(
+internal data class ServerNotificationThreadStartedNotification(
     @SerialName("params")
     public val params: ThreadStartedNotification,
     @SerialName("emittedAtMs")
@@ -200,7 +200,7 @@ public data class ServerNotificationThreadStartedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadStatusChangedNotification(
+internal data class ServerNotificationThreadStatusChangedNotification(
     @SerialName("params")
     public val params: ThreadStatusChangedNotification,
     @SerialName("emittedAtMs")
@@ -212,7 +212,7 @@ public data class ServerNotificationThreadStatusChangedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadArchivedNotification(
+internal data class ServerNotificationThreadArchivedNotification(
     @SerialName("params")
     public val params: ThreadArchivedNotification,
     @SerialName("emittedAtMs")

@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,20 +33,20 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
@@ -78,71 +77,93 @@ import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.KSerializer
 
 
-internal suspend fun CodexAgentClient.openSessionAction(previous: SessionId?, settings: AgentRuntimeSettings): SessionId {
-    if (builtInToolDefinitions.any(BuiltInToolDefinition::requiresEnabledPlugin)) {
+internal suspend fun CodexAgentClient.openConversationAction(
+    conversationId: ConversationId?,
+    settings: AgentConversationSettings,
+    workingDirectory: String,
+    features: Set<CodexRuntimeFeature>,
+    owner: Any,
+): ConversationId {
+    require(workingDirectory.isAbsoluteHostPath()) { "Working directory must be absolute" }
+    if (CodexRuntimeFeature.PLUGINS in features &&
+        builtInToolDefinitions.any(BuiltInToolDefinition::requiresEnabledPlugin)
+    ) {
         connection.ensureStarted()
-        refreshBuiltInPluginEnablement(settings.workingDirectory ?: "/")
+        refreshBuiltInPluginEnablement(workingDirectory)
     }
-    val developerInstructions =
-        "Answer conversationally using Markdown. The shell starts in the user's selected " +
-            "workspace and may use ordinary shell commands to inspect and modify files. Use enabled " +
-            "plugin tools through their advertised typed contracts. Use the " +
-            "built-in web search tool only when the user input contains the structured " +
-            "'${AgentCapability.WEB_SEARCH.promptLabel}' prompt tag."
+    val developerInstructions = buildList {
+        add("Answer conversationally using Markdown.")
+        if (CodexRuntimeFeature.SHELL_COMMANDS in features) {
+            add("The shell starts in the user's selected workspace and may use ordinary shell commands to inspect and modify files.")
+        }
+        if (CodexRuntimeFeature.PLUGINS in features) {
+            add("Use enabled plugin tools through their advertised typed contracts.")
+        }
+        add(
+            "Use the built-in web search tool only when the user input contains the structured " +
+                "'${AgentCapability.WEB_SEARCH.promptLabel}' prompt tag.",
+        )
+    }.joinToString(" ")
     val config = buildJsonObject {
         put("web_search", "live")
         putJsonObject("tools") {
             putJsonObject("experimental_request_user_input") { put("enabled", true) }
         }
         putJsonObject("features") {
-            put("shell_tool", true)
+            put("shell_tool", CodexRuntimeFeature.SHELL_COMMANDS in features)
             put("code_mode", false)
             put("multi_agent", false)
-            put("apps", true)
-            put("enable_mcp_apps", true)
-            put("plugins", true)
+            put("apps", CodexRuntimeFeature.CONNECTORS in features)
+            put("enable_mcp_apps", CodexRuntimeFeature.CONNECTORS in features)
+            put("plugins", CodexRuntimeFeature.PLUGINS in features)
             put("image_generation", false)
             put("goals", false)
-            put("hooks", true)
+            put("hooks", CodexRuntimeFeature.HOOKS in features)
             put("skill_mcp_dependency_install", false)
             put("workspace_dependencies", false)
             put("standalone_web_search", false)
         }
-        putJsonObject("shell_environment_policy") {
-            put("inherit", "all")
-            put(
-                "exclude",
-                buildJsonArray {
-                    listOf(
-                        "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-                        "http_proxy", "https_proxy", "all_proxy", "no_proxy",
-                    ).forEach { add(JsonPrimitive(it)) }
-                },
-            )
+        if (CodexRuntimeFeature.SHELL_COMMANDS in features) {
+            putJsonObject("shell_environment_policy") {
+                put("inherit", "all")
+                put(
+                    "exclude",
+                    buildJsonArray {
+                        listOf(
+                            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                            "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+                        ).forEach { add(JsonPrimitive(it)) }
+                    },
+                )
+            }
         }
     }
-    val opened = if (previous == null) {
+    val opened = if (conversationId == null) {
         val result = connection.request(
             AppServerClientMethods.ThreadStart,
             ThreadStartParams(
-                approvalPolicy = JsonPrimitive(settings.approvalPreset.approvalPolicy),
+                approvalPolicy = JsonPrimitive(settings.approvalPreset.wireApprovalPolicy()),
                 approvalsReviewer = approvalsReviewer(settings.approvalPreset),
                 config = config,
-                cwd = settings.workingDirectory,
+                cwd = workingDirectory,
                 developerInstructions = developerInstructions,
                 ephemeral = false,
                 sandbox = SandboxMode.DANGER_FULL_ACCESS,
                 serviceTier = settings.serviceTier,
-                dynamicTools = builtInToolDispatcher?.let {
+                dynamicTools = toolProvider?.let {
                     builtInDynamicTools(
-                        builtInPluginEnabled.filterValues { it }.keys,
+                        if (CodexRuntimeFeature.PLUGINS in features) {
+                            builtInPluginEnabled.filterValues { it }.keys
+                        } else {
+                            emptySet()
+                        },
                         builtInToolDefinitions,
                     )
                 },
             ),
         )
-        AgentEvent.SessionOpened(
-            sessionId = SessionId(result.thread.id),
+        AgentEvent.ConversationOpened(
+            conversationId = ConversationId(result.thread.id),
             model = result.model,
             effort = result.reasoningEffort,
             serviceTier = result.serviceTier,
@@ -151,33 +172,38 @@ internal suspend fun CodexAgentClient.openSessionAction(previous: SessionId?, se
         val result = connection.request(
             AppServerClientMethods.ThreadResume,
             ThreadResumeParams(
-                threadId = previous.value,
-                approvalPolicy = JsonPrimitive(settings.approvalPreset.approvalPolicy),
+                threadId = conversationId.value,
+                approvalPolicy = JsonPrimitive(settings.approvalPreset.wireApprovalPolicy()),
                 approvalsReviewer = approvalsReviewer(settings.approvalPreset),
                 config = config,
-                cwd = settings.workingDirectory,
+                cwd = workingDirectory,
                 developerInstructions = developerInstructions,
                 sandbox = SandboxMode.DANGER_FULL_ACCESS,
                 serviceTier = settings.serviceTier,
             ),
         )
-        AgentEvent.SessionOpened(
-            sessionId = SessionId(result.thread.id),
+        AgentEvent.ConversationOpened(
+            conversationId = ConversationId(result.thread.id),
             model = result.model,
             effort = null,
             serviceTier = settings.serviceTier,
         )
     }
-    val sessionId = opened.sessionId
-    stateLock.withLock {
-        openedSessions += sessionId
-        sessionRuntimeSettings[sessionId] = SessionRuntimeSettings(
-            workspace = settings.workingDirectory,
-            approvalPreset = settings.approvalPreset,
-            model = opened.model,
-            effort = opened.effort,
-        )
+    return withContext(NonCancellable) {
+        val openedId = opened.conversationId
+        conversationOwnershipLock.withLock {
+            stateLock.withLock {
+                openedConversations += openedId
+                conversationOwners[openedId] = owner
+                conversationRuntimeSettings[openedId] = ConversationRuntimeSettings(
+                    workspace = workingDirectory,
+                    approvalPreset = settings.approvalPreset,
+                    model = opened.model,
+                    effort = opened.effort,
+                )
+            }
+        }
+        eventsChannel.send(opened)
+        openedId
     }
-    eventsChannel.send(opened)
-    return sessionId
 }

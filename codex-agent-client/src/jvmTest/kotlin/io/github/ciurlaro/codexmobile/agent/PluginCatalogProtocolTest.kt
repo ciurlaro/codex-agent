@@ -95,8 +95,8 @@ class PluginCatalogProtocolTest : SkillsPluginsProtocolTestBase() {
             assertEquals("review", client.listSkills("/workspace").skills.single().name)
             client.setSkillEnabled("/skills/review/SKILL.md", true)
             val plugin = client.listInstalledPlugins("/workspace").plugins.single()
-            assertFalse(client.listAvailablePlugins("/workspace").plugins.single().installed)
-            assertTrue(plugin.installed)
+            assertFalse(client.listAvailablePlugins("/workspace").plugins.single().isInstalled)
+            assertTrue(plugin.isInstalled)
             assertEquals("drive", client.readPlugin(plugin.reference).connectors.single().id)
             assertEquals("drive", client.installPlugin(plugin.reference).connectorsNeedingAuthentication.single().id)
             client.uninstallPlugin(plugin.reference)
@@ -188,6 +188,33 @@ class PluginCatalogProtocolTest : SkillsPluginsProtocolTestBase() {
     }
 
     @Test
+    fun pluginCacheIdentityIncludesTheFullClientIdentity() {
+        val first = CodexAgentClient(
+            runtimeFactory = { error("must not start") },
+            clientName = "third_party",
+            clientTitle = "First App",
+            pluginCacheDirectory = "/cache".toPath(),
+            fileSystem = FileSystem.SYSTEM,
+        )
+        val second = CodexAgentClient(
+            runtimeFactory = { error("must not start") },
+            clientName = "third_party",
+            clientTitle = "Second App",
+            pluginCacheDirectory = "/cache".toPath(),
+            fileSystem = FileSystem.SYSTEM,
+        )
+        try {
+            assertNotEquals(
+                first.pluginCacheFileAction("/workspace", "available"),
+                second.pluginCacheFileAction("/workspace", "available"),
+            )
+        } finally {
+            first.close()
+            second.close()
+        }
+    }
+
+    @Test
     fun availablePluginDiscoveryRetriesAnEmptyCatalogWhileTheMarketplaceBecomesReady(): Unit = runBlocking {
         var requests = 0
         val process = FakeCodexRuntime { message, server ->
@@ -237,7 +264,7 @@ class PluginCatalogProtocolTest : SkillsPluginsProtocolTestBase() {
 
         CodexAgentClient({ runtime }, requestTimeoutMillis = 1_000).use { client ->
             val catalog = client.listInstalledPlugins("/workspace")
-            assertTrue(catalog.plugins.single().installed)
+            assertTrue(catalog.plugins.single().isInstalled)
             assertEquals(listOf("Stream Closed"), catalog.errors)
         }
     }
@@ -257,7 +284,7 @@ class PluginCatalogProtocolTest : SkillsPluginsProtocolTestBase() {
             pluginCacheDirectory = cache.absolutePath.toPath(),
             fileSystem = FileSystem.SYSTEM,
         ).use { client ->
-            assertTrue(client.listInstalledPlugins("/workspace").plugins.single().installed)
+            assertTrue(client.listInstalledPlugins("/workspace").plugins.single().isInstalled)
         }
 
         val empty = FakeCodexRuntime { message, server ->

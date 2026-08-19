@@ -2,7 +2,7 @@ package io.github.ciurlaro.codexmobile.agent
 
 import io.github.ciurlaro.codexmobile.agent.AgentEvent
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CountDownLatch
@@ -118,9 +118,9 @@ class CodexProtocolContractTest {
         try {
             coroutineScope {
                 val auth = async { client.authenticate() }
-                val session = async { client.openSession() }
+                val session = async { client.openConversation() }
                 auth.await()
-                assertEquals(SessionId("thread-1"), session.await())
+                assertEquals(ConversationId("thread-1"), session.await())
             }
             assertEquals(1, launches.get())
             val params = checkNotNull(threadParams)

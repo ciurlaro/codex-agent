@@ -11,18 +11,36 @@ let package = Package(
             name: "CodexAgentAuthentication",
             targets: ["CodexAgentAuthentication"]
         ),
+        .library(
+            name: "CodexAgentObservation",
+            targets: ["CodexAgentObservation"]
+        ),
+        .library(
+            name: "CodexAgentSwiftSupport",
+            targets: ["CodexAgentSwiftSupport"]
+        ),
     ],
     targets: [
         .binaryTarget(
             name: "CodexAgent",
             url: "https://github.com/ciurlaro/codex-agent/releases/download/v0.2.0/CodexAgent-0.2.0.xcframework.zip",
-            checksum: "cdc30d0ec5ea0770113e41375cabdcb87ab56dfdc9b0b5e122b98a91998d70a8"
+            checksum: "374df473b43ca5e3ac61f499e9639b61cf85cee6f8a35f578df7fb1f9b8fcb63"
         ),
         .target(
             name: "CodexAgentAuthentication",
             dependencies: ["CodexAgent"],
             path: "codex-agent-runtime-ios/apple/Sources/CodexAgentAuthentication",
             resources: [.copy("PrivacyInfo.xcprivacy")]
+        ),
+        .target(
+            name: "CodexAgentObservation",
+            dependencies: ["CodexAgent"],
+            path: "codex-agent-runtime-ios/apple/Sources/CodexAgentObservation"
+        ),
+        .target(
+            name: "CodexAgentSwiftSupport",
+            dependencies: ["CodexAgent"],
+            path: "codex-agent-runtime-ios/apple/Sources/CodexAgentSwiftSupport"
         ),
     ]
 )

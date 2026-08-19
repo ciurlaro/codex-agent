@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ParsedCommandUnknownParsedCommand(
+internal data class ParsedCommandUnknownParsedCommand(
     @SerialName("cmd")
     public val cmd: String,
     @SerialName("type")
@@ -22,7 +22,7 @@ public data class ParsedCommandUnknownParsedCommand(
     init { require(type == "unknown") }
 }
 
-public object ParsedCommandSerializer : JsonContentPolymorphicSerializer<ParsedCommand>(ParsedCommand::class) {
+internal object ParsedCommandSerializer : JsonContentPolymorphicSerializer<ParsedCommand>(ParsedCommand::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ParsedCommand> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "read" -> ParsedCommandReadParsedCommand.serializer()
@@ -34,7 +34,7 @@ public object ParsedCommandSerializer : JsonContentPolymorphicSerializer<ParsedC
 }
 
 @Serializable
-public enum class PatchApplyStatus {
+internal enum class PatchApplyStatus {
     @SerialName("inProgress") IN_PROGRESS,
     @SerialName("completed") COMPLETED,
     @SerialName("failed") FAILED,
@@ -42,10 +42,10 @@ public enum class PatchApplyStatus {
 }
 
 @Serializable(with = PatchChangeKindSerializer::class)
-public sealed interface PatchChangeKind
+internal sealed interface PatchChangeKind
 
 @Serializable
-public data class PatchChangeKindAddPatchChangeKind(
+internal data class PatchChangeKindAddPatchChangeKind(
     @SerialName("type")
     public val type: String = "add",
 ) : PatchChangeKind {
@@ -53,7 +53,7 @@ public data class PatchChangeKindAddPatchChangeKind(
 }
 
 @Serializable
-public data class PatchChangeKindDeletePatchChangeKind(
+internal data class PatchChangeKindDeletePatchChangeKind(
     @SerialName("type")
     public val type: String = "delete",
 ) : PatchChangeKind {
@@ -61,7 +61,7 @@ public data class PatchChangeKindDeletePatchChangeKind(
 }
 
 @Serializable
-public data class PatchChangeKindUpdatePatchChangeKind(
+internal data class PatchChangeKindUpdatePatchChangeKind(
     @SerialName("move_path")
     public val move_path: String? = null,
     @SerialName("type")
@@ -70,7 +70,7 @@ public data class PatchChangeKindUpdatePatchChangeKind(
     init { require(type == "update") }
 }
 
-public object PatchChangeKindSerializer : JsonContentPolymorphicSerializer<PatchChangeKind>(PatchChangeKind::class) {
+internal object PatchChangeKindSerializer : JsonContentPolymorphicSerializer<PatchChangeKind>(PatchChangeKind::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<PatchChangeKind> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "add" -> PatchChangeKindAddPatchChangeKind.serializer()
@@ -81,13 +81,13 @@ public object PatchChangeKindSerializer : JsonContentPolymorphicSerializer<Patch
 }
 
 @Serializable
-public enum class PermissionGrantScope {
+internal enum class PermissionGrantScope {
     @SerialName("turn") TURN,
     @SerialName("session") SESSION,
 }
 
 @Serializable
-public data class PermissionProfileListParams(
+internal data class PermissionProfileListParams(
     @SerialName("cursor")
     public val cursor: String? = null,
     @SerialName("cwd")
@@ -97,7 +97,7 @@ public data class PermissionProfileListParams(
 )
 
 @Serializable
-public data class PermissionProfileListResponse(
+internal data class PermissionProfileListResponse(
     @SerialName("data")
     public val data: List<PermissionProfileSummary>,
     @SerialName("nextCursor")
@@ -105,7 +105,7 @@ public data class PermissionProfileListResponse(
 )
 
 @Serializable
-public data class PermissionProfileSummary(
+internal data class PermissionProfileSummary(
     @SerialName("allowed")
     public val allowed: Boolean,
     @SerialName("id")
@@ -115,7 +115,7 @@ public data class PermissionProfileSummary(
 )
 
 @Serializable
-public data class PermissionsRequestApprovalParams(
+internal data class PermissionsRequestApprovalParams(
     @SerialName("cwd")
     public val cwd: AbsolutePathBuf,
     @SerialName("itemId")
@@ -135,7 +135,7 @@ public data class PermissionsRequestApprovalParams(
 )
 
 @Serializable
-public data class PermissionsRequestApprovalResponse(
+internal data class PermissionsRequestApprovalResponse(
     @SerialName("permissions")
     public val permissions: GrantedPermissionProfile,
     @SerialName("scope")
@@ -145,14 +145,14 @@ public data class PermissionsRequestApprovalResponse(
 )
 
 @Serializable
-public enum class Personality {
+internal enum class Personality {
     @SerialName("none") NONE,
     @SerialName("friendly") FRIENDLY,
     @SerialName("pragmatic") PRAGMATIC,
 }
 
 @Serializable
-public data class PlanDeltaNotification(
+internal data class PlanDeltaNotification(
     @SerialName("delta")
     public val delta: String,
     @SerialName("itemId")
@@ -164,7 +164,7 @@ public data class PlanDeltaNotification(
 )
 
 @Serializable
-public enum class PlanType {
+internal enum class PlanType {
     @SerialName("free") FREE,
     @SerialName("go") GO,
     @SerialName("plus") PLUS,
@@ -180,15 +180,15 @@ public enum class PlanType {
 }
 
 @Serializable
-public enum class PluginAuthPolicy {
+internal enum class PluginAuthPolicy {
     @SerialName("ON_INSTALL") ON_INSTALL,
     @SerialName("ON_USE") ON_USE,
 }
 
-public typealias PluginAvailability = JsonElement
+internal typealias PluginAvailability = JsonElement
 
 @Serializable
-public data class PluginDetail(
+internal data class PluginDetail(
     @SerialName("appTemplates")
     public val appTemplates: List<AppTemplateSummary>,
     @SerialName("apps")
@@ -214,7 +214,7 @@ public data class PluginDetail(
 )
 
 @Serializable
-public data class PluginHookSummary(
+internal data class PluginHookSummary(
     @SerialName("eventName")
     public val eventName: HookEventName,
     @SerialName("key")

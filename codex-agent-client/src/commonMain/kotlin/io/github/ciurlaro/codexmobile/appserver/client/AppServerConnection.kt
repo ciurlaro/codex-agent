@@ -13,6 +13,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -22,10 +23,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonElement
 
-public class AppServerConnection(
+internal class AppServerConnection(
     internal val runtimeFactory: CodexRuntimeFactory,
     internal val initializeParams: InitializeParams,
     internal val requestTimeoutMillis: Long = 30.seconds.inWholeMilliseconds,
@@ -50,6 +52,7 @@ public class AppServerConnection(
     // These fields are confined to the command-loop coroutine.
     internal var runtime: CodexRuntime? = null
     internal var runtimeEvents: Job? = null
+    internal var runtimeStopRequested: CompletableDeferred<Unit>? = null
     internal var nextRequestId = 1L
     internal val pending = mutableMapOf<Long, PendingRequest>()
     internal val startWaiters = mutableSetOf<CompletableDeferred<InitializeResponse>>()
@@ -67,7 +70,9 @@ public class AppServerConnection(
                 response.await()
             }
         } finally {
-            runCatching { commands.send(ConnectionCommand.CancelStart(response)) }
+            withContext(NonCancellable) {
+                runCatching { commands.send(ConnectionCommand.CancelStart(response)) }
+            }
         }
     }
 
@@ -85,7 +90,9 @@ public class AppServerConnection(
                 response.await()
             }
         } finally {
-            runCatching { commands.send(ConnectionCommand.CancelRequest(response)) }
+            withContext(NonCancellable) {
+                runCatching { commands.send(ConnectionCommand.CancelRequest(response)) }
+            }
         }
         return decode(method.responseSerializer, encodedResponse, method.descriptor.responseType)
     }

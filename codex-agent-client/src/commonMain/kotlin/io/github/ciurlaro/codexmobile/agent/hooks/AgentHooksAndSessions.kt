@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -89,7 +87,7 @@ internal suspend fun CodexAgentClient.listHooksAction(workingDirectory: String):
             AgentHook(
                 key = hook.key,
                 currentHash = hook.currentHash,
-                enabled = hook.enabled,
+                isEnabled = hook.enabled,
                 eventName = hook.eventName.name,
                 handlerType = hook.handlerType.name,
                 isManaged = hook.isManaged,
@@ -135,15 +133,15 @@ internal suspend fun CodexAgentClient.writeHookStateAction(key: String, state: J
     )
 }
 
-internal suspend fun CodexAgentClient.startMcpOauthAction(serverName: String, sessionId: SessionId?): String {
+internal suspend fun CodexAgentClient.startMcpOauthAction(serverName: String, conversationId: ConversationId?): String {
     require(serverName.isNotBlank()) { "MCP server name must not be blank" }
     return connection.request(
         AppServerClientMethods.McpServerOauthLogin,
-        McpServerOauthLoginParams(name = serverName, threadId = sessionId?.value),
+        McpServerOauthLoginParams(name = serverName, threadId = conversationId?.value),
     ).authorizationUrl.also(::requireSafeAuthUrl)
 }
 
-internal suspend fun CodexAgentClient.listSessionsAction(): List<AgentConversationSummary> {
+internal suspend fun CodexAgentClient.listConversationsAction(): List<AgentConversationSummary> {
     val threads = requestAllPages(
         AppServerClientMethods.ThreadList,
         params = { cursor ->
@@ -165,14 +163,14 @@ internal suspend fun CodexAgentClient.listSessionsAction(): List<AgentConversati
     }
 }
 
-internal suspend fun CodexAgentClient.readSessionAction(sessionId: SessionId): AgentConversation {
+internal suspend fun CodexAgentClient.readConversationAction(conversationId: ConversationId): AgentConversation {
     val thread = connection.request(
         AppServerClientMethods.ThreadRead,
-        ThreadReadParams(sessionId.value, includeTurns = true),
+        ThreadReadParams(conversationId.value, includeTurns = true),
     ).thread
-    check(thread.id == sessionId.value) { "App-server returned another thread" }
-    val transcripts = shellTranscriptStore.read(sessionId.value).groupBy(ShellTranscript::turnId)
-    val recordedInvocations = turnInputMetadataStore.read(sessionId.value)
+    check(thread.id == conversationId.value) { "App-server returned another thread" }
+    val transcripts = shellTranscriptStore.read(conversationId.value).groupBy(ShellTranscript::turnId)
+    val recordedInvocations = turnInputMetadataStore.read(conversationId.value)
     val messages = thread.turns.flatMap { turn ->
         transcripts[turn.id].orEmpty().flatMap(::shellTranscriptMessages) + conversationMessages(
             turn.items.map { item ->
@@ -187,33 +185,108 @@ internal suspend fun CodexAgentClient.readSessionAction(sessionId: SessionId): A
     )
 }
 
-internal suspend fun CodexAgentClient.renameSessionAction(sessionId: SessionId, name: String) {
+internal suspend fun CodexAgentClient.renameConversationAction(conversationId: ConversationId, name: String) {
     val snapshot = name.trim()
     require(snapshot.isNotEmpty()) { "Conversation name must not be blank" }
     connection.request(
         AppServerClientMethods.ThreadNameSet,
-        ThreadSetNameParams(name = snapshot, threadId = sessionId.value),
+        ThreadSetNameParams(name = snapshot, threadId = conversationId.value),
     )
 }
 
-internal suspend fun CodexAgentClient.deleteSessionAction(sessionId: SessionId) {
+internal suspend fun CodexAgentClient.deleteConversationAction(conversationId: ConversationId) {
     connection.request(
         AppServerClientMethods.ThreadDelete,
-        ThreadDeleteParams(sessionId.value),
+        ThreadDeleteParams(conversationId.value),
     )
     stateLock.withLock {
-        openedSessions -= sessionId
-        sessionRuntimeSettings -= sessionId
+        openedConversations -= conversationId
+        conversationOwners -= conversationId
+        conversationRuntimeSettings -= conversationId
     }
-    shellTranscriptStore.delete(sessionId.value)
-    turnInputMetadataStore.delete(sessionId.value)
+    shellTranscriptStore.delete(conversationId.value)
+    turnInputMetadataStore.delete(conversationId.value)
     turnStateLock.withLock {
-        activeTurns -= sessionId
-        startingTurns -= sessionId
-        terminalDuringStart -= sessionId
-        cancellingTurns -= sessionId
-        cancelledTurns -= sessionId
+        shellStartupCompletions.remove(conversationId)?.complete(false)
+        activeTurns -= conversationId
+        startingTurns -= conversationId
+        pendingTerminalsDuringStart.keys.removeAll { it.first == conversationId }
+        recentTerminalTurnIds -= conversationId
+        cancellingTurns -= conversationId
+        cancelledTurns -= conversationId
     }
+}
+
+internal suspend fun CodexAgentClient.detachConversationAction(
+    conversationId: ConversationId,
+    owner: Any,
+): ConversationDetachResult = conversationOwnershipLock.withLock {
+    if (stateLock.withLock { conversationOwners[conversationId] !== owner }) {
+        return@withLock ConversationDetachResult(owned = false)
+    }
+    var failure: Throwable? = null
+    try {
+        cancelPendingBuiltInTools(conversationId, null, "Conversation was closed")
+    } catch (error: Throwable) {
+        failure = error
+    }
+    val pending = stateLock.withLock {
+        val approvals = pendingApprovalRequests.entries
+            .filter { it.value.conversationId == conversationId }
+            .map { it.key to it.value }
+        approvals.forEach { (requestId) -> pendingApprovalRequests.remove(requestId) }
+        val elicitations = pendingElicitationRequests.entries
+            .filter { it.value.elicitation.conversationId == conversationId }
+            .map { it.key to it.value }
+        elicitations.forEach { (requestId) -> pendingElicitationRequests.remove(requestId) }
+        openedConversations -= conversationId
+        conversationOwners -= conversationId
+        conversationRuntimeSettings -= conversationId
+        workItems.entries.removeAll { it.value.first == conversationId }
+        approvals.map { it.second } to elicitations.map { it.second }
+    }
+    turnStateLock.withLock {
+        shellStartupCompletions.remove(conversationId)?.complete(false)
+        activeTurns -= conversationId
+        startingTurns -= conversationId
+        pendingTerminalsDuringStart.keys.removeAll { it.first == conversationId }
+        recentTerminalTurnIds -= conversationId
+        cancellingTurns -= conversationId
+        cancelledTurns -= conversationId
+    }
+    pending.first.forEach { approval ->
+        runCatching {
+            when (approval.type) {
+                ApprovalType.COMMAND -> connection.respond(
+                    approval.wireId,
+                    AppServerServerMethods.ItemCommandExecutionRequestApproval,
+                    CommandExecutionRequestApprovalResponse(JsonPrimitive("decline")),
+                )
+                ApprovalType.FILE_CHANGE -> connection.respond(
+                    approval.wireId,
+                    AppServerServerMethods.ItemFileChangeRequestApproval,
+                    FileChangeRequestApprovalResponse(JsonPrimitive("decline")),
+                )
+            }
+        }
+    }
+    pending.second.forEach { elicitation ->
+        runCatching {
+            when (elicitation) {
+                is PendingElicitation.Mcp -> connection.respond(
+                    elicitation.wireId,
+                    AppServerServerMethods.McpServerElicitationRequest,
+                    McpServerElicitationRequestResponse(McpServerElicitationAction.DECLINE),
+                )
+                is PendingElicitation.UserInput -> connection.respond(
+                    elicitation.wireId,
+                    AppServerServerMethods.ItemToolRequestUserInput,
+                    ToolRequestUserInputResponse(emptyMap()),
+                )
+            }
+        }
+    }
+    ConversationDetachResult(owned = true, failure = failure)
 }
 
 internal suspend fun <P, R, T, U> CodexAgentClient.requestAllPagesAction(

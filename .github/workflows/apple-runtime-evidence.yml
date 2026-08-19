@@ -1,0 +1,206 @@
+name: Apple Runtime Evidence
+
+on:
+  workflow_call:
+    inputs:
+      candidateCommit:
+        required: true
+        type: string
+      trustedCacheWriter:
+        required: true
+        type: boolean
+    secrets:
+      GRADLE_ENCRYPTION_KEY:
+        required: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  native-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.candidateCommit }}
+      - uses: ./.github/actions/setup-kmp
+        with:
+          cache-encryption-key: ${{ inputs.trustedCacheWriter && secrets.GRADLE_ENCRYPTION_KEY || '' }}
+      - id: cargo
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: >-
+            cargo-downloads-v1-${{ runner.os }}-rust-1.95.0-${{
+            hashFiles('codex-agent-runtime-ios/native/provenance.json',
+            'codex-agent-runtime-ios/native/bridge/Cargo.lock',
+            'codex-agent-runtime-ios/native/patches/**',
+            'codex-agent-runtime-ios/native/sqlite/**') }}
+      - uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        with:
+          components: llvm-tools-preview,rust-src
+      - uses: ./.github/actions/setup-sccache
+        with:
+          write: ${{ inputs.trustedCacheWriter }}
+      - run: >-
+          ./gradlew :codex-agent-runtime-ios:exportCodexAgentIosNativeTestsProof
+          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
+          --build-cache --parallel --stacktrace
+      - if: inputs.trustedCacheWriter && steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: codex-agent-ci-ios-native-tests-${{ inputs.candidateCommit }}
+          path: codex-agent-runtime-ios/build/apple-slice-exports/native-tests/native-tests-proof.json
+          compression-level: 0
+          retention-days: 30
+
+  slice:
+    name: iOS ${{ matrix.name }} slice
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: device
+            target: aarch64-apple-ios
+            task: exportCodexAgentIosArm64RustSlice
+            archive: codex-agent-ios-arm64.a
+            proof: codex-agent-ios-arm64-proof.json
+            artifact: arm64
+            cargoWriter: true
+            sccacheWriter: true
+          - name: simulator
+            target: aarch64-apple-ios-sim
+            task: exportCodexAgentIosSimulatorArm64RustSlice
+            archive: codex-agent-ios-simulator-arm64.a
+            proof: codex-agent-ios-simulator-arm64-proof.json
+            artifact: simulator-arm64
+            cargoWriter: false
+            sccacheWriter: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.candidateCommit }}
+      - uses: ./.github/actions/setup-kmp
+        with:
+          cache-read-only: ${{ !inputs.trustedCacheWriter }}
+          cache-encryption-key: ${{ inputs.trustedCacheWriter && secrets.GRADLE_ENCRYPTION_KEY || '' }}
+          xcode-fingerprint: auto
+      - id: cargo
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: >-
+            cargo-downloads-v1-${{ runner.os }}-rust-1.95.0-${{
+            hashFiles('codex-agent-runtime-ios/native/provenance.json',
+            'codex-agent-runtime-ios/native/bridge/Cargo.lock',
+            'codex-agent-runtime-ios/native/patches/**',
+            'codex-agent-runtime-ios/native/sqlite/**') }}
+      - uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        with:
+          targets: ${{ matrix.target }}
+          components: llvm-tools-preview,rust-src
+      - uses: ./.github/actions/setup-sccache
+        with:
+          write: ${{ inputs.trustedCacheWriter && matrix.sccacheWriter }}
+      - run: >-
+          ./gradlew :codex-agent-runtime-ios:verifyAppleToolchain
+          :codex-agent-runtime-ios:${{ matrix.task }}
+          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
+          --build-cache --parallel --stacktrace
+      - if: >-
+          inputs.trustedCacheWriter && matrix.cargoWriter &&
+          steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: codex-agent-ci-ios-${{ matrix.artifact }}-${{ inputs.candidateCommit }}
+          path: |
+            codex-agent-runtime-ios/build/apple-slice-exports/${{ matrix.archive }}
+            codex-agent-runtime-ios/build/apple-slice-exports/${{ matrix.proof }}
+          compression-level: 0
+          retention-days: 30
+
+  verified-distribution:
+    needs: [native-tests, slice]
+    runs-on: macos-26
+    timeout-minutes: 180
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.candidateCommit }}
+      - id: build
+        uses: ./.github/actions/setup-kmp
+        with:
+          cache-read-only: true
+          cache-encryption-key: ${{ inputs.trustedCacheWriter && secrets.GRADLE_ENCRYPTION_KEY || '' }}
+          xcode-fingerprint: auto
+      - uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+          components: llvm-tools-preview,rust-src
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: codex-agent-ci-ios-*-${{ inputs.candidateCommit }}
+          path: build/ios-native-evidence
+          merge-multiple: true
+      - name: Verify and export Apple once from imported native evidence
+        run: >-
+          ./gradlew verifyIosRuntime
+          :codex-agent-runtime-ios:exportCodexAgentIosVerifiedDistribution
+          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
+          -PcodexAgent.iosNativeEvidenceDirectory="$GITHUB_WORKSPACE/build/ios-native-evidence"
+          --build-cache --parallel --no-configuration-cache --stacktrace
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: codex-agent-ci-ios-verified-distribution-${{ inputs.candidateCommit }}
+          path: codex-agent-runtime-ios/build/apple-verified-distribution/
+          compression-level: 0
+          retention-days: 30
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: codex-agent-ci-ios-verification-${{ inputs.candidateCommit }}
+          path: |
+            codex-agent-runtime-ios/build/reports/ios-release/**
+            codex-agent-runtime-ios/build/swift-authentication-tests.xcresult
+            codex-agent-runtime-ios/build/swift-authentication-tests-summary.json
+          retention-days: 30
+      - if: inputs.trustedCacheWriter && steps.build.outputs.konan-cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.konan
+          key: ${{ steps.build.outputs.konan-cache-primary-key }}

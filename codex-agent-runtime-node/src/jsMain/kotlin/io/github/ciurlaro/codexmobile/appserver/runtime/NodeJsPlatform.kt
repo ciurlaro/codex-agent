@@ -32,8 +32,40 @@ private object JsNodeHost : NodeHost {
     override fun joinPath(parent: String, child: String): String = path.join(parent, child) as String
     override fun isFile(path: String): Boolean = fs.statSync(path).isFile() as Boolean
     override fun isDirectory(path: String): Boolean = fs.statSync(path).isDirectory() as Boolean
+    override fun isSymbolicLink(path: String): Boolean = fs.lstatSync(path).isSymbolicLink() as Boolean
+    override fun exists(path: String): Boolean = fs.existsSync(path) as Boolean
+    override fun fileSize(path: String): Long = (fs.statSync(path).size as Number).toLong()
+    override fun readBytes(path: String): ByteArray = dynamicToByteArray(fs.readFileSync(path))
+    override fun writeBytes(path: String, bytes: ByteArray): Unit = fs.writeFileSync(path, bytes)
+    override fun inflateRaw(bytes: ByteArray, maxOutputLength: Int): ByteArray {
+        val zlib: dynamic = js("require('node:zlib')")
+        val options: dynamic = js("({})")
+        options.maxOutputLength = maxOutputLength
+        return dynamicToByteArray(zlib.inflateRawSync(bytes, options))
+    }
+    override fun createDirectories(path: String): Unit = fs.mkdirSync(path, js("({ recursive: true })"))
+    override fun list(path: String): List<String> = (fs.readdirSync(path) as Array<String>).toList()
+    override fun move(source: String, destination: String): Unit = fs.renameSync(source, destination)
+    override fun removePath(path: String): Unit = fs.rmSync(path, js("({ recursive: true, force: true })"))
     override fun requireExecutable(path: String) {
         if (platform != "win32") fs.accessSync(path, fs.constants.X_OK)
+    }
+    override fun makeExecutable(path: String) {
+        if (platform != "win32") fs.chmodSync(path, 0x1ED)
+    }
+    override fun openUrl(url: String) {
+        val command = when (platform) {
+            "darwin" -> "open"
+            "win32" -> "explorer.exe"
+            else -> "xdg-open"
+        }
+        val childProcess: dynamic = js("require('node:child_process')")
+        val options: dynamic = js("({ detached: true, shell: false, stdio: 'ignore' })")
+        val child = childProcess.spawn(command, arrayOf(url), options)
+        child.once("error", { error: dynamic ->
+            console.error(error?.message?.toString() ?: "Unable to open the authorization URL")
+        })
+        child.unref()
     }
     override fun sha256(path: String): String = crypto.createHash("sha256")
         .update(fs.readFileSync(path)).digest("hex") as String
@@ -47,7 +79,7 @@ private object JsNodeHost : NodeHost {
     }
     override fun writeExecutableFile(path: String, value: String) {
         fs.writeFileSync(path, value)
-        if (platform != "win32") fs.chmodSync(path, 0x1ED)
+        makeExecutable(path)
     }
     override fun removeDirectory(path: String) {
         fs.rmSync(path, js("({ recursive: true, force: true })"))

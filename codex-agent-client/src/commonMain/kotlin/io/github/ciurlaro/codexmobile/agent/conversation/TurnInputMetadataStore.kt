@@ -1,6 +1,5 @@
 package io.github.ciurlaro.codexmobile.agent
 
-import okio.FileSystem
 import okio.Path
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -19,7 +18,7 @@ internal data class TurnInputMetadata(
 
 internal class TurnInputMetadataStore(
     private val directory: Path?,
-    private val fileSystem: FileSystem?,
+    private val fileSystem: AgentFileStore?,
 ) {
     private val lock = Mutex()
 

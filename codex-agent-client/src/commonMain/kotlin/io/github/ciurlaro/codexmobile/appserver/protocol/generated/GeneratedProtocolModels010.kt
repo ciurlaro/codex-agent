@@ -13,10 +13,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public class CommandExecTerminateResponse
+internal class CommandExecTerminateResponse
 
 @Serializable
-public data class CommandExecWriteParams(
+internal data class CommandExecWriteParams(
     @SerialName("processId")
     public val processId: String,
     @SerialName("closeStdin")
@@ -26,12 +26,12 @@ public data class CommandExecWriteParams(
 )
 
 @Serializable
-public class CommandExecWriteResponse
+internal class CommandExecWriteResponse
 
-public typealias CommandExecutionApprovalDecision = JsonElement
+internal typealias CommandExecutionApprovalDecision = JsonElement
 
 @Serializable
-public data class CommandExecutionOutputDeltaNotification(
+internal data class CommandExecutionOutputDeltaNotification(
     @SerialName("delta")
     public val delta: String,
     @SerialName("itemId")
@@ -43,7 +43,7 @@ public data class CommandExecutionOutputDeltaNotification(
 )
 
 @Serializable
-public data class CommandExecutionRequestApprovalParams(
+internal data class CommandExecutionRequestApprovalParams(
     @SerialName("itemId")
     public val itemId: String,
     @SerialName("startedAtMs")
@@ -73,13 +73,13 @@ public data class CommandExecutionRequestApprovalParams(
 )
 
 @Serializable
-public data class CommandExecutionRequestApprovalResponse(
+internal data class CommandExecutionRequestApprovalResponse(
     @SerialName("decision")
     public val decision: CommandExecutionApprovalDecision,
 )
 
 @Serializable
-public enum class CommandExecutionSource {
+internal enum class CommandExecutionSource {
     @SerialName("agent") AGENT,
     @SerialName("userShell") USER_SHELL,
     @SerialName("unifiedExecStartup") UNIFIED_EXEC_STARTUP,
@@ -87,7 +87,7 @@ public enum class CommandExecutionSource {
 }
 
 @Serializable
-public enum class CommandExecutionStatus {
+internal enum class CommandExecutionStatus {
     @SerialName("inProgress") IN_PROGRESS,
     @SerialName("completed") COMPLETED,
     @SerialName("failed") FAILED,
@@ -95,21 +95,21 @@ public enum class CommandExecutionStatus {
 }
 
 @Serializable
-public data class CommandMigration(
+internal data class CommandMigration(
     @SerialName("name")
     public val name: String,
 )
 
 @Serializable
-public data class ComputerUseRequirements(
+internal data class ComputerUseRequirements(
     @SerialName("allowLockedComputerUse")
     public val allowLockedComputerUse: Boolean? = null,
 )
 
-public typealias Config = JsonElement
+internal typealias Config = JsonElement
 
 @Serializable
-public data class ConfigBatchWriteParams(
+internal data class ConfigBatchWriteParams(
     @SerialName("edits")
     public val edits: List<ConfigEdit>,
     @SerialName("expectedVersion")
@@ -121,7 +121,7 @@ public data class ConfigBatchWriteParams(
 )
 
 @Serializable
-public data class ConfigEdit(
+internal data class ConfigEdit(
     @SerialName("keyPath")
     public val keyPath: String,
     @SerialName("mergeStrategy")
@@ -131,7 +131,7 @@ public data class ConfigEdit(
 )
 
 @Serializable
-public data class ConfigLayer(
+internal data class ConfigLayer(
     @SerialName("config")
     public val config: JsonElement,
     @SerialName("name")
@@ -143,7 +143,7 @@ public data class ConfigLayer(
 )
 
 @Serializable
-public data class ConfigLayerMetadata(
+internal data class ConfigLayerMetadata(
     @SerialName("name")
     public val name: ConfigLayerSource,
     @SerialName("version")
@@ -151,10 +151,10 @@ public data class ConfigLayerMetadata(
 )
 
 @Serializable(with = ConfigLayerSourceSerializer::class)
-public sealed interface ConfigLayerSource
+internal sealed interface ConfigLayerSource
 
 @Serializable
-public data class ConfigLayerSourceMdmConfigLayerSource(
+internal data class ConfigLayerSourceMdmConfigLayerSource(
     @SerialName("domain")
     public val domain: String,
     @SerialName("key")
@@ -166,7 +166,7 @@ public data class ConfigLayerSourceMdmConfigLayerSource(
 }
 
 @Serializable
-public data class ConfigLayerSourceSystemConfigLayerSource(
+internal data class ConfigLayerSourceSystemConfigLayerSource(
     @SerialName("file")
     public val file: AbsolutePathBuf,
     @SerialName("type")
@@ -176,7 +176,7 @@ public data class ConfigLayerSourceSystemConfigLayerSource(
 }
 
 @Serializable
-public data class ConfigLayerSourceEnterpriseManagedConfigLayerSource(
+internal data class ConfigLayerSourceEnterpriseManagedConfigLayerSource(
     @SerialName("id")
     public val id: String,
     @SerialName("name")
@@ -188,7 +188,7 @@ public data class ConfigLayerSourceEnterpriseManagedConfigLayerSource(
 }
 
 @Serializable
-public data class ConfigLayerSourceUserConfigLayerSource(
+internal data class ConfigLayerSourceUserConfigLayerSource(
     @SerialName("file")
     public val file: AbsolutePathBuf,
     @SerialName("profile")
@@ -200,7 +200,7 @@ public data class ConfigLayerSourceUserConfigLayerSource(
 }
 
 @Serializable
-public data class ConfigLayerSourceProjectConfigLayerSource(
+internal data class ConfigLayerSourceProjectConfigLayerSource(
     @SerialName("dotCodexFolder")
     public val dotCodexFolder: AbsolutePathBuf,
     @SerialName("type")
@@ -210,7 +210,7 @@ public data class ConfigLayerSourceProjectConfigLayerSource(
 }
 
 @Serializable
-public data class ConfigLayerSourceSessionFlagsConfigLayerSource(
+internal data class ConfigLayerSourceSessionFlagsConfigLayerSource(
     @SerialName("type")
     public val type: String = "sessionFlags",
 ) : ConfigLayerSource {
@@ -218,7 +218,7 @@ public data class ConfigLayerSourceSessionFlagsConfigLayerSource(
 }
 
 @Serializable
-public data class ConfigLayerSourceLegacyManagedConfigTomlFromFileConfigLayerSource(
+internal data class ConfigLayerSourceLegacyManagedConfigTomlFromFileConfigLayerSource(
     @SerialName("file")
     public val file: AbsolutePathBuf,
     @SerialName("type")

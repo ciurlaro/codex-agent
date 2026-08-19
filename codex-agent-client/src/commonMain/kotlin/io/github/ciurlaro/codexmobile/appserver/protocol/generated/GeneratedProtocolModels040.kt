@@ -13,15 +13,15 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public enum class ThreadHistoryMode {
+internal enum class ThreadHistoryMode {
     @SerialName("legacy") LEGACY,
     @SerialName("paginated") PAGINATED,
 }
 
-public typealias ThreadId = String
+internal typealias ThreadId = String
 
 @Serializable
-public data class ThreadInjectItemsParams(
+internal data class ThreadInjectItemsParams(
     @SerialName("items")
     public val items: List<JsonElement>,
     @SerialName("threadId")
@@ -29,13 +29,13 @@ public data class ThreadInjectItemsParams(
 )
 
 @Serializable
-public class ThreadInjectItemsResponse
+internal class ThreadInjectItemsResponse
 
 @Serializable(with = ThreadItemSerializer::class)
-public sealed interface ThreadItem
+internal sealed interface ThreadItem
 
 @Serializable
-public data class ThreadItemUserMessageThreadItem(
+internal data class ThreadItemUserMessageThreadItem(
     @SerialName("content")
     public val content: List<UserInput>,
     @SerialName("id")
@@ -49,7 +49,7 @@ public data class ThreadItemUserMessageThreadItem(
 }
 
 @Serializable
-public data class ThreadItemHookPromptThreadItem(
+internal data class ThreadItemHookPromptThreadItem(
     @SerialName("fragments")
     public val fragments: List<HookPromptFragment>,
     @SerialName("id")
@@ -61,7 +61,7 @@ public data class ThreadItemHookPromptThreadItem(
 }
 
 @Serializable
-public data class ThreadItemAgentMessageThreadItem(
+internal data class ThreadItemAgentMessageThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("text")
@@ -77,7 +77,7 @@ public data class ThreadItemAgentMessageThreadItem(
 }
 
 @Serializable
-public data class ThreadItemPlanThreadItem(
+internal data class ThreadItemPlanThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("text")
@@ -89,7 +89,7 @@ public data class ThreadItemPlanThreadItem(
 }
 
 @Serializable
-public data class ThreadItemReasoningThreadItem(
+internal data class ThreadItemReasoningThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("content")
@@ -103,7 +103,7 @@ public data class ThreadItemReasoningThreadItem(
 }
 
 @Serializable
-public data class ThreadItemCommandExecutionThreadItem(
+internal data class ThreadItemCommandExecutionThreadItem(
     @SerialName("command")
     public val command: String,
     @SerialName("commandActions")
@@ -131,7 +131,7 @@ public data class ThreadItemCommandExecutionThreadItem(
 }
 
 @Serializable
-public data class ThreadItemFileChangeThreadItem(
+internal data class ThreadItemFileChangeThreadItem(
     @SerialName("changes")
     public val changes: List<FileUpdateChange>,
     @SerialName("id")
@@ -145,7 +145,7 @@ public data class ThreadItemFileChangeThreadItem(
 }
 
 @Serializable
-public data class ThreadItemMcpToolCallThreadItem(
+internal data class ThreadItemMcpToolCallThreadItem(
     @SerialName("arguments")
     public val arguments: JsonElement,
     @SerialName("id")
@@ -175,7 +175,7 @@ public data class ThreadItemMcpToolCallThreadItem(
 }
 
 @Serializable
-public data class ThreadItemDynamicToolCallThreadItem(
+internal data class ThreadItemDynamicToolCallThreadItem(
     @SerialName("arguments")
     public val arguments: JsonElement,
     @SerialName("id")
@@ -199,7 +199,7 @@ public data class ThreadItemDynamicToolCallThreadItem(
 }
 
 @Serializable
-public data class ThreadItemCollabAgentToolCallThreadItem(
+internal data class ThreadItemCollabAgentToolCallThreadItem(
     @SerialName("agentsStates")
     public val agentsStates: Map<String, CollabAgentState>,
     @SerialName("id")

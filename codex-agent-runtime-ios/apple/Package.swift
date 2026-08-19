@@ -11,6 +11,14 @@ let package = Package(
             name: "CodexAgentAuthentication",
             targets: ["CodexAgentAuthentication"]
         ),
+        .library(
+            name: "CodexAgentObservation",
+            targets: ["CodexAgentObservation"]
+        ),
+        .library(
+            name: "CodexAgentSwiftSupport",
+            targets: ["CodexAgentSwiftSupport"]
+        ),
     ],
     targets: [
         .binaryTarget(name: "CodexAgent", path: "CodexAgent.xcframework"),
@@ -20,17 +28,26 @@ let package = Package(
             resources: [.copy("PrivacyInfo.xcprivacy")]
         ),
         .target(
-            name: "CodexAgentSQLiteTestSupport",
-            dependencies: ["CodexAgent"],
-            path: "Tests/SQLiteTestSupport",
-            publicHeadersPath: "include"
+            name: "CodexAgentObservation",
+            dependencies: ["CodexAgent"]
+        ),
+        .target(
+            name: "CodexAgentSwiftSupport",
+            dependencies: ["CodexAgent"]
         ),
         .testTarget(
             name: "CodexAgentAuthenticationTests",
             dependencies: [
                 "CodexAgent",
                 "CodexAgentAuthentication",
-                "CodexAgentSQLiteTestSupport",
+            ]
+        ),
+        .testTarget(
+            name: "CodexAgentObservationTests",
+            dependencies: [
+                "CodexAgent",
+                "CodexAgentObservation",
+                "CodexAgentSwiftSupport",
             ]
         ),
     ]

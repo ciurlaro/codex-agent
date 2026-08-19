@@ -1,0 +1,35 @@
+name: Setup sccache
+description: Install and integrity-check the pinned Rust compiler cache.
+inputs:
+  write:
+    description: Permit this trusted main job to write the GHA cache.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        version: v0.17.0
+    - name: Verify the pinned binary and configure its GHA backend
+      env:
+        ALLOW_WRITE: ${{ inputs.write }}
+      shell: bash
+      run: |
+        expected=""
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          macOS/ARM64) expected=af205fcb0fbca2b051dd293f8a96d3177cfb74b06324a948d7ee7dbadf367b78 ;;
+          Linux/X64) expected=066c5a84c85044c8f48b3ab571ac114293ea717c3d36985db022af8206e21e63 ;;
+        esac
+        if [ -n "$expected" ]; then
+          actual=$(openssl dgst -sha256 "$(command -v sccache)" | awk '{print $NF}')
+          test "$actual" = "$expected"
+        fi
+        mode=READ_ONLY
+        [ "$ALLOW_WRITE" = true ] && mode=READ_WRITE
+        {
+          printf 'SCCACHE_GHA_ENABLED=true\n'
+          printf 'SCCACHE_GHA_VERSION=codex-agent-rust-v1\n'
+          printf 'SCCACHE_GHA_RW_MODE=%s\n' "$mode"
+          printf 'RUSTC_WRAPPER=sccache\n'
+          printf 'CARGO_INCREMENTAL=0\n'
+        } >> "$GITHUB_ENV"

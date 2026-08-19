@@ -5,6 +5,12 @@ import PackageDescription
 let package = Package(
     name: "CodexAgentRemoteConsumer",
     platforms: [.iOS(.v15)],
+    products: [
+        .library(
+            name: "CodexAgentRemoteConsumer",
+            targets: ["CodexAgentRemoteConsumer"]
+        ),
+    ],
     dependencies: [
         .package(
             url: "https://github.com/ciurlaro/codex-agent.git",
@@ -17,6 +23,8 @@ let package = Package(
             dependencies: [
                 .product(name: "CodexAgent", package: "codex-agent"),
                 .product(name: "CodexAgentAuthentication", package: "codex-agent"),
+                .product(name: "CodexAgentObservation", package: "codex-agent"),
+                .product(name: "CodexAgentSwiftSupport", package: "codex-agent"),
             ]
         ),
     ]

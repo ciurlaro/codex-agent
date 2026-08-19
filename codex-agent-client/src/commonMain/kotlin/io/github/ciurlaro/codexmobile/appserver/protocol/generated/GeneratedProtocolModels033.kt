@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ServerNotificationThreadDeletedNotification(
+internal data class ServerNotificationThreadDeletedNotification(
     @SerialName("params")
     public val params: ThreadDeletedNotification,
     @SerialName("emittedAtMs")
@@ -25,7 +25,7 @@ public data class ServerNotificationThreadDeletedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadUnarchivedNotification(
+internal data class ServerNotificationThreadUnarchivedNotification(
     @SerialName("params")
     public val params: ThreadUnarchivedNotification,
     @SerialName("emittedAtMs")
@@ -37,7 +37,7 @@ public data class ServerNotificationThreadUnarchivedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadClosedNotification(
+internal data class ServerNotificationThreadClosedNotification(
     @SerialName("params")
     public val params: ThreadClosedNotification,
     @SerialName("emittedAtMs")
@@ -49,7 +49,7 @@ public data class ServerNotificationThreadClosedNotification(
 }
 
 @Serializable
-public data class ServerNotificationSkillsChangedNotification(
+internal data class ServerNotificationSkillsChangedNotification(
     @SerialName("params")
     public val params: SkillsChangedNotification,
     @SerialName("emittedAtMs")
@@ -61,7 +61,7 @@ public data class ServerNotificationSkillsChangedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadNameUpdatedNotification(
+internal data class ServerNotificationThreadNameUpdatedNotification(
     @SerialName("params")
     public val params: ThreadNameUpdatedNotification,
     @SerialName("emittedAtMs")
@@ -73,7 +73,7 @@ public data class ServerNotificationThreadNameUpdatedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadGoalUpdatedNotification(
+internal data class ServerNotificationThreadGoalUpdatedNotification(
     @SerialName("params")
     public val params: ThreadGoalUpdatedNotification,
     @SerialName("emittedAtMs")
@@ -85,7 +85,7 @@ public data class ServerNotificationThreadGoalUpdatedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadGoalClearedNotification(
+internal data class ServerNotificationThreadGoalClearedNotification(
     @SerialName("params")
     public val params: ThreadGoalClearedNotification,
     @SerialName("emittedAtMs")
@@ -97,7 +97,7 @@ public data class ServerNotificationThreadGoalClearedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadEnvironmentConnectedNotification(
+internal data class ServerNotificationThreadEnvironmentConnectedNotification(
     @SerialName("params")
     public val params: EnvironmentConnectionNotification,
     @SerialName("emittedAtMs")
@@ -109,7 +109,7 @@ public data class ServerNotificationThreadEnvironmentConnectedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadEnvironmentDisconnectedNotification(
+internal data class ServerNotificationThreadEnvironmentDisconnectedNotification(
     @SerialName("params")
     public val params: EnvironmentConnectionNotification,
     @SerialName("emittedAtMs")
@@ -121,7 +121,7 @@ public data class ServerNotificationThreadEnvironmentDisconnectedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadSettingsUpdatedNotification(
+internal data class ServerNotificationThreadSettingsUpdatedNotification(
     @SerialName("params")
     public val params: ThreadSettingsUpdatedNotification,
     @SerialName("emittedAtMs")
@@ -133,7 +133,7 @@ public data class ServerNotificationThreadSettingsUpdatedNotification(
 }
 
 @Serializable
-public data class ServerNotificationThreadTokenUsageUpdatedNotification(
+internal data class ServerNotificationThreadTokenUsageUpdatedNotification(
     @SerialName("params")
     public val params: ThreadTokenUsageUpdatedNotification,
     @SerialName("emittedAtMs")
@@ -145,7 +145,7 @@ public data class ServerNotificationThreadTokenUsageUpdatedNotification(
 }
 
 @Serializable
-public data class ServerNotificationTurnStartedNotification(
+internal data class ServerNotificationTurnStartedNotification(
     @SerialName("params")
     public val params: TurnStartedNotification,
     @SerialName("emittedAtMs")
@@ -157,7 +157,7 @@ public data class ServerNotificationTurnStartedNotification(
 }
 
 @Serializable
-public data class ServerNotificationHookStartedNotification(
+internal data class ServerNotificationHookStartedNotification(
     @SerialName("params")
     public val params: HookStartedNotification,
     @SerialName("emittedAtMs")
@@ -169,7 +169,7 @@ public data class ServerNotificationHookStartedNotification(
 }
 
 @Serializable
-public data class ServerNotificationTurnCompletedNotification(
+internal data class ServerNotificationTurnCompletedNotification(
     @SerialName("params")
     public val params: TurnCompletedNotification,
     @SerialName("emittedAtMs")
@@ -181,7 +181,7 @@ public data class ServerNotificationTurnCompletedNotification(
 }
 
 @Serializable
-public data class ServerNotificationHookCompletedNotification(
+internal data class ServerNotificationHookCompletedNotification(
     @SerialName("params")
     public val params: HookCompletedNotification,
     @SerialName("emittedAtMs")
@@ -193,7 +193,7 @@ public data class ServerNotificationHookCompletedNotification(
 }
 
 @Serializable
-public data class ServerNotificationTurnDiffUpdatedNotification(
+internal data class ServerNotificationTurnDiffUpdatedNotification(
     @SerialName("params")
     public val params: TurnDiffUpdatedNotification,
     @SerialName("emittedAtMs")
@@ -205,7 +205,7 @@ public data class ServerNotificationTurnDiffUpdatedNotification(
 }
 
 @Serializable
-public data class ServerNotificationTurnPlanUpdatedNotification(
+internal data class ServerNotificationTurnPlanUpdatedNotification(
     @SerialName("params")
     public val params: TurnPlanUpdatedNotification,
     @SerialName("emittedAtMs")
@@ -217,7 +217,7 @@ public data class ServerNotificationTurnPlanUpdatedNotification(
 }
 
 @Serializable
-public data class ServerNotificationItemStartedNotification(
+internal data class ServerNotificationItemStartedNotification(
     @SerialName("params")
     public val params: ItemStartedNotification,
     @SerialName("emittedAtMs")

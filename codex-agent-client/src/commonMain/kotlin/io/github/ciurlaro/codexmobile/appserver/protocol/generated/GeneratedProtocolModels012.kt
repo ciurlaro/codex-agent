@@ -13,10 +13,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable(with = ContentItemSerializer::class)
-public sealed interface ContentItem
+internal sealed interface ContentItem
 
 @Serializable
-public data class ContentItemInputTextContentItem(
+internal data class ContentItemInputTextContentItem(
     @SerialName("text")
     public val text: String,
     @SerialName("type")
@@ -26,7 +26,7 @@ public data class ContentItemInputTextContentItem(
 }
 
 @Serializable
-public data class ContentItemInputImageContentItem(
+internal data class ContentItemInputImageContentItem(
     @SerialName("image_url")
     public val image_url: String,
     @SerialName("detail")
@@ -38,7 +38,7 @@ public data class ContentItemInputImageContentItem(
 }
 
 @Serializable
-public data class ContentItemInputAudioContentItem(
+internal data class ContentItemInputAudioContentItem(
     @SerialName("audio_url")
     public val audio_url: String,
     @SerialName("type")
@@ -48,7 +48,7 @@ public data class ContentItemInputAudioContentItem(
 }
 
 @Serializable
-public data class ContentItemOutputTextContentItem(
+internal data class ContentItemOutputTextContentItem(
     @SerialName("text")
     public val text: String,
     @SerialName("type")
@@ -57,7 +57,7 @@ public data class ContentItemOutputTextContentItem(
     init { require(type == "output_text") }
 }
 
-public object ContentItemSerializer : JsonContentPolymorphicSerializer<ContentItem>(ContentItem::class) {
+internal object ContentItemSerializer : JsonContentPolymorphicSerializer<ContentItem>(ContentItem::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ContentItem> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "input_text" -> ContentItemInputTextContentItem.serializer()
@@ -69,7 +69,7 @@ public object ContentItemSerializer : JsonContentPolymorphicSerializer<ContentIt
 }
 
 @Serializable
-public data class ContextCompactedNotification(
+internal data class ContextCompactedNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("turnId")
@@ -77,14 +77,14 @@ public data class ContextCompactedNotification(
 )
 
 @Serializable
-public enum class ConversationTextRole {
+internal enum class ConversationTextRole {
     @SerialName("user") USER,
     @SerialName("developer") DEVELOPER,
     @SerialName("assistant") ASSISTANT,
 }
 
 @Serializable
-public data class CreditsSnapshot(
+internal data class CreditsSnapshot(
     @SerialName("hasCredits")
     public val hasCredits: Boolean,
     @SerialName("unlimited")
@@ -94,7 +94,7 @@ public data class CreditsSnapshot(
 )
 
 @Serializable
-public data class DeprecationNoticeNotification(
+internal data class DeprecationNoticeNotification(
     @SerialName("summary")
     public val summary: String,
     @SerialName("details")
@@ -102,10 +102,10 @@ public data class DeprecationNoticeNotification(
 )
 
 @Serializable(with = DynamicToolCallOutputContentItemSerializer::class)
-public sealed interface DynamicToolCallOutputContentItem
+internal sealed interface DynamicToolCallOutputContentItem
 
 @Serializable
-public data class DynamicToolCallOutputContentItemInputTextDynamicToolCallOutputContentItem(
+internal data class DynamicToolCallOutputContentItemInputTextDynamicToolCallOutputContentItem(
     @SerialName("text")
     public val text: String,
     @SerialName("type")
@@ -115,7 +115,7 @@ public data class DynamicToolCallOutputContentItemInputTextDynamicToolCallOutput
 }
 
 @Serializable
-public data class DynamicToolCallOutputContentItemInputImageDynamicToolCallOutputContentItem(
+internal data class DynamicToolCallOutputContentItemInputImageDynamicToolCallOutputContentItem(
     @SerialName("imageUrl")
     public val imageUrl: String,
     @SerialName("type")
@@ -125,7 +125,7 @@ public data class DynamicToolCallOutputContentItemInputImageDynamicToolCallOutpu
 }
 
 @Serializable
-public data class DynamicToolCallOutputContentItemInputAudioDynamicToolCallOutputContentItem(
+internal data class DynamicToolCallOutputContentItemInputAudioDynamicToolCallOutputContentItem(
     @SerialName("audioUrl")
     public val audioUrl: String,
     @SerialName("type")
@@ -134,7 +134,7 @@ public data class DynamicToolCallOutputContentItemInputAudioDynamicToolCallOutpu
     init { require(type == "inputAudio") }
 }
 
-public object DynamicToolCallOutputContentItemSerializer : JsonContentPolymorphicSerializer<DynamicToolCallOutputContentItem>(DynamicToolCallOutputContentItem::class) {
+internal object DynamicToolCallOutputContentItemSerializer : JsonContentPolymorphicSerializer<DynamicToolCallOutputContentItem>(DynamicToolCallOutputContentItem::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<DynamicToolCallOutputContentItem> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "inputText" -> DynamicToolCallOutputContentItemInputTextDynamicToolCallOutputContentItem.serializer()
@@ -145,7 +145,7 @@ public object DynamicToolCallOutputContentItemSerializer : JsonContentPolymorphi
 }
 
 @Serializable
-public data class DynamicToolCallParams(
+internal data class DynamicToolCallParams(
     @SerialName("arguments")
     public val arguments: JsonElement,
     @SerialName("callId")
@@ -161,7 +161,7 @@ public data class DynamicToolCallParams(
 )
 
 @Serializable
-public data class DynamicToolCallResponse(
+internal data class DynamicToolCallResponse(
     @SerialName("contentItems")
     public val contentItems: List<DynamicToolCallOutputContentItem>,
     @SerialName("success")
@@ -169,17 +169,17 @@ public data class DynamicToolCallResponse(
 )
 
 @Serializable
-public enum class DynamicToolCallStatus {
+internal enum class DynamicToolCallStatus {
     @SerialName("inProgress") IN_PROGRESS,
     @SerialName("completed") COMPLETED,
     @SerialName("failed") FAILED,
 }
 
 @Serializable(with = DynamicToolNamespaceToolSerializer::class)
-public sealed interface DynamicToolNamespaceTool
+internal sealed interface DynamicToolNamespaceTool
 
 @Serializable
-public data class DynamicToolNamespaceToolFunctionDynamicToolNamespaceTool(
+internal data class DynamicToolNamespaceToolFunctionDynamicToolNamespaceTool(
     @SerialName("description")
     public val description: String,
     @SerialName("inputSchema")
@@ -194,7 +194,7 @@ public data class DynamicToolNamespaceToolFunctionDynamicToolNamespaceTool(
     init { require(type == "function") }
 }
 
-public object DynamicToolNamespaceToolSerializer : JsonContentPolymorphicSerializer<DynamicToolNamespaceTool>(DynamicToolNamespaceTool::class) {
+internal object DynamicToolNamespaceToolSerializer : JsonContentPolymorphicSerializer<DynamicToolNamespaceTool>(DynamicToolNamespaceTool::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<DynamicToolNamespaceTool> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "function" -> DynamicToolNamespaceToolFunctionDynamicToolNamespaceTool.serializer()
@@ -203,10 +203,10 @@ public object DynamicToolNamespaceToolSerializer : JsonContentPolymorphicSeriali
 }
 
 @Serializable(with = DynamicToolSpecSerializer::class)
-public sealed interface DynamicToolSpec
+internal sealed interface DynamicToolSpec
 
 @Serializable
-public data class DynamicToolSpecFunctionDynamicToolSpec(
+internal data class DynamicToolSpecFunctionDynamicToolSpec(
     @SerialName("description")
     public val description: String,
     @SerialName("inputSchema")

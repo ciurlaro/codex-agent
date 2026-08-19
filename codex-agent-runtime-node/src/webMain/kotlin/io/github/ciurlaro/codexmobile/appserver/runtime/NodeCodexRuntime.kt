@@ -12,14 +12,14 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import okio.Path
 
-public data class NodeCodexRuntimeConfiguration(
+internal data class NodeCodexRuntimeConfiguration(
     val appServerExecutable: Path,
     val workingDirectory: Path,
     val processSupervisorExecutable: Path,
     val processSupervisorSha256: String,
 )
 
-public class NodeCodexRuntimeFactory(
+internal class NodeCodexRuntimeFactory(
     private val configuration: NodeCodexRuntimeConfiguration,
 ) : CodexRuntimeFactory {
     override fun create(): CodexRuntime = NodeCodexRuntime(configuration)
@@ -46,6 +46,8 @@ internal class NodeCodexRuntime(
             val owned = launcher.launch(prepare(configuration))
             if (state == State.CLOSED) {
                 owned.close()
+                runCatching { owned.exitCode.await() }
+                finishClose()
                 error("Node Codex runtime was closed while starting")
             }
             process = owned
@@ -72,23 +74,22 @@ internal class NodeCodexRuntime(
                     -1
                 }
                 stdoutJob?.join()
-                if (state != State.CLOSED) {
-                    state = State.EXITED
-                    try {
+                try {
+                    if (state != State.CLOSED) {
+                        state = State.EXITED
                         eventChannel.send(CodexRuntimeEvent.Exited(code))
-                    } finally {
-                        state = State.CLOSED
-                        eventChannel.close()
-                        scope.cancel()
                     }
+                } finally {
+                    state = State.CLOSED
+                    finishClose()
                 }
             }
         } catch (error: Throwable) {
             if (state != State.CLOSED) {
                 state = State.CLOSED
                 eventChannel.send(CodexRuntimeEvent.StartFailure(error.message ?: "Node runtime failed to start"))
-                eventChannel.close()
             }
+            finishClose()
             throw error
         }
     }
@@ -107,10 +108,15 @@ internal class NodeCodexRuntime(
 
     override fun close() {
         if (state == State.CLOSED) return
+        val closeImmediately = state == State.NEW
         state = State.CLOSED
         process?.close()
-        scope.cancel()
+        if (closeImmediately) finishClose()
+    }
+
+    private fun finishClose() {
         eventChannel.close()
+        scope.cancel()
     }
 }
 

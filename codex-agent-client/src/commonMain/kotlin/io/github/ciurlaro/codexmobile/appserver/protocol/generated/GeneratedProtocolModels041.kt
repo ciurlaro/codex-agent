@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ThreadItemSubAgentActivityThreadItem(
+internal data class ThreadItemSubAgentActivityThreadItem(
     @SerialName("agentPath")
     public val agentPath: String,
     @SerialName("agentThreadId")
@@ -29,7 +29,7 @@ public data class ThreadItemSubAgentActivityThreadItem(
 }
 
 @Serializable
-public data class ThreadItemWebSearchThreadItem(
+internal data class ThreadItemWebSearchThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("query")
@@ -45,7 +45,7 @@ public data class ThreadItemWebSearchThreadItem(
 }
 
 @Serializable
-public data class ThreadItemImageViewThreadItem(
+internal data class ThreadItemImageViewThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("path")
@@ -57,7 +57,7 @@ public data class ThreadItemImageViewThreadItem(
 }
 
 @Serializable
-public data class ThreadItemSleepThreadItem(
+internal data class ThreadItemSleepThreadItem(
     @SerialName("durationMs")
     public val durationMs: Long,
     @SerialName("id")
@@ -69,7 +69,7 @@ public data class ThreadItemSleepThreadItem(
 }
 
 @Serializable
-public data class ThreadItemImageGenerationThreadItem(
+internal data class ThreadItemImageGenerationThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("result")
@@ -87,7 +87,7 @@ public data class ThreadItemImageGenerationThreadItem(
 }
 
 @Serializable
-public data class ThreadItemEnteredReviewModeThreadItem(
+internal data class ThreadItemEnteredReviewModeThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("review")
@@ -99,7 +99,7 @@ public data class ThreadItemEnteredReviewModeThreadItem(
 }
 
 @Serializable
-public data class ThreadItemExitedReviewModeThreadItem(
+internal data class ThreadItemExitedReviewModeThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("review")
@@ -111,7 +111,7 @@ public data class ThreadItemExitedReviewModeThreadItem(
 }
 
 @Serializable
-public data class ThreadItemContextCompactionThreadItem(
+internal data class ThreadItemContextCompactionThreadItem(
     @SerialName("id")
     public val id: String,
     @SerialName("type")
@@ -120,7 +120,7 @@ public data class ThreadItemContextCompactionThreadItem(
     init { require(type == "contextCompaction") }
 }
 
-public object ThreadItemSerializer : JsonContentPolymorphicSerializer<ThreadItem>(ThreadItem::class) {
+internal object ThreadItemSerializer : JsonContentPolymorphicSerializer<ThreadItem>(ThreadItem::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ThreadItem> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "userMessage" -> ThreadItemUserMessageThreadItem.serializer()
@@ -146,17 +146,17 @@ public object ThreadItemSerializer : JsonContentPolymorphicSerializer<ThreadItem
 }
 
 @Serializable
-public data class ThreadItemEntry(
+internal data class ThreadItemEntry(
     @SerialName("item")
     public val item: ThreadItem,
     @SerialName("turnId")
     public val turnId: String,
 )
 
-public typealias ThreadListCwdFilter = JsonElement
+internal typealias ThreadListCwdFilter = JsonElement
 
 @Serializable
-public data class ThreadListParams(
+internal data class ThreadListParams(
     @SerialName("archived")
     public val archived: Boolean? = null,
     @SerialName("cursor")
@@ -180,7 +180,7 @@ public data class ThreadListParams(
 )
 
 @Serializable
-public data class ThreadListResponse(
+internal data class ThreadListResponse(
     @SerialName("data")
     public val data: List<Thread>,
     @SerialName("backwardsCursor")
@@ -190,7 +190,7 @@ public data class ThreadListResponse(
 )
 
 @Serializable
-public data class ThreadLoadedListParams(
+internal data class ThreadLoadedListParams(
     @SerialName("cursor")
     public val cursor: String? = null,
     @SerialName("limit")
@@ -198,7 +198,7 @@ public data class ThreadLoadedListParams(
 )
 
 @Serializable
-public data class ThreadLoadedListResponse(
+internal data class ThreadLoadedListResponse(
     @SerialName("data")
     public val data: List<String>,
     @SerialName("nextCursor")
@@ -206,13 +206,13 @@ public data class ThreadLoadedListResponse(
 )
 
 @Serializable
-public enum class ThreadMemoryMode {
+internal enum class ThreadMemoryMode {
     @SerialName("enabled") ENABLED,
     @SerialName("disabled") DISABLED,
 }
 
 @Serializable
-public data class ThreadMetadataGitInfoUpdateParams(
+internal data class ThreadMetadataGitInfoUpdateParams(
     @SerialName("branch")
     public val branch: String? = null,
     @SerialName("originUrl")

@@ -7,6 +7,10 @@ import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 
 class ProtocolGeneratorSupportTest {
     @Test
@@ -29,5 +33,29 @@ class ProtocolGeneratorSupportTest {
         } finally {
             directory.toFile().deleteRecursively()
         }
+    }
+
+    @Test
+    fun generatedProtocolTypesAreInternal() {
+        val schema = buildJsonObject {
+            repeat(40) { index ->
+                putJsonObject("Model$index") { put("type", "object") }
+            }
+            putJsonObject("v2") {}
+        }
+        val models = ProtocolModels(schema)
+        val sources = renderKotlin(
+            client = emptyList(),
+            server = emptyList(),
+            notifications = emptyList(),
+            clientNotifications = emptyList(),
+            schemaSha256 = "test",
+            models = models,
+        ) + models.renderFiles()
+        val content = sources.joinToString("\n", transform = GeneratedFile::content)
+
+        assertTrue("internal data class AppServerRequestDescriptor" in content)
+        assertTrue("internal class Model0" in content)
+        assertFalse(Regex("(?m)^public\\s+").containsMatchIn(content))
     }
 }

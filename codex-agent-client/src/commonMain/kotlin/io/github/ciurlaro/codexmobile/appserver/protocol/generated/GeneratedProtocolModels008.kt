@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ClientRequestAccountSendAddCreditsNudgeEmailRequest(
+internal data class ClientRequestAccountSendAddCreditsNudgeEmailRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -25,7 +25,7 @@ public data class ClientRequestAccountSendAddCreditsNudgeEmailRequest(
 }
 
 @Serializable
-public data class ClientRequestFeedbackUploadRequest(
+internal data class ClientRequestFeedbackUploadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -37,7 +37,7 @@ public data class ClientRequestFeedbackUploadRequest(
 }
 
 @Serializable
-public data class ClientRequestCommandExecRequest(
+internal data class ClientRequestCommandExecRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -49,7 +49,7 @@ public data class ClientRequestCommandExecRequest(
 }
 
 @Serializable
-public data class ClientRequestCommandExecWriteRequest(
+internal data class ClientRequestCommandExecWriteRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -61,7 +61,7 @@ public data class ClientRequestCommandExecWriteRequest(
 }
 
 @Serializable
-public data class ClientRequestCommandExecTerminateRequest(
+internal data class ClientRequestCommandExecTerminateRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -73,7 +73,7 @@ public data class ClientRequestCommandExecTerminateRequest(
 }
 
 @Serializable
-public data class ClientRequestCommandExecResizeRequest(
+internal data class ClientRequestCommandExecResizeRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -85,7 +85,7 @@ public data class ClientRequestCommandExecResizeRequest(
 }
 
 @Serializable
-public data class ClientRequestConfigReadRequest(
+internal data class ClientRequestConfigReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -97,7 +97,7 @@ public data class ClientRequestConfigReadRequest(
 }
 
 @Serializable
-public data class ClientRequestExternalAgentConfigDetectRequest(
+internal data class ClientRequestExternalAgentConfigDetectRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -109,7 +109,7 @@ public data class ClientRequestExternalAgentConfigDetectRequest(
 }
 
 @Serializable
-public data class ClientRequestExternalAgentConfigImportRequest(
+internal data class ClientRequestExternalAgentConfigImportRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -121,7 +121,7 @@ public data class ClientRequestExternalAgentConfigImportRequest(
 }
 
 @Serializable
-public data class ClientRequestExternalAgentConfigImportReadHistoriesRequest(
+internal data class ClientRequestExternalAgentConfigImportReadHistoriesRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")
@@ -133,7 +133,7 @@ public data class ClientRequestExternalAgentConfigImportReadHistoriesRequest(
 }
 
 @Serializable
-public data class ClientRequestConfigValueWriteRequest(
+internal data class ClientRequestConfigValueWriteRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -145,7 +145,7 @@ public data class ClientRequestConfigValueWriteRequest(
 }
 
 @Serializable
-public data class ClientRequestConfigBatchWriteRequest(
+internal data class ClientRequestConfigBatchWriteRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -157,7 +157,7 @@ public data class ClientRequestConfigBatchWriteRequest(
 }
 
 @Serializable
-public data class ClientRequestConfigRequirementsReadRequest(
+internal data class ClientRequestConfigRequirementsReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("method")
@@ -169,7 +169,7 @@ public data class ClientRequestConfigRequirementsReadRequest(
 }
 
 @Serializable
-public data class ClientRequestAccountReadRequest(
+internal data class ClientRequestAccountReadRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -181,7 +181,7 @@ public data class ClientRequestAccountReadRequest(
 }
 
 @Serializable
-public data class ClientRequestFuzzyFileSearchRequest(
+internal data class ClientRequestFuzzyFileSearchRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -192,7 +192,7 @@ public data class ClientRequestFuzzyFileSearchRequest(
     init { require(method == "fuzzyFileSearch") }
 }
 
-public object ClientRequestSerializer : JsonContentPolymorphicSerializer<ClientRequest>(ClientRequest::class) {
+internal object ClientRequestSerializer : JsonContentPolymorphicSerializer<ClientRequest>(ClientRequest::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ClientRequest> =
         when (element.jsonObject["method"]?.jsonPrimitive?.content) {
             "initialize" -> ClientRequestInitializeRequest.serializer()

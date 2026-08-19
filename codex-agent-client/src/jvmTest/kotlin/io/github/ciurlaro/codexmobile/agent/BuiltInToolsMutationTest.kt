@@ -19,36 +19,36 @@ internal class BuiltInToolsMutationTest : BuiltInToolsProtocolTestBase() {
         val client = CodexAgentClient(
             runtimeFactory = { process },
             requestTimeoutMillis = 1_000,
-            builtInToolDispatcher = object : BuiltInToolDispatcher {
+            toolProvider = object : CodexToolProvider {
                 override fun definitions() = TEST_DEFINITIONS
-
-                override suspend fun execute(call: BuiltInToolCall) = BuiltInToolResult.text("unused", false)
 
                 override suspend fun execute(
                     call: BuiltInToolCall,
-                    beforeMutationDispatch: suspend () -> Unit,
+                    context: CodexToolExecutionContext,
                 ): BuiltInToolResult {
-                    beforeMutationDispatch()
+                    context.beforeMutation()
                     dispatches.incrementAndGet()
-                    secondBoundaryRejected.set(runCatching { beforeMutationDispatch() }.isFailure)
+                    secondBoundaryRejected.set(runCatching { context.beforeMutation() }.isFailure)
                     return BuiltInToolResult.text("sent")
                 }
             },
         )
         try {
-            val session = client.openSession(
-                settings = AgentRuntimeSettings(AgentApprovalPreset.ASK_ME, workingDirectory = "/workspace"),
+            val conversationId = client.openConversation(
+                null,
+                AgentConversationSettings(AgentApprovalPreset.ASK_ME),
+                "/workspace",
             )
             val approval = async {
                 withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.ApprovalRequested>().first() }
             }
             client.sendTurn(
-                session,
+                conversationId,
                 AgentTurnRequest(
                     "send",
                     approvalPreset = AgentApprovalPreset.ASK_ME,
-                    workingDirectory = "/workspace",
                 ),
+                "/workspace",
             )
             val event = approval.await()
             assertEquals(0, dispatches.get())
@@ -69,24 +69,26 @@ internal class BuiltInToolsMutationTest : BuiltInToolsProtocolTestBase() {
         CodexAgentClient(
             runtimeFactory = { autoProcess },
             requestTimeoutMillis = 1_000,
-            builtInToolDispatcher = dispatcher {
+            toolProvider = dispatcher {
                 autoDispatches.incrementAndGet()
                 BuiltInToolResult.text("must not run")
             },
         ).use { autoClient ->
-            val session = autoClient.openSession(
-                settings = AgentRuntimeSettings(AgentApprovalPreset.AUTO_REVIEW, workingDirectory = "/workspace"),
+            val conversationId = autoClient.openConversation(
+                null,
+                AgentConversationSettings(AgentApprovalPreset.AUTO_REVIEW),
+                "/workspace",
             )
             val approval = async {
                 withTimeout(1_000) { autoClient.events.filterIsInstance<AgentEvent.ApprovalRequested>().first() }
             }
             autoClient.sendTurn(
-                session,
+                conversationId,
                 AgentTurnRequest(
                     "send",
                     approvalPreset = AgentApprovalPreset.AUTO_REVIEW,
-                    workingDirectory = "/workspace",
                 ),
+                "/workspace",
             )
             val event = approval.await()
             assertEquals(0, autoDispatches.get())

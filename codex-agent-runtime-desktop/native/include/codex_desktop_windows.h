@@ -3,6 +3,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
 
 static inline void codex_set_windows_error(char *buffer, size_t capacity, const char *operation) {
     if (capacity == 0) return;
@@ -20,6 +21,19 @@ static inline wchar_t *codex_utf8_to_wide(const char *value) {
         return NULL;
     }
     return wide;
+}
+
+static inline int codex_make_executable(const char *path) {
+    (void)path;
+    return 0;
+}
+
+static inline int codex_open_url(const char *url) {
+    wchar_t *wide_url = codex_utf8_to_wide(url);
+    if (wide_url == NULL) return -1;
+    HINSTANCE result = ShellExecuteW(NULL, L"open", wide_url, NULL, NULL, SW_SHOWNORMAL);
+    free(wide_url);
+    return (INT_PTR)result > 32 ? 0 : -1;
 }
 
 static inline int codex_process_start(

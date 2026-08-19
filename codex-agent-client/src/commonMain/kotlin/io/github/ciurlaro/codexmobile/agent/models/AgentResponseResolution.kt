@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -112,8 +110,14 @@ internal suspend fun CodexAgentClient.resolveElicitationAction(
     requestId: String,
     response: AgentElicitationResponse,
 ) {
-    val pending = stateLock.withLock { pendingElicitationRequests.remove(requestId) }
+    val pending = stateLock.withLock { pendingElicitationRequests[requestId] }
         ?: error("Elicitation request is no longer pending")
+    require(pending.elicitation.accepts(response)) { "Elicitation response is invalid" }
+    stateLock.withLock {
+        check(pendingElicitationRequests.remove(requestId) === pending) {
+            "Elicitation request is no longer pending"
+        }
+    }
     when (pending) {
         is PendingElicitation.Mcp -> connection.respond(
             pending.wireId,
@@ -144,6 +148,16 @@ internal suspend fun CodexAgentClient.resolveElicitationAction(
 }
 
 internal suspend fun CodexAgentClient.closeSuspendingAction() {
+    turnStateLock.withLock {
+        shellStartupCompletions.values.forEach { it.complete(false) }
+        shellStartupCompletions.clear()
+        activeTurns.clear()
+        startingTurns.clear()
+        pendingTerminalsDuringStart.clear()
+        recentTerminalTurnIds.clear()
+        cancellingTurns.clear()
+        cancelledTurns.clear()
+    }
     val closeNow = stateLock.withLock {
         if (closed) {
             false
@@ -156,8 +170,9 @@ internal suspend fun CodexAgentClient.closeSuspendingAction() {
             userShellItems.clear()
             commentaryItems.clear()
             knownSkillPaths.clear()
-            openedSessions.clear()
-            sessionRuntimeSettings.clear()
+            openedConversations.clear()
+            conversationOwners.clear()
+            conversationRuntimeSettings.clear()
             true
         }
     }

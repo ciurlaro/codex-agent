@@ -40,6 +40,7 @@ use crate::write_buffer;
             sandbox_root_path: sandbox.to_path_buf(),
             workspace_path: workspace.to_path_buf(),
             codex_home_path: codex_home.to_path_buf(),
+            security_scoped_workspace: false,
         }
     }
 

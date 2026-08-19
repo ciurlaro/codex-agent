@@ -8,64 +8,66 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-data class BuiltInToolDefinition(
-    val pluginId: String,
-    val name: String,
-    val description: String,
-    val inputSchema: JsonObject,
-    val mutation: Boolean = false,
-    val requiresEnabledPlugin: Boolean = true,
+public data class BuiltInToolDefinition(
+    public val pluginId: String,
+    public val name: String,
+    public val description: String,
+    public val inputSchema: JsonObject,
+    public val isMutation: Boolean = false,
+    public val requiresEnabledPlugin: Boolean = true,
 )
 
-data class BuiltInToolCall(
-    val threadId: String,
-    val turnId: String,
-    val callId: String,
-    val pluginId: String,
-    val tool: String,
-    val arguments: JsonObject,
-    val workspace: String,
-    val argumentsHash: String,
-    val deadlineEpochMillis: Long = Long.MAX_VALUE,
+public data class BuiltInToolCall(
+    public val conversationId: ConversationId,
+    public val turnId: String,
+    public val callId: String,
+    public val pluginId: String,
+    public val tool: String,
+    public val arguments: JsonObject,
+    public val workspacePath: String,
+    public val argumentsHash: String,
+    public val deadlineEpochMillis: Long = Long.MAX_VALUE,
 )
 
-data class BuiltInToolResult(
-    val content: List<BuiltInToolContent>,
-    val success: Boolean,
+public data class BuiltInToolResult(
+    public val content: List<BuiltInToolContent>,
+    public val success: Boolean,
 ) {
-    companion object {
-        fun text(value: String, success: Boolean = true) =
+    public companion object {
+        public fun text(value: String, success: Boolean = true): BuiltInToolResult =
             BuiltInToolResult(listOf(BuiltInToolContent.Text(value)), success)
     }
 }
 
-sealed interface BuiltInToolContent {
-    data class Text(val value: String) : BuiltInToolContent
-    data class Image(val dataUrl: String) : BuiltInToolContent
+public sealed interface BuiltInToolContent {
+    public data class Text(public val value: String) : BuiltInToolContent
+    public data class Image(public val dataUrl: String) : BuiltInToolContent
 }
 
-fun interface BuiltInToolDispatcher {
-    suspend fun execute(call: BuiltInToolCall): BuiltInToolResult
+public fun interface CodexToolProvider {
+    public fun definitions(): List<BuiltInToolDefinition> = emptyList()
 
-    fun definitions(): List<BuiltInToolDefinition> = emptyList()
-
-    suspend fun execute(
+    @Throws(Exception::class)
+    public suspend fun execute(
         call: BuiltInToolCall,
-        beforeMutationDispatch: suspend () -> Unit = {},
-    ): BuiltInToolResult = execute(call)
-
-    suspend fun execute(
-        call: BuiltInToolCall,
-        checkActive: suspend () -> Unit,
-        beforeMutationDispatch: suspend () -> Unit,
-    ): BuiltInToolResult = execute(call, beforeMutationDispatch)
-
-    suspend fun replay(call: BuiltInToolCall): BuiltInToolResult? = null
+        context: CodexToolExecutionContext,
+    ): BuiltInToolResult
 }
 
-enum class TypedMutationAuthority { DIRECT, USER_APPROVAL }
+public class CodexToolExecutionContext internal constructor(
+    private val checkActiveAction: suspend () -> Unit,
+    private val beforeMutationAction: suspend () -> Unit,
+) {
+    @Throws(Exception::class)
+    public suspend fun checkActive(): Unit = checkActiveAction()
 
-fun typedMutationAuthority(preset: AgentApprovalPreset): TypedMutationAuthority = when (preset) {
+    @Throws(Exception::class)
+    public suspend fun beforeMutation(): Unit = beforeMutationAction()
+}
+
+internal enum class TypedMutationAuthority { DIRECT, USER_APPROVAL }
+
+internal fun typedMutationAuthority(preset: AgentApprovalPreset): TypedMutationAuthority = when (preset) {
     AgentApprovalPreset.NEVER -> TypedMutationAuthority.DIRECT
     AgentApprovalPreset.AUTO_REVIEW,
     AgentApprovalPreset.ASK_ME,
@@ -73,7 +75,7 @@ fun typedMutationAuthority(preset: AgentApprovalPreset): TypedMutationAuthority 
     -> TypedMutationAuthority.USER_APPROVAL
 }
 
-fun builtInDynamicTools(
+internal fun builtInDynamicTools(
     enabledPluginIds: Set<String>,
     definitions: List<BuiltInToolDefinition>,
 ): List<DynamicToolSpec> = definitions.filter { definition ->

@@ -6,7 +6,6 @@ import io.github.ciurlaro.codexmobile.appserver.client.AppServerRpcException
 import io.github.ciurlaro.codexmobile.appserver.client.AppServerTimeoutException
 import io.github.ciurlaro.codexmobile.appserver.protocol.generated.*
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeFactory
-import io.github.ciurlaro.codexmobile.agent.AgentClient
 import io.github.ciurlaro.codexmobile.agent.AgentCatalogFreshness
 import io.github.ciurlaro.codexmobile.agent.AgentCapability
 import io.github.ciurlaro.codexmobile.agent.AgentConnector
@@ -34,18 +33,17 @@ import io.github.ciurlaro.codexmobile.agent.AgentPluginCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentPluginDetail
 import io.github.ciurlaro.codexmobile.agent.AgentPluginInstallResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginReference
-import io.github.ciurlaro.codexmobile.agent.AgentPluginRemovalResult
 import io.github.ciurlaro.codexmobile.agent.AgentPluginUnavailableException
 import io.github.ciurlaro.codexmobile.agent.AgentPlanProgress
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStep
 import io.github.ciurlaro.codexmobile.agent.AgentPlanStepStatus
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentServiceTier
 import io.github.ciurlaro.codexmobile.agent.AgentSkillCatalog
 import io.github.ciurlaro.codexmobile.agent.AgentSkillChunk
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.AgentWorkActivity
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.SupervisorJob
@@ -126,10 +124,10 @@ internal suspend fun CodexAgentClient.handleNotificationAction(notification: Ser
 
         is ServerNotificationItemAgentMessageDeltaNotification -> {
             val params = notification.params
-            val sessionId = SessionId(params.threadId)
+            val conversationId = ConversationId(params.threadId)
             eventsChannel.send(
                 AgentEvent.TextDelta(
-                    sessionId = sessionId,
+                    conversationId = conversationId,
                     text = params.delta,
                     itemId = params.itemId,
                     isCommentary = params.itemId in commentaryItems,
@@ -141,7 +139,7 @@ internal suspend fun CodexAgentClient.handleNotificationAction(notification: Ser
             val params = notification.params
             eventsChannel.send(
                 AgentEvent.ReasoningSummaryDelta(
-                    sessionId = SessionId(params.threadId),
+                    conversationId = ConversationId(params.threadId),
                     text = params.delta,
                     itemId = params.itemId,
                     summaryIndex = params.summaryIndex,
@@ -153,7 +151,7 @@ internal suspend fun CodexAgentClient.handleNotificationAction(notification: Ser
             val params = notification.params
             eventsChannel.send(
                 AgentEvent.PlanDelta(
-                    sessionId = SessionId(params.threadId),
+                    conversationId = ConversationId(params.threadId),
                     text = params.delta,
                     itemId = params.itemId,
                 ),
@@ -164,7 +162,7 @@ internal suspend fun CodexAgentClient.handleNotificationAction(notification: Ser
             val params = notification.params
             eventsChannel.send(
                 AgentEvent.PlanUpdated(
-                    sessionId = SessionId(params.threadId),
+                    conversationId = ConversationId(params.threadId),
                     progress = AgentPlanProgress(
                         explanation = params.explanation,
                         steps = params.plan.map { step ->
@@ -180,14 +178,14 @@ internal suspend fun CodexAgentClient.handleNotificationAction(notification: Ser
 
         is ServerNotificationHookStartedNotification -> eventsChannel.send(
             AgentEvent.HookActivityChanged(
-                SessionId(notification.params.threadId),
+                ConversationId(notification.params.threadId),
                 notification.params.run.toAgentHookActivity(),
             ),
         )
 
         is ServerNotificationHookCompletedNotification -> eventsChannel.send(
             AgentEvent.HookActivityChanged(
-                SessionId(notification.params.threadId),
+                ConversationId(notification.params.threadId),
                 notification.params.run.toAgentHookActivity(),
             ),
         )
@@ -197,7 +195,7 @@ internal suspend fun CodexAgentClient.handleNotificationAction(notification: Ser
             if (params.itemId in userShellItems) {
                 eventsChannel.send(
                     AgentEvent.ShellOutputDelta(
-                        sessionId = SessionId(params.threadId),
+                        conversationId = ConversationId(params.threadId),
                         text = params.delta,
                     ),
                 )
@@ -225,24 +223,22 @@ internal suspend fun CodexAgentClient.handleNotificationAction(notification: Ser
 
         is ServerNotificationTurnCompletedNotification -> {
             val params = notification.params
-            val sessionId = SessionId(params.threadId)
-            finishTurn(sessionId, params.turn.id)
-            if (params.turn.status == TurnStatus.FAILED) {
+            val conversationId = ConversationId(params.threadId)
+            val event = if (params.turn.status == TurnStatus.FAILED) {
                 val detail = params.turn.error?.message ?: "Turn failed"
-                eventsChannel.send(AgentEvent.Failure(sessionId, "turn_failed", detail, true))
+                AgentEvent.Failure(conversationId, "turn_failed", detail, true)
             } else {
-                eventsChannel.send(AgentEvent.TurnCompleted(sessionId))
+                AgentEvent.TurnCompleted(conversationId)
             }
+            if (finishTurn(conversationId, params.turn.id, event)) eventsChannel.send(event)
         }
 
         is ServerNotificationErrorNotification -> {
             val params = notification.params
             if (!params.willRetry) {
-                val sessionId = SessionId(params.threadId)
-                finishTurn(sessionId, params.turnId)
-                eventsChannel.send(
-                    AgentEvent.Failure(sessionId, "turn_error", params.error.message, true),
-                )
+                val conversationId = ConversationId(params.threadId)
+                val event = AgentEvent.Failure(conversationId, "turn_error", params.error.message, true)
+                if (finishTurn(conversationId, params.turnId, event)) eventsChannel.send(event)
             }
         }
 

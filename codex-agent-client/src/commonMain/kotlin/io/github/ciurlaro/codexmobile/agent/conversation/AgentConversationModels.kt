@@ -1,148 +1,146 @@
 package io.github.ciurlaro.codexmobile.agent
 
-import kotlin.jvm.JvmInline
-
-@JvmInline
-value class SessionId(val value: String)
-
-data class AgentModel(
-    val id: String,
-    val displayName: String,
-    val description: String,
-    val supportedEfforts: List<String>,
-    val defaultEffort: String,
-    val isDefault: Boolean,
-    val serviceTiers: List<AgentServiceTier> = emptyList(),
-    val defaultServiceTier: String? = null,
-)
-
-data class AgentServiceTier(
-    val id: String,
-    val name: String,
-    val description: String,
-)
-
-enum class AgentApprovalPreset(
-    val displayName: String,
-    val approvalPolicy: String,
-    val approvalsReviewer: String,
-) {
-    NEVER("Never", "never", "user"),
-    AUTO_REVIEW("Auto review", "on-request", "auto_review"),
-    ASK_ME("Ask me", "on-request", "user"),
-    STRICT("Strict", "untrusted", "user"),
+public data class ConversationId(public val value: String) {
+    init {
+        require(value.isNotBlank()) { "Conversation ID must not be blank" }
+    }
 }
 
-enum class AgentApprovalDecision {
+public data class AgentModel(
+    public val id: String,
+    public val displayName: String,
+    public val description: String,
+    public val supportedEfforts: List<String>,
+    public val defaultEffort: String,
+    public val isDefault: Boolean,
+    public val serviceTiers: List<AgentServiceTier> = emptyList(),
+    public val defaultServiceTier: String? = null,
+)
+
+public data class AgentServiceTier(
+    public val id: String,
+    public val name: String,
+    public val description: String,
+)
+
+public enum class AgentApprovalPreset(
+    public val displayName: String,
+) {
+    NEVER("Never"),
+    AUTO_REVIEW("Auto review"),
+    ASK_ME("Ask me"),
+    STRICT("Strict"),
+}
+
+public enum class AgentApprovalDecision {
     ACCEPT,
     DECLINE,
 }
 
-data class AgentRuntimeSettings(
-    val approvalPreset: AgentApprovalPreset = AgentApprovalPreset.AUTO_REVIEW,
-    val serviceTier: String? = null,
-    val workingDirectory: String? = null,
+public data class AgentConversationSettings(
+    public val approvalPreset: AgentApprovalPreset = AgentApprovalPreset.AUTO_REVIEW,
+    public val serviceTier: String? = null,
 )
 
-data class AgentConversationSummary(
-    val sessionId: SessionId,
-    val title: String,
-    val updatedAtEpochSeconds: Long,
+public data class AgentConversationSummary(
+    public val conversationId: ConversationId,
+    public val title: String,
+    public val updatedAtEpochSeconds: Long,
 )
 
-data class AgentConversation(
-    val summary: AgentConversationSummary,
-    val messages: List<AgentMessage>,
+public data class AgentConversation(
+    public val summary: AgentConversationSummary,
+    public val messages: List<AgentMessage>,
 )
 
-enum class AgentMessageRole { USER, CODEX }
+public enum class AgentMessageRole { USER, ASSISTANT }
 
-data class AgentMessage(
-    val id: String,
-    val clientId: String?,
-    val role: AgentMessageRole,
-    val text: String,
-    val collaborationMode: AgentCollaborationMode = AgentCollaborationMode.DEFAULT,
-    val reasoning: String? = null,
-    val plan: String? = null,
-    val shellCommand: String? = null,
-    val exitCode: Int? = null,
-    val capabilities: Set<AgentCapability> = emptySet(),
-    val invocations: List<AgentInvocation> = emptyList(),
+public data class AgentMessage(
+    public val id: String,
+    public val clientMessageId: String?,
+    public val role: AgentMessageRole,
+    public val text: String,
+    public val collaborationMode: AgentCollaborationMode = AgentCollaborationMode.DEFAULT,
+    public val reasoning: String? = null,
+    public val plan: String? = null,
+    public val shellCommand: String? = null,
+    public val exitCode: Int? = null,
+    public val capabilities: Set<AgentCapability> = emptySet(),
+    public val invocations: List<AgentInvocation> = emptyList(),
 )
 
-enum class AgentCollaborationMode { DEFAULT, PLAN }
+public enum class AgentCollaborationMode { DEFAULT, PLAN }
 
-const val PLAN_CLIENT_MESSAGE_PREFIX = "codex-mobile:plan:"
+internal const val PLAN_CLIENT_MESSAGE_PREFIX = "codex-agent:plan:"
+internal const val LEGACY_PLAN_CLIENT_MESSAGE_PREFIX = "codex-mobile:plan:"
 
-enum class AgentPlanStepStatus { PENDING, IN_PROGRESS, COMPLETED }
+public enum class AgentPlanStepStatus { PENDING, IN_PROGRESS, COMPLETED }
 
-data class AgentPlanStep(val text: String, val status: AgentPlanStepStatus)
+public data class AgentPlanStep(public val text: String, public val status: AgentPlanStepStatus)
 
-data class AgentPlanProgress(
-    val explanation: String? = null,
-    val steps: List<AgentPlanStep> = emptyList(),
+public data class AgentPlanProgress(
+    public val explanation: String? = null,
+    public val steps: List<AgentPlanStep> = emptyList(),
 )
 
-enum class AgentHookTrustStatus { MANAGED, UNTRUSTED, TRUSTED, MODIFIED }
+public enum class AgentHookTrustStatus { MANAGED, UNTRUSTED, TRUSTED, MODIFIED }
 
-data class AgentHook(
-    val key: String,
-    val currentHash: String,
-    val enabled: Boolean,
-    val eventName: String,
-    val handlerType: String,
-    val isManaged: Boolean,
-    val source: String,
-    val sourcePath: String,
-    val timeoutSeconds: Long,
-    val trustStatus: AgentHookTrustStatus,
-    val command: String? = null,
-    val matcher: String? = null,
-    val pluginId: String? = null,
-    val statusMessage: String? = null,
+public data class AgentHook(
+    public val key: String,
+    public val currentHash: String,
+    public val isEnabled: Boolean,
+    public val eventName: String,
+    public val handlerType: String,
+    public val isManaged: Boolean,
+    public val source: String,
+    public val sourcePath: String,
+    public val timeoutSeconds: Long,
+    public val trustStatus: AgentHookTrustStatus,
+    public val command: String? = null,
+    public val matcher: String? = null,
+    public val pluginId: String? = null,
+    public val statusMessage: String? = null,
 )
 
-data class AgentHookCatalog(
-    val hooks: List<AgentHook>,
-    val warnings: List<String> = emptyList(),
-    val errors: List<String> = emptyList(),
+public data class AgentHookCatalog(
+    public val hooks: List<AgentHook>,
+    public val warnings: List<String> = emptyList(),
+    public val errors: List<String> = emptyList(),
 )
 
-enum class AgentHookRunStatus { RUNNING, COMPLETED, FAILED, BLOCKED, STOPPED }
+public enum class AgentHookRunStatus { RUNNING, COMPLETED, FAILED, BLOCKED, STOPPED }
 
-data class AgentHookActivity(
-    val id: String,
-    val eventName: String,
-    val handlerType: String,
-    val status: AgentHookRunStatus,
-    val statusMessage: String? = null,
-    val details: List<String> = emptyList(),
+public data class AgentHookActivity(
+    public val id: String,
+    public val eventName: String,
+    public val handlerType: String,
+    public val status: AgentHookRunStatus,
+    public val statusMessage: String? = null,
+    public val details: List<String> = emptyList(),
 )
 
-enum class AgentCapability(
-    val id: String,
-    val displayLabel: String,
-    val icon: String?,
-    val promptLabel: String,
+public enum class AgentCapability(
+    public val id: String,
+    public val displayLabel: String,
+    public val icon: String?,
+    public val promptLabel: String,
 ) {
     WEB_SEARCH("web_search", "Web search", "🌐", "Use 🌐 Web search"),
 }
 
-data class AgentTurnRequest(
-    val prompt: String,
-    val clientMessageId: String? = null,
-    val model: String? = null,
-    val effort: String? = null,
-    val serviceTier: String? = null,
-    val approvalPreset: AgentApprovalPreset = AgentApprovalPreset.AUTO_REVIEW,
-    val capabilities: Set<AgentCapability> = emptySet(),
-    val invocations: List<AgentInvocation> = emptyList(),
-    val workingDirectory: String? = null,
-    val collaborationMode: AgentCollaborationMode = AgentCollaborationMode.DEFAULT,
+public data class AgentTurnRequest(
+    public val prompt: String,
+    public val clientMessageId: String? = null,
+    public val model: String? = null,
+    public val effort: String? = null,
+    public val serviceTier: String? = null,
+    public val approvalPreset: AgentApprovalPreset = AgentApprovalPreset.AUTO_REVIEW,
+    public val capabilities: Set<AgentCapability> = emptySet(),
+    public val invocations: List<AgentInvocation> = emptyList(),
+    public val collaborationMode: AgentCollaborationMode = AgentCollaborationMode.DEFAULT,
 )
 
-fun deriveConversationTitle(
+internal fun deriveConversationTitle(
     explicitName: String?,
     firstUserText: String,
     maxLength: Int = 80,

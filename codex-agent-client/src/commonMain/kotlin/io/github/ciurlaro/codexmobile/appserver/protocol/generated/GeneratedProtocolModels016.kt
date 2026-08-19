@@ -13,10 +13,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public class FsUnwatchResponse
+internal class FsUnwatchResponse
 
 @Serializable
-public data class FsWatchParams(
+internal data class FsWatchParams(
     @SerialName("path")
     public val path: AbsolutePathBuf,
     @SerialName("watchId")
@@ -24,13 +24,13 @@ public data class FsWatchParams(
 )
 
 @Serializable
-public data class FsWatchResponse(
+internal data class FsWatchResponse(
     @SerialName("path")
     public val path: AbsolutePathBuf,
 )
 
 @Serializable
-public data class FsWriteFileParams(
+internal data class FsWriteFileParams(
     @SerialName("dataBase64")
     public val dataBase64: String,
     @SerialName("path")
@@ -38,15 +38,15 @@ public data class FsWriteFileParams(
 )
 
 @Serializable
-public class FsWriteFileResponse
+internal class FsWriteFileResponse
 
-public typealias FunctionCallOutputBody = JsonElement
+internal typealias FunctionCallOutputBody = JsonElement
 
 @Serializable(with = FunctionCallOutputContentItemSerializer::class)
-public sealed interface FunctionCallOutputContentItem
+internal sealed interface FunctionCallOutputContentItem
 
 @Serializable
-public data class FunctionCallOutputContentItemInputTextFunctionCallOutputContentItem(
+internal data class FunctionCallOutputContentItemInputTextFunctionCallOutputContentItem(
     @SerialName("text")
     public val text: String,
     @SerialName("type")
@@ -56,7 +56,7 @@ public data class FunctionCallOutputContentItemInputTextFunctionCallOutputConten
 }
 
 @Serializable
-public data class FunctionCallOutputContentItemInputImageFunctionCallOutputContentItem(
+internal data class FunctionCallOutputContentItemInputImageFunctionCallOutputContentItem(
     @SerialName("image_url")
     public val image_url: String,
     @SerialName("detail")
@@ -68,7 +68,7 @@ public data class FunctionCallOutputContentItemInputImageFunctionCallOutputConte
 }
 
 @Serializable
-public data class FunctionCallOutputContentItemInputAudioFunctionCallOutputContentItem(
+internal data class FunctionCallOutputContentItemInputAudioFunctionCallOutputContentItem(
     @SerialName("audio_url")
     public val audio_url: String,
     @SerialName("type")
@@ -78,7 +78,7 @@ public data class FunctionCallOutputContentItemInputAudioFunctionCallOutputConte
 }
 
 @Serializable
-public data class FunctionCallOutputContentItemEncryptedContentFunctionCallOutputContentItem(
+internal data class FunctionCallOutputContentItemEncryptedContentFunctionCallOutputContentItem(
     @SerialName("encrypted_content")
     public val encrypted_content: String,
     @SerialName("type")
@@ -87,7 +87,7 @@ public data class FunctionCallOutputContentItemEncryptedContentFunctionCallOutpu
     init { require(type == "encrypted_content") }
 }
 
-public object FunctionCallOutputContentItemSerializer : JsonContentPolymorphicSerializer<FunctionCallOutputContentItem>(FunctionCallOutputContentItem::class) {
+internal object FunctionCallOutputContentItemSerializer : JsonContentPolymorphicSerializer<FunctionCallOutputContentItem>(FunctionCallOutputContentItem::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<FunctionCallOutputContentItem> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "input_text" -> FunctionCallOutputContentItemInputTextFunctionCallOutputContentItem.serializer()
@@ -99,13 +99,13 @@ public object FunctionCallOutputContentItemSerializer : JsonContentPolymorphicSe
 }
 
 @Serializable
-public enum class FuzzyFileSearchMatchType {
+internal enum class FuzzyFileSearchMatchType {
     @SerialName("file") FILE,
     @SerialName("directory") DIRECTORY,
 }
 
 @Serializable
-public data class FuzzyFileSearchParams(
+internal data class FuzzyFileSearchParams(
     @SerialName("query")
     public val query: String,
     @SerialName("roots")
@@ -115,13 +115,13 @@ public data class FuzzyFileSearchParams(
 )
 
 @Serializable
-public data class FuzzyFileSearchResponse(
+internal data class FuzzyFileSearchResponse(
     @SerialName("files")
     public val files: List<FuzzyFileSearchResult>,
 )
 
 @Serializable
-public data class FuzzyFileSearchResult(
+internal data class FuzzyFileSearchResult(
     @SerialName("file_name")
     public val file_name: String,
     @SerialName("match_type")
@@ -137,13 +137,13 @@ public data class FuzzyFileSearchResult(
 )
 
 @Serializable
-public data class FuzzyFileSearchSessionCompletedNotification(
+internal data class FuzzyFileSearchSessionCompletedNotification(
     @SerialName("sessionId")
     public val sessionId: String,
 )
 
 @Serializable
-public data class FuzzyFileSearchSessionUpdatedNotification(
+internal data class FuzzyFileSearchSessionUpdatedNotification(
     @SerialName("files")
     public val files: List<FuzzyFileSearchResult>,
     @SerialName("query")
@@ -153,13 +153,13 @@ public data class FuzzyFileSearchSessionUpdatedNotification(
 )
 
 @Serializable
-public data class GetAccountParams(
+internal data class GetAccountParams(
     @SerialName("refreshToken")
     public val refreshToken: Boolean? = null,
 )
 
 @Serializable
-public data class GetAccountRateLimitsResponse(
+internal data class GetAccountRateLimitsResponse(
     @SerialName("rateLimits")
     public val rateLimits: RateLimitSnapshot,
     @SerialName("rateLimitResetCredits")
@@ -169,7 +169,7 @@ public data class GetAccountRateLimitsResponse(
 )
 
 @Serializable
-public data class GetAccountResponse(
+internal data class GetAccountResponse(
     @SerialName("requiresOpenaiAuth")
     public val requiresOpenaiAuth: Boolean,
     @SerialName("account")
@@ -177,7 +177,7 @@ public data class GetAccountResponse(
 )
 
 @Serializable
-public data class GetAccountTokenUsageResponse(
+internal data class GetAccountTokenUsageResponse(
     @SerialName("summary")
     public val summary: AccountTokenUsageSummary,
     @SerialName("dailyUsageBuckets")
@@ -185,7 +185,7 @@ public data class GetAccountTokenUsageResponse(
 )
 
 @Serializable
-public data class GetWorkspaceMessagesResponse(
+internal data class GetWorkspaceMessagesResponse(
     @SerialName("featureEnabled")
     public val featureEnabled: Boolean,
     @SerialName("messages")
@@ -193,7 +193,7 @@ public data class GetWorkspaceMessagesResponse(
 )
 
 @Serializable
-public data class GitInfo(
+internal data class GitInfo(
     @SerialName("branch")
     public val branch: String? = null,
     @SerialName("originUrl")
@@ -203,7 +203,7 @@ public data class GitInfo(
 )
 
 @Serializable
-public data class GrantedPermissionProfile(
+internal data class GrantedPermissionProfile(
     @SerialName("fileSystem")
     public val fileSystem: AdditionalFileSystemPermissions? = null,
     @SerialName("network")
@@ -211,7 +211,7 @@ public data class GrantedPermissionProfile(
 )
 
 @Serializable
-public data class GuardianApprovalReview(
+internal data class GuardianApprovalReview(
     @SerialName("status")
     public val status: GuardianApprovalReviewStatus,
     @SerialName("rationale")

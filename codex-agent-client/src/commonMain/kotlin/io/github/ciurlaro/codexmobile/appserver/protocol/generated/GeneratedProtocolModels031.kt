@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ResponseItemCompactionTriggerResponseItem(
+internal data class ResponseItemCompactionTriggerResponseItem(
     @SerialName("type")
     public val type: String = "compaction_trigger",
 ) : ResponseItem {
@@ -21,7 +21,7 @@ public data class ResponseItemCompactionTriggerResponseItem(
 }
 
 @Serializable
-public data class ResponseItemContextCompactionResponseItem(
+internal data class ResponseItemContextCompactionResponseItem(
     @SerialName("encrypted_content")
     public val encrypted_content: String? = null,
     @SerialName("id")
@@ -35,14 +35,14 @@ public data class ResponseItemContextCompactionResponseItem(
 }
 
 @Serializable
-public data class ResponseItemOtherResponseItem(
+internal data class ResponseItemOtherResponseItem(
     @SerialName("type")
     public val type: String = "other",
 ) : ResponseItem {
     init { require(type == "other") }
 }
 
-public object ResponseItemSerializer : JsonContentPolymorphicSerializer<ResponseItem>(ResponseItem::class) {
+internal object ResponseItemSerializer : JsonContentPolymorphicSerializer<ResponseItem>(ResponseItem::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ResponseItem> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "message" -> ResponseItemMessageResponseItem.serializer()
@@ -66,10 +66,10 @@ public object ResponseItemSerializer : JsonContentPolymorphicSerializer<Response
 }
 
 @Serializable(with = ResponsesApiWebSearchActionSerializer::class)
-public sealed interface ResponsesApiWebSearchAction
+internal sealed interface ResponsesApiWebSearchAction
 
 @Serializable
-public data class ResponsesApiWebSearchActionSearchResponsesApiWebSearchAction(
+internal data class ResponsesApiWebSearchActionSearchResponsesApiWebSearchAction(
     @SerialName("queries")
     public val queries: List<String>? = null,
     @SerialName("query")
@@ -81,7 +81,7 @@ public data class ResponsesApiWebSearchActionSearchResponsesApiWebSearchAction(
 }
 
 @Serializable
-public data class ResponsesApiWebSearchActionOpenPageResponsesApiWebSearchAction(
+internal data class ResponsesApiWebSearchActionOpenPageResponsesApiWebSearchAction(
     @SerialName("type")
     public val type: String = "open_page",
     @SerialName("url")
@@ -91,7 +91,7 @@ public data class ResponsesApiWebSearchActionOpenPageResponsesApiWebSearchAction
 }
 
 @Serializable
-public data class ResponsesApiWebSearchActionFindInPageResponsesApiWebSearchAction(
+internal data class ResponsesApiWebSearchActionFindInPageResponsesApiWebSearchAction(
     @SerialName("pattern")
     public val pattern: String? = null,
     @SerialName("type")
@@ -103,14 +103,14 @@ public data class ResponsesApiWebSearchActionFindInPageResponsesApiWebSearchActi
 }
 
 @Serializable
-public data class ResponsesApiWebSearchActionOtherResponsesApiWebSearchAction(
+internal data class ResponsesApiWebSearchActionOtherResponsesApiWebSearchAction(
     @SerialName("type")
     public val type: String = "other",
 ) : ResponsesApiWebSearchAction {
     init { require(type == "other") }
 }
 
-public object ResponsesApiWebSearchActionSerializer : JsonContentPolymorphicSerializer<ResponsesApiWebSearchAction>(ResponsesApiWebSearchAction::class) {
+internal object ResponsesApiWebSearchActionSerializer : JsonContentPolymorphicSerializer<ResponsesApiWebSearchAction>(ResponsesApiWebSearchAction::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ResponsesApiWebSearchAction> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "search" -> ResponsesApiWebSearchActionSearchResponsesApiWebSearchAction.serializer()
@@ -121,16 +121,16 @@ public object ResponsesApiWebSearchActionSerializer : JsonContentPolymorphicSeri
         }
 }
 
-public typealias ReviewDecision = JsonElement
+internal typealias ReviewDecision = JsonElement
 
 @Serializable
-public enum class ReviewDelivery {
+internal enum class ReviewDelivery {
     @SerialName("inline") INLINE,
     @SerialName("detached") DETACHED,
 }
 
 @Serializable
-public data class ReviewStartParams(
+internal data class ReviewStartParams(
     @SerialName("target")
     public val target: ReviewTarget,
     @SerialName("threadId")
@@ -140,7 +140,7 @@ public data class ReviewStartParams(
 )
 
 @Serializable
-public data class ReviewStartResponse(
+internal data class ReviewStartResponse(
     @SerialName("reviewThreadId")
     public val reviewThreadId: String,
     @SerialName("turn")
@@ -148,10 +148,10 @@ public data class ReviewStartResponse(
 )
 
 @Serializable(with = ReviewTargetSerializer::class)
-public sealed interface ReviewTarget
+internal sealed interface ReviewTarget
 
 @Serializable
-public data class ReviewTargetUncommittedChangesReviewTarget(
+internal data class ReviewTargetUncommittedChangesReviewTarget(
     @SerialName("type")
     public val type: String = "uncommittedChanges",
 ) : ReviewTarget {
@@ -159,7 +159,7 @@ public data class ReviewTargetUncommittedChangesReviewTarget(
 }
 
 @Serializable
-public data class ReviewTargetBaseBranchReviewTarget(
+internal data class ReviewTargetBaseBranchReviewTarget(
     @SerialName("branch")
     public val branch: String,
     @SerialName("type")
@@ -169,7 +169,7 @@ public data class ReviewTargetBaseBranchReviewTarget(
 }
 
 @Serializable
-public data class ReviewTargetCommitReviewTarget(
+internal data class ReviewTargetCommitReviewTarget(
     @SerialName("sha")
     public val sha: String,
     @SerialName("title")
@@ -181,7 +181,7 @@ public data class ReviewTargetCommitReviewTarget(
 }
 
 @Serializable
-public data class ReviewTargetCustomReviewTarget(
+internal data class ReviewTargetCustomReviewTarget(
     @SerialName("instructions")
     public val instructions: String,
     @SerialName("type")
@@ -190,7 +190,7 @@ public data class ReviewTargetCustomReviewTarget(
     init { require(type == "custom") }
 }
 
-public object ReviewTargetSerializer : JsonContentPolymorphicSerializer<ReviewTarget>(ReviewTarget::class) {
+internal object ReviewTargetSerializer : JsonContentPolymorphicSerializer<ReviewTarget>(ReviewTarget::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ReviewTarget> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "uncommittedChanges" -> ReviewTargetUncommittedChangesReviewTarget.serializer()
@@ -202,17 +202,17 @@ public object ReviewTargetSerializer : JsonContentPolymorphicSerializer<ReviewTa
 }
 
 @Serializable
-public enum class SandboxMode {
+internal enum class SandboxMode {
     @SerialName("read-only") READ_ONLY,
     @SerialName("workspace-write") WORKSPACE_WRITE,
     @SerialName("danger-full-access") DANGER_FULL_ACCESS,
 }
 
 @Serializable(with = SandboxPolicySerializer::class)
-public sealed interface SandboxPolicy
+internal sealed interface SandboxPolicy
 
 @Serializable
-public data class SandboxPolicyDangerFullAccessSandboxPolicy(
+internal data class SandboxPolicyDangerFullAccessSandboxPolicy(
     @SerialName("type")
     public val type: String = "dangerFullAccess",
 ) : SandboxPolicy {

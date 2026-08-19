@@ -5,7 +5,7 @@ import io.github.ciurlaro.codexmobile.appserver.protocol.generated.DynamicToolSp
 import io.github.ciurlaro.codexmobile.agent.AgentApprovalDecision
 import io.github.ciurlaro.codexmobile.agent.AgentApprovalPreset
 import io.github.ciurlaro.codexmobile.agent.AgentEvent
-import io.github.ciurlaro.codexmobile.agent.AgentRuntimeSettings
+import io.github.ciurlaro.codexmobile.agent.AgentConversationSettings
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -16,7 +16,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -56,17 +58,20 @@ internal class BuiltInToolsProtocolTest : BuiltInToolsProtocolTestBase() {
         }
         val definition = testDefinition("ios-local-filesystem", "ios_read_file", mutation = false)
             .copy(requiresEnabledPlugin = false)
-        val dispatcher = object : BuiltInToolDispatcher {
+        val dispatcher = object : CodexToolProvider {
             override fun definitions() = listOf(definition)
-            override suspend fun execute(call: BuiltInToolCall) = BuiltInToolResult.text("local")
+            override suspend fun execute(
+                call: BuiltInToolCall,
+                context: CodexToolExecutionContext,
+            ) = BuiltInToolResult.text("local")
         }
         CodexAgentClient(
             runtimeFactory = { process },
             requestTimeoutMillis = 1_000,
-            builtInToolDispatcher = dispatcher,
+            toolProvider = dispatcher,
         ).use { client ->
-            val session = client.openSession(settings = AgentRuntimeSettings(workingDirectory = "/workspace"))
-            client.sendTurn(session, AgentTurnRequest("read", workingDirectory = "/workspace"))
+            val conversationId = client.openConversation(null, AgentConversationSettings(), "/workspace")
+            client.sendTurn(conversationId, AgentTurnRequest("read"), "/workspace")
 
             assertTrue(response.await(1, TimeUnit.SECONDS))
             assertEquals(0, pluginReads.get())
@@ -115,24 +120,39 @@ internal class BuiltInToolsProtocolTest : BuiltInToolsProtocolTestBase() {
         val client = CodexAgentClient(
             runtimeFactory = { process },
             requestTimeoutMillis = 1_000,
-            builtInToolDispatcher = dispatcher {
+            toolProvider = dispatcher {
                 calls.incrementAndGet()
                 BuiltInToolResult.text("result")
             },
         )
         try {
-            val session = client.openSession(
-                settings = AgentRuntimeSettings(workingDirectory = "/workspace"),
-            )
+            val conversationId = client.openConversation(null, AgentConversationSettings(), "/workspace")
             val names = threadStart!!["dynamicTools"]!!.jsonArray.map {
                 it.jsonObject["name"]!!.jsonPrimitive.content
             }
             assertEquals(listOf("alpha_read", "alpha_view", "alpha_edit"), names)
 
-            client.sendTurn(session, AgentTurnRequest("read", workingDirectory = "/workspace"))
+            client.sendTurn(conversationId, AgentTurnRequest("read"), "/workspace")
             assertTrue(firstResponse.await(1, TimeUnit.SECONDS))
             assertEquals(1, calls.get())
 
+            assertFailsWith<IllegalStateException> {
+                client.setPluginEnabled(ALPHA_PLUGIN_ID, false)
+            }
+            val completed = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.TurnCompleted>().first() }
+            }
+            process.notify(
+                "turn/completed",
+                buildJsonObject {
+                    put("threadId", conversationId.value)
+                    putJsonObject("turn") {
+                        put("id", "turn-1")
+                        put("status", "completed")
+                    }
+                },
+            )
+            completed.await()
             client.setPluginEnabled(ALPHA_PLUGIN_ID, false)
             process.request(901, "item/tool/call", toolCall("alpha_read", "call-2"))
             assertTrue(disabledResponse.await(1, TimeUnit.SECONDS))
@@ -166,13 +186,65 @@ internal class BuiltInToolsProtocolTest : BuiltInToolsProtocolTestBase() {
         CodexAgentClient(
             runtimeFactory = { process },
             requestTimeoutMillis = 1_000,
-            builtInToolDispatcher = dispatcher { BuiltInToolResult.text("unused") },
+            toolProvider = dispatcher { BuiltInToolResult.text("unused") },
         ).use { client ->
-            client.openSession(settings = AgentRuntimeSettings(workingDirectory = "/workspace"))
+            client.openConversation(null, AgentConversationSettings(), "/workspace")
             assertFailsWith<AppServerRpcException> { client.setPluginEnabled(ALPHA_PLUGIN_ID, false) }
-            client.openSession(settings = AgentRuntimeSettings(workingDirectory = "/workspace"))
+            client.openConversation(null, AgentConversationSettings(), "/workspace")
             assertEquals(advertised[0], advertised[1])
             assertTrue("alpha_edit" in advertised[1])
+        }
+    }
+
+    @Test
+    fun extensionMutationsAreRejectedWhileATurnStartsRunsAndCancels(): Unit = runBlocking {
+        val startRequest = CompletableDeferred<Long>()
+        val interruptRequest = CompletableDeferred<Long>()
+        val configWrites = AtomicInteger()
+        val process = FakeCodexRuntime { message, server ->
+            when (message.method) {
+                "initialize" -> server.respond(message.id, buildJsonObject {})
+                "thread/start" -> server.respond(message.id, thread("thread-mutation-gate"))
+                "turn/start" -> startRequest.complete(checkNotNull(message.id))
+                "turn/interrupt" -> interruptRequest.complete(checkNotNull(message.id))
+                "config/value/write" -> {
+                    configWrites.incrementAndGet()
+                    server.respond(message.id, buildJsonObject {})
+                }
+            }
+        }
+        CodexAgentClient({ process }, requestTimeoutMillis = 1_000).use { client ->
+            val conversationId = client.openConversation(
+                null,
+                AgentConversationSettings(),
+                "/workspace",
+            )
+            val sending = async(start = CoroutineStart.UNDISPATCHED) {
+                client.sendTurn(conversationId, AgentTurnRequest("hello"), "/workspace")
+            }
+            val turnStartId = withTimeout(1_000) { startRequest.await() }
+
+            assertFailsWith<IllegalStateException> {
+                client.setPluginEnabled("remote-plugin", false)
+            }
+
+            process.respond(turnStartId, turn("turn-mutation-gate"))
+            sending.await()
+            assertFailsWith<IllegalStateException> {
+                client.setPluginEnabled("remote-plugin", false)
+            }
+
+            val cancelling = async(start = CoroutineStart.UNDISPATCHED) {
+                client.cancelTurn(conversationId)
+            }
+            val interruptId = withTimeout(1_000) { interruptRequest.await() }
+            assertFailsWith<IllegalStateException> {
+                client.setPluginEnabled("remote-plugin", false)
+            }
+
+            process.respond(interruptId, buildJsonObject {})
+            cancelling.await()
+            assertEquals(0, configWrites.get())
         }
     }
 

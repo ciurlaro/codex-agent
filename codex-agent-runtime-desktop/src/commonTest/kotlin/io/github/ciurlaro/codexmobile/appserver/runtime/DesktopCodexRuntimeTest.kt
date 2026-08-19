@@ -1,16 +1,17 @@
 package io.github.ciurlaro.codexmobile.appserver.runtime
 
-import io.github.ciurlaro.codexmobile.appserver.client.AppServerConnection
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.ClientInfo
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeCapabilities
-import io.github.ciurlaro.codexmobile.appserver.protocol.generated.InitializeParams
+import io.github.ciurlaro.codexmobile.agent.CodexClientInfo
+import io.github.ciurlaro.codexmobile.agent.CodexHost
+import io.github.ciurlaro.codexmobile.agent.CodexHostState
+import io.github.ciurlaro.codexmobile.agent.CodexPathWorkspaceSelection
+import io.github.ciurlaro.codexmobile.agent.CodexWorkspaceResolution
+import io.github.ciurlaro.codexmobile.agent.runtime.DesktopCodexPlatform
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -83,31 +84,25 @@ class DesktopCodexRuntimeTest {
 
     @Test
     fun initializesAndShutsDownOfficialAppServerWhenProvided(): Unit = runBlocking {
-        val executable = desktopTestEnvironment("CODEX_AGENT_APP_SERVER_EXECUTABLE")
+        val bundle = desktopTestEnvironment("CODEX_AGENT_RUNTIME_BUNDLE_DIRECTORY")
             ?.toPath() ?: return@runBlocking
-        val supervisor = desktopTestEnvironment("CODEX_AGENT_PROCESS_SUPERVISOR_EXECUTABLE")
-            ?.toPath() ?: return@runBlocking
-        val supervisorSha256 = desktopTestEnvironment("CODEX_AGENT_PROCESS_SUPERVISOR_SHA256")
-            ?: error("Desktop evidence requires the packaged process-supervisor SHA-256")
-        val connection = AppServerConnection(
-            runtimeFactory = DesktopCodexRuntimeFactory(
-                DesktopCodexRuntimeConfiguration(executable, supervisor, supervisorSha256, executable.parent!!),
-            ),
-            initializeParams = InitializeParams(
-                clientInfo = ClientInfo("codex_agent_runtime_desktop_test", "0.2.0", "Desktop Runtime Test"),
-                capabilities = InitializeCapabilities(
-                    experimentalApi = true,
-                    mcpServerOpenaiFormElicitation = false,
-                ),
-            ),
-            requestTimeoutMillis = 30_000,
+        val data = checkNotNull(desktopTestEnvironment("CODEX_AGENT_RUNTIME_DATA_DIRECTORY")).toPath()
+        val workspace = checkNotNull(desktopTestEnvironment("CODEX_AGENT_WORKSPACE"))
+        val platform = DesktopCodexPlatform(bundle, data)
+        val selected = assertIs<CodexWorkspaceResolution.Available>(
+            platform.workspaceStore.select(CodexPathWorkspaceSelection(workspace)),
+        )
+        val host = CodexHost(
+            platform,
+            this,
+            CodexClientInfo("desktop_runtime_evidence", "Desktop Runtime Evidence", "0.2.0"),
         )
         try {
-            val response = connection.ensureStarted()
-            assertTrue(response.platformFamily.isNotBlank())
-            assertTrue(response.platformOs.isNotBlank())
+            host.start()
+            val ready = assertIs<CodexHostState.Ready>(host.state.value)
+            assertEquals(selected.workspace, ready.agent.workspace)
         } finally {
-            connection.shutdown()
+            host.close()
         }
     }
 }

@@ -2,17 +2,17 @@ package io.github.ciurlaro.codexmobile.appserver.runtime
 
 import kotlin.io.encoding.Base64
 
-data class ConnectProxyRequest(
+internal data class ConnectProxyRequest(
     val host: String,
     val port: Int,
 )
 
-sealed interface ConnectProxyDecision {
+internal sealed interface ConnectProxyDecision {
     data class Allowed(val request: ConnectProxyRequest) : ConnectProxyDecision
     data class Rejected(val status: Int, val reason: String) : ConnectProxyDecision
 }
 
-class ConnectProxyPolicy(password: String) {
+internal class ConnectProxyPolicy(password: String) {
     private val authorization =
         "Basic " + Base64.Default.encode("codex:$password".encodeToByteArray())
 
@@ -70,7 +70,7 @@ class ConnectProxyPolicy(password: String) {
     }
 }
 
-fun ByteArray.isPublicProxyAddress(): Boolean = when (size) {
+internal fun ByteArray.isPublicProxyAddress(): Boolean = when (size) {
     4 -> isPublicIpv4()
     16 -> when {
         take(10).all { it == 0.toByte() } &&

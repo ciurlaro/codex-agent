@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -21,168 +23,105 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.26.3"
-      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - run: actionlint
+          cache: false
+      - id: actionlint-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/go/bin/actionlint
+          key: actionlint-v1-${{ runner.os }}-${{ runner.arch }}-v1.7.12
+      - if: steps.actionlint-cache.outputs.cache-hit != 'true'
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - run: |
+          "$HOME/go/bin/actionlint"
+      - if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          steps.actionlint-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/go/bin/actionlint
+          key: ${{ steps.actionlint-cache.outputs.cache-primary-key }}
 
   android-jvm:
+    needs: workflow-lint
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+      - id: build
+        uses: ./.github/actions/setup-kmp
         with:
-          distribution: temurin
-          java-version: "17"
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
+          cache-encryption-key: >-
+            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+            secrets.GRADLE_ENCRYPTION_KEY || '' }}
+          node-version: "24.18.0"
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-      - run: ./gradlew -p buildSrc test --stacktrace
-      - run: ./gradlew verifyRepository --stacktrace
-
-  ios-device-slice:
-    needs: [workflow-lint, android-jvm]
-    runs-on: macos-26
-    timeout-minutes: 180
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-      - name: Restore pinned Cargo downloads
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: >-
-            ${{ runner.os }}-rust-1.95.0-ios-downloads-${{
-            hashFiles('codex-agent-runtime-ios/native/provenance.json',
-            'codex-agent-runtime-ios/native/bridge/Cargo.lock',
-            'codex-agent-runtime-ios/native/patches/**',
-            'codex-agent-runtime-ios/native/sqlite/**') }}
-      - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
-        with:
-          targets: aarch64-apple-ios
-          components: llvm-tools-preview,rust-src
-      - name: Build the exact device native slice once
+      - run: ./gradlew -p gradle/build-logic test --parallel --stacktrace
+      - run: ./gradlew verifyRepository --parallel --stacktrace
+      - name: Package exact reusable runners and Android binaries
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: >-
           ./gradlew
-          :codex-agent-runtime-ios:verifyAppleToolchain
-          :codex-agent-runtime-ios:exportCodexAgentIosArm64RustSlice
-          -PcodexAgent.candidateCommit=${{ github.sha }}
-          --no-parallel --no-daemon --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          if-no-files-found: error
-          overwrite: true
-          name: codex-agent-ci-ios-arm64-${{ github.sha }}
-          path: |
-            codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-arm64.a
-            codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-arm64-proof.json
-            codex-agent-runtime-ios/build/apple-slice-exports/native-tests-proof.json
-          compression-level: 0
-          retention-days: 30
-
-  ios-simulator-slice:
-    needs: [workflow-lint, android-jvm]
-    runs-on: macos-26
-    timeout-minutes: 180
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-      - name: Restore pinned Cargo downloads
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: >-
-            ${{ runner.os }}-rust-1.95.0-ios-downloads-${{
-            hashFiles('codex-agent-runtime-ios/native/provenance.json',
-            'codex-agent-runtime-ios/native/bridge/Cargo.lock',
-            'codex-agent-runtime-ios/native/patches/**',
-            'codex-agent-runtime-ios/native/sqlite/**') }}
-      - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
-        with:
-          targets: aarch64-apple-ios-sim
-          components: llvm-tools-preview,rust-src
-      - name: Build the exact simulator native slice once
-        run: >-
-          ./gradlew
-          :codex-agent-runtime-ios:verifyAppleToolchain
-          :codex-agent-runtime-ios:exportCodexAgentIosSimulatorArm64RustSlice
-          -PcodexAgent.candidateCommit=${{ github.sha }}
-          --no-parallel --no-daemon --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          if-no-files-found: error
-          overwrite: true
-          name: codex-agent-ci-ios-simulator-arm64-${{ github.sha }}
-          path: |
-            codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-simulator-arm64.a
-            codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-simulator-arm64-proof.json
-          compression-level: 0
-          retention-days: 30
-
-  ios:
-    needs: [ios-device-slice, ios-simulator-slice]
-    runs-on: macos-26
-    timeout-minutes: 240
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-      - name: Install pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
-        with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim
-          components: llvm-tools-preview,rust-src
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: codex-agent-ci-ios-arm64-${{ github.sha }}
-          path: build/ios-native-evidence
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: codex-agent-ci-ios-simulator-arm64-${{ github.sha }}
-          path: build/ios-native-evidence
-      - name: Verify iOS from the exact imported native slices
-        run: >-
-          ./gradlew verifyIosRuntime
-          -PcodexAgent.candidateCommit=${{ github.sha }}
-          "-PcodexAgent.iosNativeEvidenceDirectory=$GITHUB_WORKSPACE/build/ios-native-evidence"
-          --no-parallel --no-daemon --stacktrace
-      - name: Upload iOS verification evidence
-        if: always()
+          :codex-agent-runtime-desktop:packageJvmRuntimeEvidenceRunner
+          :codex-agent-runtime-node:packageNodeRuntimeEvidenceRunner
+          :codex-agent-runtime-node:packageNodeWasmRuntimeEvidenceRunner
+          :tooling:android-runtime-evidence:assembleDebug
+          :tooling:android-runtime-evidence:assembleDebugAndroidTest
+          :codex-agent-runtime-android:testReleaseUnitTest
+          :codex-agent-runtime-android:lintRelease
+          :codex-agent-runtime-android:assembleRelease
+          --parallel --stacktrace
+      - name: Stage the three portable runners as one flat import
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p build/ci-portable-runtime-artifacts
+          cp codex-agent-runtime-desktop/build/distributions/codex-agent-jvm-runtime-evidence-runner.zip \
+            codex-agent-runtime-node/build/distributions/codex-agent-node-runtime-evidence-runner.zip \
+            codex-agent-runtime-node/build/distributions/codex-agent-node-wasm-runtime-evidence-runner.zip \
+            build/ci-portable-runtime-artifacts/
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           if-no-files-found: error
           overwrite: true
-          name: codex-agent-ios-verification
-          path: |
-            codex-agent-runtime-ios/build/reports/ios-release/**
-            codex-agent-runtime-ios/build/swift-authentication-tests.xcresult
-            codex-agent-runtime-ios/build/swift-authentication-tests-summary.json
+          name: codex-agent-ci-portable-runtime-artifacts-${{ github.sha }}
+          path: build/ci-portable-runtime-artifacts/*
+          compression-level: 0
           retention-days: 30
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: codex-agent-ci-android-binaries-${{ github.sha }}
+          path: |
+            tooling/android-runtime-evidence/build/outputs/apk/debug/android-runtime-evidence-debug.apk
+            tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk
+            codex-agent-runtime-android/build/outputs/aar/codex-agent-runtime-android-release.aar
+          compression-level: 0
+          retention-days: 30
+      - if: >-
+          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+          steps.build.outputs.konan-cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.konan
+          key: ${{ steps.build.outputs.konan-cache-primary-key }}
+
+  apple-runtime-evidence:
+    needs: workflow-lint
+    uses: ./.github/workflows/apple-runtime-evidence.yml
+    with:
+      candidateCommit: ${{ github.sha }}
+      trustedCacheWriter: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    secrets: inherit
+
+  desktop-runtime-evidence:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [workflow-lint, android-jvm]
+    uses: ./.github/workflows/desktop-runtime-evidence.yml
+    with:
+      candidateCommit: ${{ github.sha }}
+      trustedCacheWriter: true
+    secrets: inherit

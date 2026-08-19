@@ -13,16 +13,16 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class PluginUninstallParams(
+internal data class PluginUninstallParams(
     @SerialName("pluginId")
     public val pluginId: String,
 )
 
 @Serializable
-public class PluginUninstallResponse
+internal class PluginUninstallResponse
 
 @Serializable
-public data class PluginsMigration(
+internal data class PluginsMigration(
     @SerialName("marketplaceName")
     public val marketplaceName: String,
     @SerialName("pluginNames")
@@ -30,7 +30,7 @@ public data class PluginsMigration(
 )
 
 @Serializable
-public data class ProcessExitedNotification(
+internal data class ProcessExitedNotification(
     @SerialName("exitCode")
     public val exitCode: Long,
     @SerialName("processHandle")
@@ -46,7 +46,7 @@ public data class ProcessExitedNotification(
 )
 
 @Serializable
-public data class ProcessOutputDeltaNotification(
+internal data class ProcessOutputDeltaNotification(
     @SerialName("capReached")
     public val capReached: Boolean,
     @SerialName("deltaBase64")
@@ -57,10 +57,10 @@ public data class ProcessOutputDeltaNotification(
     public val stream: ProcessOutputStream,
 )
 
-public typealias ProcessOutputStream = JsonElement
+internal typealias ProcessOutputStream = JsonElement
 
 @Serializable
-public data class ProcessTerminalSize(
+internal data class ProcessTerminalSize(
     @SerialName("cols")
     public val cols: Long,
     @SerialName("rows")
@@ -68,7 +68,7 @@ public data class ProcessTerminalSize(
 )
 
 @Serializable
-public enum class RateLimitReachedType {
+internal enum class RateLimitReachedType {
     @SerialName("rate_limit_reached") RATE_LIMIT_REACHED,
     @SerialName("workspace_owner_credits_depleted") WORKSPACE_OWNER_CREDITS_DEPLETED,
     @SerialName("workspace_member_credits_depleted") WORKSPACE_MEMBER_CREDITS_DEPLETED,
@@ -77,7 +77,7 @@ public enum class RateLimitReachedType {
 }
 
 @Serializable
-public data class RateLimitResetCredit(
+internal data class RateLimitResetCredit(
     @SerialName("grantedAt")
     public val grantedAt: Long,
     @SerialName("id")
@@ -95,7 +95,7 @@ public data class RateLimitResetCredit(
 )
 
 @Serializable
-public enum class RateLimitResetCreditStatus {
+internal enum class RateLimitResetCreditStatus {
     @SerialName("available") AVAILABLE,
     @SerialName("redeeming") REDEEMING,
     @SerialName("redeemed") REDEEMED,
@@ -103,7 +103,7 @@ public enum class RateLimitResetCreditStatus {
 }
 
 @Serializable
-public data class RateLimitResetCreditsSummary(
+internal data class RateLimitResetCreditsSummary(
     @SerialName("availableCount")
     public val availableCount: Long,
     @SerialName("credits")
@@ -111,13 +111,13 @@ public data class RateLimitResetCreditsSummary(
 )
 
 @Serializable
-public enum class RateLimitResetType {
+internal enum class RateLimitResetType {
     @SerialName("codexRateLimits") CODEX_RATE_LIMITS,
     @SerialName("unknown") UNKNOWN,
 }
 
 @Serializable
-public data class RateLimitSnapshot(
+internal data class RateLimitSnapshot(
     @SerialName("credits")
     public val credits: CreditsSnapshot? = null,
     @SerialName("individualLimit")
@@ -139,7 +139,7 @@ public data class RateLimitSnapshot(
 )
 
 @Serializable
-public data class RateLimitWindow(
+internal data class RateLimitWindow(
     @SerialName("usedPercent")
     public val usedPercent: Long,
     @SerialName("resetsAt")
@@ -149,7 +149,7 @@ public data class RateLimitWindow(
 )
 
 @Serializable
-public data class RawResponseCompletedNotification(
+internal data class RawResponseCompletedNotification(
     @SerialName("responseId")
     public val responseId: String,
     @SerialName("threadId")
@@ -161,7 +161,7 @@ public data class RawResponseCompletedNotification(
 )
 
 @Serializable
-public data class RawResponseItemCompletedNotification(
+internal data class RawResponseItemCompletedNotification(
     @SerialName("item")
     public val item: ResponseItem,
     @SerialName("threadId")
@@ -171,20 +171,20 @@ public data class RawResponseItemCompletedNotification(
 )
 
 @Serializable
-public enum class RealtimeConversationVersion {
+internal enum class RealtimeConversationVersion {
     @SerialName("v1") V1,
     @SerialName("v2") V2,
     @SerialName("v3") V3,
 }
 
 @Serializable
-public enum class RealtimeOutputModality {
+internal enum class RealtimeOutputModality {
     @SerialName("text") TEXT,
     @SerialName("audio") AUDIO,
 }
 
 @Serializable
-public enum class RealtimeVoice {
+internal enum class RealtimeVoice {
     @SerialName("alloy") ALLOY,
     @SerialName("arbor") ARBOR,
     @SerialName("ash") ASH,
@@ -207,7 +207,7 @@ public enum class RealtimeVoice {
 }
 
 @Serializable
-public data class RealtimeVoicesList(
+internal data class RealtimeVoicesList(
     @SerialName("defaultV1")
     public val defaultV1: RealtimeVoice,
     @SerialName("defaultV2")

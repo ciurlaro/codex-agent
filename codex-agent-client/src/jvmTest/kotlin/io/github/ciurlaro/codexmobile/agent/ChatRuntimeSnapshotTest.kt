@@ -50,11 +50,11 @@ class ChatRuntimeSnapshotTest {
         val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
         try {
             val opened = async {
-                withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.SessionOpened>().first() }
+                withTimeout(1_000) { client.events.filterIsInstance<AgentEvent.ConversationOpened>().first() }
             }
-            client.openSession(SessionId("thread-1"))
+            client.openConversation(ConversationId("thread-1"))
             assertEquals(
-                AgentEvent.SessionOpened(SessionId("thread-1"), "runtime-model", null),
+                AgentEvent.ConversationOpened(ConversationId("thread-1"), "runtime-model", null),
                 opened.await(),
             )
 
@@ -77,20 +77,20 @@ class ChatRuntimeSnapshotTest {
                 }
             }
             client.sendTurn(
-                SessionId("thread-1"),
+                ConversationId("thread-1"),
                 AgentTurnRequest(
                     prompt = "Find the current answer",
                     clientMessageId = "client-message-1",
                     model = "runtime-model-next",
                     effort = "xhigh",
                     capabilities = setOf(AgentCapability.WEB_SEARCH),
-                    workingDirectory = "/storage/emulated/0/Documents",
                     collaborationMode = AgentCollaborationMode.PLAN,
                 ),
+                "/storage/emulated/0/Documents",
             )
 
             val turn = checkNotNull(turnParams)
-            assertEquals("client-message-1", turn.requiredString("clientUserMessageId"))
+            assertEquals("codex-agent:plan:client-message-1", turn.requiredString("clientUserMessageId"))
             assertEquals("runtime-model-next", turn.requiredString("model"))
             assertEquals("xhigh", turn.requiredString("effort"))
             assertEquals("/storage/emulated/0/Documents", turn.requiredString("cwd"))

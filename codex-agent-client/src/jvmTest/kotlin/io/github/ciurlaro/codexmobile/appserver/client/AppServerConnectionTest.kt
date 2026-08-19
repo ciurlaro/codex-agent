@@ -15,6 +15,7 @@ import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
@@ -29,7 +30,9 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -124,6 +127,10 @@ class AppServerConnectionTest {
         val abandoned = runtime.sent.receive().jsonObject()
         cancelled.cancel()
         assertFailsWith<CancellationException> { cancelled.await() }
+        withTimeout(1_000) {
+            while (connection.pending.isNotEmpty()) yield()
+        }
+        assertTrue(connection.pending.isEmpty())
         runtime.receive("""{"id":${abandoned.getValue("id")},"result":{"data":[]}}""")
 
         val next = async {
@@ -170,7 +177,46 @@ class AppServerConnectionTest {
         assertEquals(1, runtime.closeCount)
     }
 
-    private suspend fun initialize(connection: AppServerConnection, runtime: FakeRuntime) = coroutineScope {
+    @Test
+    fun shutdownWaitsForTheRuntimeEventFlowToFinish() = runBlocking {
+        val runtime = DelayedCloseRuntime()
+        val connection = connection(runtime)
+        val start = async { connection.ensureStarted() }
+        val initialize = runtime.sent.receive().jsonObject()
+        runtime.receive(
+            """{"id":${initialize.getValue("id")},"result":{"codexHome":"/tmp/codex","platformFamily":"unix","platformOs":"node","userAgent":"test"}}""",
+        )
+        start.await()
+        runtime.sent.receive()
+
+        val shutdown = async { connection.shutdown() }
+        withTimeout(1_000) { runtime.closeRequested.await() }
+        assertFalse(shutdown.isCompleted)
+
+        runtime.finishExit()
+        withTimeout(1_000) { shutdown.await() }
+        assertEquals(AppServerConnectionState.Closed, connection.state.value)
+    }
+
+    @Test
+    fun shutdownDoesNotDeadlockWhenTheRuntimeReaderIsBlockedByAFullCommandBuffer() = runBlocking {
+        val runtime = BlockingSendRuntime()
+        val connection = connection(runtime, commandCapacity = 1)
+        initialize(connection, runtime)
+        runtime.blockSends = true
+
+        val response = async { connection.respondError(JsonPrimitive(7), -32601, "unsupported") }
+        withTimeout(1_000) { runtime.sendBlocked.await() }
+        connection.close()
+        runtime.receive("""{"method":"skills/changed","params":{}}""")
+        runtime.releaseSend.complete(Unit)
+
+        withTimeout(1_000) { connection.closed.await() }
+        response.await()
+        assertEquals(AppServerConnectionState.Closed, connection.state.value)
+    }
+
+    private suspend fun initialize(connection: AppServerConnection, runtime: TestRuntime) = coroutineScope {
         val start = async { connection.ensureStarted() }
         val initialize = runtime.sent.receive().jsonObject()
         assertEquals("initialize", initialize.getValue("method").jsonPrimitive.content)
@@ -181,7 +227,11 @@ class AppServerConnectionTest {
         assertEquals("initialized", runtime.sent.receive().jsonObject().getValue("method").jsonPrimitive.content)
     }
 
-    private fun connection(runtime: FakeRuntime, eventCapacity: Int = 16) = AppServerConnection(
+    private fun connection(
+        runtime: CodexRuntime,
+        eventCapacity: Int = 16,
+        commandCapacity: Int = 64,
+    ) = AppServerConnection(
         runtimeFactory = { runtime },
         initializeParams = InitializeParams(
             clientInfo = ClientInfo("codex_mobile", "test", "Codex Mobile"),
@@ -192,11 +242,18 @@ class AppServerConnectionTest {
         ),
         requestTimeoutMillis = 2_000,
         eventCapacity = eventCapacity,
+        commandCapacity = commandCapacity,
     )
 
-    private class FakeRuntime : CodexRuntime {
+    private interface TestRuntime : CodexRuntime {
+        val sent: Channel<CodexJsonLine>
+
+        suspend fun receive(line: String)
+    }
+
+    private class FakeRuntime : TestRuntime {
         private val incoming = Channel<CodexRuntimeEvent>(Channel.UNLIMITED)
-        val sent = Channel<CodexJsonLine>(Channel.UNLIMITED)
+        override val sent = Channel<CodexJsonLine>(Channel.UNLIMITED)
         var closeCount = 0
             private set
 
@@ -208,12 +265,66 @@ class AppServerConnectionTest {
             sent.send(line)
         }
 
-        suspend fun receive(line: String) {
+        override suspend fun receive(line: String) {
             incoming.send(CodexRuntimeEvent.Received(CodexJsonLine(line)))
         }
 
         override fun close() {
             closeCount++
+            incoming.close()
+        }
+    }
+
+    private class DelayedCloseRuntime : TestRuntime {
+        private val incoming = Channel<CodexRuntimeEvent>(Channel.UNLIMITED)
+        override val sent = Channel<CodexJsonLine>(Channel.UNLIMITED)
+        val closeRequested = CompletableDeferred<Unit>()
+
+        override val events: Flow<CodexRuntimeEvent> = incoming.receiveAsFlow()
+
+        override suspend fun start() = Unit
+
+        override suspend fun send(line: CodexJsonLine) {
+            sent.send(line)
+        }
+
+        override suspend fun receive(line: String) {
+            incoming.send(CodexRuntimeEvent.Received(CodexJsonLine(line)))
+        }
+
+        fun finishExit() {
+            incoming.close()
+        }
+
+        override fun close() {
+            closeRequested.complete(Unit)
+        }
+    }
+
+    private class BlockingSendRuntime : TestRuntime {
+        private val incoming = Channel<CodexRuntimeEvent>(Channel.UNLIMITED)
+        override val sent = Channel<CodexJsonLine>(Channel.UNLIMITED)
+        val sendBlocked = CompletableDeferred<Unit>()
+        val releaseSend = CompletableDeferred<Unit>()
+        var blockSends = false
+
+        override val events: Flow<CodexRuntimeEvent> = incoming.receiveAsFlow()
+
+        override suspend fun start() = Unit
+
+        override suspend fun send(line: CodexJsonLine) {
+            if (blockSends) {
+                sendBlocked.complete(Unit)
+                releaseSend.await()
+            }
+            sent.send(line)
+        }
+
+        override suspend fun receive(line: String) {
+            incoming.send(CodexRuntimeEvent.Received(CodexJsonLine(line)))
+        }
+
+        override fun close() {
             incoming.close()
         }
     }

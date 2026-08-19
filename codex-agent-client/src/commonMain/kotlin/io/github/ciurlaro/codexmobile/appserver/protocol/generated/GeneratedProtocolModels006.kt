@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ClientRequestAppInstalledRequest(
+internal data class ClientRequestAppInstalledRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -25,7 +25,7 @@ public data class ClientRequestAppInstalledRequest(
 }
 
 @Serializable
-public data class ClientRequestFsReadFileRequest(
+internal data class ClientRequestFsReadFileRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -37,7 +37,7 @@ public data class ClientRequestFsReadFileRequest(
 }
 
 @Serializable
-public data class ClientRequestFsWriteFileRequest(
+internal data class ClientRequestFsWriteFileRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -49,7 +49,7 @@ public data class ClientRequestFsWriteFileRequest(
 }
 
 @Serializable
-public data class ClientRequestFsCreateDirectoryRequest(
+internal data class ClientRequestFsCreateDirectoryRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -61,7 +61,7 @@ public data class ClientRequestFsCreateDirectoryRequest(
 }
 
 @Serializable
-public data class ClientRequestFsGetMetadataRequest(
+internal data class ClientRequestFsGetMetadataRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -73,7 +73,7 @@ public data class ClientRequestFsGetMetadataRequest(
 }
 
 @Serializable
-public data class ClientRequestFsReadDirectoryRequest(
+internal data class ClientRequestFsReadDirectoryRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -85,7 +85,7 @@ public data class ClientRequestFsReadDirectoryRequest(
 }
 
 @Serializable
-public data class ClientRequestFsRemoveRequest(
+internal data class ClientRequestFsRemoveRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -97,7 +97,7 @@ public data class ClientRequestFsRemoveRequest(
 }
 
 @Serializable
-public data class ClientRequestFsCopyRequest(
+internal data class ClientRequestFsCopyRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -109,7 +109,7 @@ public data class ClientRequestFsCopyRequest(
 }
 
 @Serializable
-public data class ClientRequestFsWatchRequest(
+internal data class ClientRequestFsWatchRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -121,7 +121,7 @@ public data class ClientRequestFsWatchRequest(
 }
 
 @Serializable
-public data class ClientRequestFsUnwatchRequest(
+internal data class ClientRequestFsUnwatchRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -133,7 +133,7 @@ public data class ClientRequestFsUnwatchRequest(
 }
 
 @Serializable
-public data class ClientRequestSkillsConfigWriteRequest(
+internal data class ClientRequestSkillsConfigWriteRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -145,7 +145,7 @@ public data class ClientRequestSkillsConfigWriteRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginInstallRequest(
+internal data class ClientRequestPluginInstallRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -157,7 +157,7 @@ public data class ClientRequestPluginInstallRequest(
 }
 
 @Serializable
-public data class ClientRequestPluginUninstallRequest(
+internal data class ClientRequestPluginUninstallRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -169,7 +169,7 @@ public data class ClientRequestPluginUninstallRequest(
 }
 
 @Serializable
-public data class ClientRequestTurnStartRequest(
+internal data class ClientRequestTurnStartRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -181,7 +181,7 @@ public data class ClientRequestTurnStartRequest(
 }
 
 @Serializable
-public data class ClientRequestTurnSteerRequest(
+internal data class ClientRequestTurnSteerRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -193,7 +193,7 @@ public data class ClientRequestTurnSteerRequest(
 }
 
 @Serializable
-public data class ClientRequestTurnInterruptRequest(
+internal data class ClientRequestTurnInterruptRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -205,7 +205,7 @@ public data class ClientRequestTurnInterruptRequest(
 }
 
 @Serializable
-public data class ClientRequestReviewStartRequest(
+internal data class ClientRequestReviewStartRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")
@@ -217,7 +217,7 @@ public data class ClientRequestReviewStartRequest(
 }
 
 @Serializable
-public data class ClientRequestModelListRequest(
+internal data class ClientRequestModelListRequest(
     @SerialName("id")
     public val id: RequestId,
     @SerialName("params")

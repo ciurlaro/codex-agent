@@ -13,7 +13,8 @@ import io.github.ciurlaro.codexmobile.agent.AgentMessageRole
 import io.github.ciurlaro.codexmobile.agent.AgentInvocation
 import io.github.ciurlaro.codexmobile.agent.AgentTurnRequest
 import io.github.ciurlaro.codexmobile.agent.PLAN_CLIENT_MESSAGE_PREFIX
-import io.github.ciurlaro.codexmobile.agent.SessionId
+import io.github.ciurlaro.codexmobile.agent.LEGACY_PLAN_CLIENT_MESSAGE_PREFIX
+import io.github.ciurlaro.codexmobile.agent.ConversationId
 import io.github.ciurlaro.codexmobile.agent.deriveConversationTitle
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -37,7 +38,7 @@ internal fun compactDescription(value: JsonElement): String = value.toString().l
 internal fun conversationSummary(thread: JsonObject): AgentConversationSummary {
     val preview = cleanTaggedPreview(thread.requiredText("preview"))
     return AgentConversationSummary(
-        sessionId = SessionId(thread.requiredString("id")),
+        conversationId = ConversationId(thread.requiredString("id")),
         title = deriveConversationTitle(thread.optionalString("name"), preview),
         updatedAtEpochSeconds = thread.requiredLong("updatedAt"),
     )
@@ -46,7 +47,7 @@ internal fun conversationSummary(thread: JsonObject): AgentConversationSummary {
 internal fun conversationSummary(thread: Thread, fallbackPreview: String? = null): AgentConversationSummary {
     val preview = cleanTaggedPreview(thread.preview).ifBlank { fallbackPreview.orEmpty() }
     return AgentConversationSummary(
-        sessionId = SessionId(thread.id),
+        conversationId = ConversationId(thread.id),
         title = deriveConversationTitle(thread.name, preview),
         updatedAtEpochSeconds = thread.updatedAt,
     )
@@ -81,7 +82,7 @@ internal fun conversationMessages(
             return@forEach
         }
         val message = conversationMessage(rawItem, recordedInvocations) ?: return@forEach
-        if (message.role == AgentMessageRole.CODEX && reasoning.isNotEmpty()) {
+        if (message.role == AgentMessageRole.ASSISTANT && reasoning.isNotEmpty()) {
             messages += message.copy(reasoning = reasoning.joinToString("\n\n"))
             reasoning.clear()
             reasoningId = null
@@ -92,8 +93,8 @@ internal fun conversationMessages(
     if (reasoning.isNotEmpty()) {
         messages += AgentMessage(
             id = reasoningId ?: "reasoning",
-            clientId = null,
-            role = AgentMessageRole.CODEX,
+            clientMessageId = null,
+            role = AgentMessageRole.ASSISTANT,
             text = "",
             reasoning = reasoning.joinToString("\n\n"),
         )
@@ -108,13 +109,13 @@ internal fun conversationMessage(
     val item = rawItem.jsonObject
     return when (item.requiredString("type")) {
         "userMessage" -> {
-            val clientId = item.optionalString("clientId")
-            if (clientId?.startsWith("codex-mobile:plugin-availability:") == true) {
+            val wireClientMessageId = item.optionalString("clientId")
+            if (wireClientMessageId?.startsWith("codex-mobile:plugin-availability:") == true) {
                 return null
             }
             val content = item.requiredArray("content").map(JsonElement::jsonObject)
             val persistedInvocations = content.mapNotNull(::parseInvocation).distinctBy(AgentInvocation::key)
-            val invocations = clientId?.let(recordedInvocations::get) ?: persistedInvocations
+            val invocations = wireClientMessageId?.let(recordedInvocations::get) ?: persistedInvocations
             val prompts = content.mapNotNull { input ->
                 input.takeIf { it.optionalString("type") == "text" }
                     ?.let { parsePrompt(it, invocations) }
@@ -122,10 +123,10 @@ internal fun conversationMessage(
             if (prompts.isEmpty() && invocations.isEmpty()) return null
             AgentMessage(
                 id = item.requiredString("id"),
-                clientId = clientId,
+                clientMessageId = wireClientMessageId?.logicalClientMessageId(),
                 role = AgentMessageRole.USER,
                 text = prompts.joinToString("\n", transform = ParsedPrompt::text),
-                collaborationMode = if (clientId?.startsWith(PLAN_CLIENT_MESSAGE_PREFIX) == true) {
+                collaborationMode = if (wireClientMessageId.isPlanClientMessageId()) {
                     AgentCollaborationMode.PLAN
                 } else {
                     AgentCollaborationMode.DEFAULT
@@ -137,21 +138,30 @@ internal fun conversationMessage(
 
         "agentMessage" -> AgentMessage(
             id = item.requiredString("id"),
-            clientId = null,
-            role = AgentMessageRole.CODEX,
+            clientMessageId = null,
+            role = AgentMessageRole.ASSISTANT,
             text = item.requiredText("text"),
         )
 
         "plan" -> AgentMessage(
             id = item.requiredString("id"),
-            clientId = null,
-            role = AgentMessageRole.CODEX,
+            clientMessageId = null,
+            role = AgentMessageRole.ASSISTANT,
             text = "",
             plan = item.requiredText("text"),
         )
 
         else -> null
     }
+}
+
+private fun String?.isPlanClientMessageId(): Boolean = this != null &&
+    (startsWith(PLAN_CLIENT_MESSAGE_PREFIX) || startsWith(LEGACY_PLAN_CLIENT_MESSAGE_PREFIX))
+
+private fun String.logicalClientMessageId(): String = when {
+    startsWith(PLAN_CLIENT_MESSAGE_PREFIX) -> removePrefix(PLAN_CLIENT_MESSAGE_PREFIX)
+    startsWith(LEGACY_PLAN_CLIENT_MESSAGE_PREFIX) -> removePrefix(LEGACY_PLAN_CLIENT_MESSAGE_PREFIX)
+    else -> this
 }
 
 internal fun turnInput(request: AgentTurnRequest): List<UserInput> {

@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
-public data class ThreadMetadataUpdateParams(
+internal data class ThreadMetadataUpdateParams(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("gitInfo")
@@ -21,13 +21,13 @@ public data class ThreadMetadataUpdateParams(
 )
 
 @Serializable
-public data class ThreadMetadataUpdateResponse(
+internal data class ThreadMetadataUpdateResponse(
     @SerialName("thread")
     public val thread: Thread,
 )
 
 @Serializable
-public data class ThreadNameUpdatedNotification(
+internal data class ThreadNameUpdatedNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("threadName")
@@ -35,7 +35,7 @@ public data class ThreadNameUpdatedNotification(
 )
 
 @Serializable
-public data class ThreadReadParams(
+internal data class ThreadReadParams(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("includeTurns")
@@ -43,13 +43,13 @@ public data class ThreadReadParams(
 )
 
 @Serializable
-public data class ThreadReadResponse(
+internal data class ThreadReadResponse(
     @SerialName("thread")
     public val thread: Thread,
 )
 
 @Serializable
-public data class ThreadRealtimeAudioChunk(
+internal data class ThreadRealtimeAudioChunk(
     @SerialName("data")
     public val data: String,
     @SerialName("numChannels")
@@ -63,7 +63,7 @@ public data class ThreadRealtimeAudioChunk(
 )
 
 @Serializable
-public data class ThreadRealtimeClosedNotification(
+internal data class ThreadRealtimeClosedNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("reason")
@@ -71,7 +71,7 @@ public data class ThreadRealtimeClosedNotification(
 )
 
 @Serializable
-public data class ThreadRealtimeErrorNotification(
+internal data class ThreadRealtimeErrorNotification(
     @SerialName("message")
     public val message: String,
     @SerialName("threadId")
@@ -79,7 +79,7 @@ public data class ThreadRealtimeErrorNotification(
 )
 
 @Serializable
-public data class ThreadRealtimeInitialItem(
+internal data class ThreadRealtimeInitialItem(
     @SerialName("role")
     public val role: ConversationTextRole,
     @SerialName("text")
@@ -87,7 +87,7 @@ public data class ThreadRealtimeInitialItem(
 )
 
 @Serializable
-public data class ThreadRealtimeItemAddedNotification(
+internal data class ThreadRealtimeItemAddedNotification(
     @SerialName("item")
     public val item: JsonElement,
     @SerialName("threadId")
@@ -95,7 +95,7 @@ public data class ThreadRealtimeItemAddedNotification(
 )
 
 @Serializable
-public data class ThreadRealtimeOutputAudioDeltaNotification(
+internal data class ThreadRealtimeOutputAudioDeltaNotification(
     @SerialName("audio")
     public val audio: ThreadRealtimeAudioChunk,
     @SerialName("threadId")
@@ -103,7 +103,7 @@ public data class ThreadRealtimeOutputAudioDeltaNotification(
 )
 
 @Serializable
-public data class ThreadRealtimeSdpNotification(
+internal data class ThreadRealtimeSdpNotification(
     @SerialName("sdp")
     public val sdp: String,
     @SerialName("threadId")
@@ -111,10 +111,10 @@ public data class ThreadRealtimeSdpNotification(
 )
 
 @Serializable(with = ThreadRealtimeStartTransportSerializer::class)
-public sealed interface ThreadRealtimeStartTransport
+internal sealed interface ThreadRealtimeStartTransport
 
 @Serializable
-public data class ThreadRealtimeStartTransportWebsocketThreadRealtimeStartTransport(
+internal data class ThreadRealtimeStartTransportWebsocketThreadRealtimeStartTransport(
     @SerialName("type")
     public val type: String = "websocket",
 ) : ThreadRealtimeStartTransport {
@@ -122,7 +122,7 @@ public data class ThreadRealtimeStartTransportWebsocketThreadRealtimeStartTransp
 }
 
 @Serializable
-public data class ThreadRealtimeStartTransportWebrtcThreadRealtimeStartTransport(
+internal data class ThreadRealtimeStartTransportWebrtcThreadRealtimeStartTransport(
     @SerialName("sdp")
     public val sdp: String,
     @SerialName("type")
@@ -131,7 +131,7 @@ public data class ThreadRealtimeStartTransportWebrtcThreadRealtimeStartTransport
     init { require(type == "webrtc") }
 }
 
-public object ThreadRealtimeStartTransportSerializer : JsonContentPolymorphicSerializer<ThreadRealtimeStartTransport>(ThreadRealtimeStartTransport::class) {
+internal object ThreadRealtimeStartTransportSerializer : JsonContentPolymorphicSerializer<ThreadRealtimeStartTransport>(ThreadRealtimeStartTransport::class) {
     override fun selectDeserializer(element: JsonElement): DeserializationStrategy<ThreadRealtimeStartTransport> =
         when (element.jsonObject["type"]?.jsonPrimitive?.content) {
             "websocket" -> ThreadRealtimeStartTransportWebsocketThreadRealtimeStartTransport.serializer()
@@ -141,7 +141,7 @@ public object ThreadRealtimeStartTransportSerializer : JsonContentPolymorphicSer
 }
 
 @Serializable
-public data class ThreadRealtimeStartedNotification(
+internal data class ThreadRealtimeStartedNotification(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("version")
@@ -151,7 +151,7 @@ public data class ThreadRealtimeStartedNotification(
 )
 
 @Serializable
-public data class ThreadRealtimeTranscriptDeltaNotification(
+internal data class ThreadRealtimeTranscriptDeltaNotification(
     @SerialName("delta")
     public val delta: String,
     @SerialName("role")
@@ -161,7 +161,7 @@ public data class ThreadRealtimeTranscriptDeltaNotification(
 )
 
 @Serializable
-public data class ThreadRealtimeTranscriptDoneNotification(
+internal data class ThreadRealtimeTranscriptDoneNotification(
     @SerialName("role")
     public val role: String,
     @SerialName("text")
@@ -171,7 +171,7 @@ public data class ThreadRealtimeTranscriptDoneNotification(
 )
 
 @Serializable
-public data class ThreadResumeInitialTurnsPageParams(
+internal data class ThreadResumeInitialTurnsPageParams(
     @SerialName("itemsView")
     public val itemsView: TurnItemsView? = null,
     @SerialName("limit")
@@ -181,7 +181,7 @@ public data class ThreadResumeInitialTurnsPageParams(
 )
 
 @Serializable
-public data class ThreadResumeParams(
+internal data class ThreadResumeParams(
     @SerialName("threadId")
     public val threadId: String,
     @SerialName("approvalPolicy")
@@ -209,7 +209,7 @@ public data class ThreadResumeParams(
 )
 
 @Serializable
-public data class ThreadResumeResponse(
+internal data class ThreadResumeResponse(
     @SerialName("approvalPolicy")
     public val approvalPolicy: AskForApproval,
     @SerialName("approvalsReviewer")

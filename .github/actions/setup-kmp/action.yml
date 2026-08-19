@@ -1,0 +1,53 @@
+name: Setup Kotlin build
+description: Install pinned build tools and restore read-only-safe Gradle and Konan caches.
+inputs:
+  cache-read-only:
+    description: Prevent this job from writing the shared Gradle cache.
+    default: "true"
+  cache-encryption-key:
+    description: Encryption key for Gradle configuration-cache entries.
+    default: ""
+  node-version:
+    description: Optional pinned Node version.
+    default: ""
+  xcode-fingerprint:
+    description: Use auto on Apple runners and none elsewhere.
+    default: none
+outputs:
+  konan-cache-hit:
+    value: ${{ steps.konan.outputs.cache-hit }}
+  konan-cache-primary-key:
+    value: ${{ steps.konan.outputs.cache-primary-key }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+      with:
+        distribution: temurin
+        java-version: "17"
+    - if: inputs.node-version != ''
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+    - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+      with:
+        cache-read-only: ${{ inputs.cache-read-only }}
+        cache-encryption-key: ${{ inputs.cache-encryption-key }}
+    - id: xcode
+      env:
+        REQUESTED_FINGERPRINT: ${{ inputs.xcode-fingerprint }}
+      shell: bash
+      run: |
+        fingerprint="$REQUESTED_FINGERPRINT"
+        if [ "$fingerprint" = auto ]; then
+          fingerprint=$(xcodebuild -version | openssl dgst -sha256 | awk '{print $NF}')
+        fi
+        printf 'value=%s\n' "$fingerprint" >> "$GITHUB_OUTPUT"
+    - id: konan
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ~/.konan
+        key: >-
+          konan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.value }}-${{
+          hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties',
+          'gradle.properties') }}

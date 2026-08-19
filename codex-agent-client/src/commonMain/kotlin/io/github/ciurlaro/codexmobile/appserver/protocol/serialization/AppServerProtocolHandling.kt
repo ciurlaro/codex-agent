@@ -9,6 +9,9 @@ import io.github.ciurlaro.codexmobile.appserver.protocol.generated.ServerRequest
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexJsonLine
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntime
 import io.github.ciurlaro.codexmobile.appserver.runtime.CodexRuntimeEvent
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonElement
@@ -119,12 +122,26 @@ internal suspend fun AppServerConnection.failRuntime(
     }
 }
 
-internal fun AppServerConnection.stopRuntime() {
-    runtimeEvents?.cancel()
+internal suspend fun AppServerConnection.stopRuntime() = withContext(NonCancellable) {
+    val events = runtimeEvents
     runtimeEvents = null
+    val stopRequested = runtimeStopRequested
+    runtimeStopRequested = null
     val stopped = runtime
     runtime = null
-    runCatching { stopped?.close() }
+    stopRequested?.complete(Unit)
+    var failure: Throwable? = null
+    try {
+        stopped?.close()
+    } catch (error: Throwable) {
+        failure = error
+    }
+    try {
+        if (failure == null) events?.join() else events?.cancelAndJoin()
+    } catch (error: Throwable) {
+        if (failure == null) failure = error
+    }
+    failure?.let { throw it }
 }
 
 internal suspend fun AppServerConnection.write(encoded: String) {
