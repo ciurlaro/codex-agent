@@ -52,11 +52,11 @@ abstract class ExportAppleVerifiedDistributionTask @Inject constructor(
         val (commit, tree) = verifyAppleEvidenceCheckout(exec, repository, candidateCommit.get())
         val output = outputDirectory.get().asFile
         deleteReleaseTree(output); output.mkdirs()
-        val artifacts = linkedMapOf(
-            applePackageArchive.get().asFile.name to copyVerified(applePackageArchive.get().asFile, output),
-            swiftPackageArchive.get().asFile.name to copyVerified(swiftPackageArchive.get().asFile, output),
-            swiftPackageChecksum.get().asFile.name to copyVerified(swiftPackageChecksum.get().asFile, output),
-        )
+        val artifacts = listOf(
+            applePackageArchive.get().asFile,
+            swiftPackageArchive.get().asFile,
+            swiftPackageChecksum.get().asFile,
+        ).associate { input -> input.name to copyVerified(input, output.resolve(input.name)) }
         val build = canonicalBuildDirectory.get().asFile.canonicalFile
         val reports = appleVerifiedReportLayout.mapValues { (destination, source) ->
             val input = if (destination.endsWith("privacy-required-reason-review.json"))
