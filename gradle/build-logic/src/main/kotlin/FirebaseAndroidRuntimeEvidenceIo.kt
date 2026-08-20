@@ -19,7 +19,7 @@ internal fun parseFirebaseTestMatrix(file: File): FirebaseTestMatrix {
     check(executions.size == 1) { "Firebase evidence requires exactly one test execution" }
     val execution = executions.single().objectValue("test execution")
     check(execution.releaseString("state") == "FINISHED") { "Firebase test execution did not finish" }
-    val outcome = execution.objectValue("toolExecution").objectValue("outcome").releaseString("summary")
+    val outcome = matrix.releaseString("outcomeSummary")
     check(outcome == "SUCCESS") { "Firebase test execution did not pass: $outcome" }
     val device = execution.objectValue("environment").objectValue("androidDevice")
     val parsed = FirebaseTestMatrix(
