@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import unittest
 import urllib.error
+import urllib.request
 import zipfile
 from argparse import Namespace
 from pathlib import Path
@@ -29,7 +30,12 @@ from receipt import (  # noqa: E402
     safe_extract,
     validate_receipt,
 )
-from reuse import candidate_artifacts, promoted_artifacts, restore  # noqa: E402
+from reuse import (  # noqa: E402
+    OriginBoundRedirectHandler,
+    candidate_artifacts,
+    promoted_artifacts,
+    restore,
+)
 from stage import archive_tree, restore_production_files, safe_extract_tar  # noqa: E402
 from validation_reuse import (  # noqa: E402
     discover as discover_validation,
@@ -1134,6 +1140,27 @@ class ReceiptTest(GitFixture):
 
 
 class DiscoveryPaginationTest(unittest.TestCase):
+    def test_artifact_redirect_auth_is_bound_to_the_request_origin(self) -> None:
+        handler = OriginBoundRedirectHandler()
+        request = urllib.request.Request(
+            "https://api.github.com/repos/example/actions/artifacts/1/zip",
+            headers={"Accept": "application/zip", "Authorization": "Bearer token"},
+        )
+        same_origin = handler.redirect_request(
+            request, None, 302, "Found", {}, "https://api.github.com:443/download",
+        )
+        self.assertEqual("Bearer token", same_origin.get_header("Authorization"))
+
+        for url in (
+            "http://api.github.com/download",
+            "https://productionresults.blob.core.windows.net/download",
+            "https://api.github.com:444/download",
+        ):
+            with self.subTest(url=url):
+                redirected = handler.redirect_request(request, None, 302, "Found", {}, url)
+                self.assertIsNone(redirected.get_header("Authorization"))
+                self.assertEqual("application/zip", redirected.get_header("Accept"))
+
     def test_lane_discovery_finds_same_pr_beyond_first_page(self) -> None:
         calls: list[str] = []
         artifact = {

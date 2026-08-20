@@ -17,6 +17,22 @@ from pathlib import Path
 from receipt import INPUT_NAMES, parse_mapping, read_json, safe_extract, validate_receipt
 
 
+def _origin(url: str) -> tuple[str, str | None, int | None]:
+    parsed = urllib.parse.urlsplit(url)
+    port = parsed.port
+    if port is None:
+        port = {"http": 80, "https": 443}.get(parsed.scheme.lower())
+    return parsed.scheme.lower(), parsed.hostname, port
+
+
+class OriginBoundRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, new_url):
+        redirected = super().redirect_request(request, fp, code, message, headers, new_url)
+        if redirected is not None and _origin(request.full_url) != _origin(new_url):
+            redirected.remove_header("Authorization")
+        return redirected
+
+
 def api_request(url: str, token: str) -> bytes:
     request = urllib.request.Request(
         url,
@@ -26,7 +42,8 @@ def api_request(url: str, token: str) -> bytes:
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
+    opener = urllib.request.build_opener(OriginBoundRedirectHandler())
+    with opener.open(request, timeout=60) as response:
         return response.read()
 
 
