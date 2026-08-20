@@ -50,14 +50,24 @@ class GitFixture(unittest.TestCase):
             self.write(f"configured/{lane}.txt", "configured\n")
             self.write(f"ci/lanes/{lane}.production.pathspec", f"configured/{lane}.txt\n")
         inventories = {
+            "shared.production": "common/**\n",
             "android.production": "android/**\nconfigured/android.txt\n",
             "android.test": "android-tests/**\n",
             "android.metadata": "android-metadata/**\n",
             "node-js.production": "js/**\nconfigured/node-js.txt\n",
             "node-wasm.production": "wasm/**\nconfigured/node-wasm.txt\n",
-            "portable.production": "desktop-runtime/**\njs/**\nwasm/**\nconfigured/portable.txt\n",
-            "contracts.production": "common/**\nconfigured/contracts.txt\n",
+            "portable.production": (
+                "desktop-runtime/**\njs/**\nwasm/**\n"
+                "codex-agent-client/src/jvmMain/**\nconfigured/portable.txt\n"
+            ),
+            "contracts.production": "configured/contracts.txt\n",
             "contracts.metadata": "Package.swift\n",
+            "consumer-common.production": (
+                "codex-agent-client/src/jvmMain/**\nconfigured/consumer-common.txt\n"
+            ),
+            "consumer-desktop.production": (
+                "codex-agent-client/src/jvmMain/**\nconfigured/consumer-desktop.txt\n"
+            ),
             "ios-package.metadata": "Package.swift\n",
             "ios-privacy-metrics.metadata": "privacy-policy/**\n",
             "ios-kotlin-tests.test": "ios-sim-tests/**\n",
@@ -280,9 +290,28 @@ class ImpactPlanTest(GitFixture):
         self.assertTrue(matrix)
         self.assertTrue(all(item["runner"] == "ubuntu-24.04" for item in matrix))
 
-    def test_common_contract_change_propagates_to_every_lane(self) -> None:
+    def test_shared_production_change_selects_every_lane(self) -> None:
         result, _, _ = self.make_plan("common/Api.kt")
         self.assertTrue(all(state["build"] for state in result["lanes"].values()))
+
+    def test_contract_only_change_does_not_propagate(self) -> None:
+        result, _, _ = self.make_plan("configured/contracts.txt")
+        self.assertTrue(result["lanes"]["contracts"]["build"])
+        self.assertFalse(any(
+            state[action]
+            for lane, state in result["lanes"].items()
+            if lane != "contracts"
+            for action in ("build", "test", "metadata")
+        ))
+
+    def test_jvm_only_change_selects_only_common_and_desktop_consumers(self) -> None:
+        result, _, _ = self.make_plan("codex-agent-client/src/jvmMain/kotlin/JvmOnly.kt")
+        selected_consumers = {
+            lane
+            for lane, state in result["lanes"].items()
+            if lane.startswith("consumer-") and state["build"]
+        }
+        self.assertEqual({"consumer-common", "consumer-desktop"}, selected_consumers)
 
     def test_unlabeled_pr_spends_no_product_ci(self) -> None:
         result, _, _ = self.make_plan("android/Main.kt", merge_ready=False)
@@ -292,6 +321,229 @@ class ImpactPlanTest(GitFixture):
             for action in ("build", "test", "metadata")
         ))
         self.assertTrue(all(state["reasons"] == ["merge-ready-required"] for state in result["lanes"].values()))
+
+
+class RealImpactPlanTest(unittest.TestCase):
+    def test_build_logic_sources_have_explicit_narrow_owners(self) -> None:
+        root = CI_ROOT.parent
+
+        def matching_lanes(category: str, path: str) -> set[str]:
+            return {
+                lane
+                for lane in LANES
+                if any(
+                    fnmatch.fnmatchcase(path, spec)
+                    for spec in effective_pathspecs(root, lane, category)
+                )
+            }
+
+        release_only_sources = (
+            "CandidateCiProvenance.kt",
+            "CandidateManifestValidation.kt",
+            "CandidateModel.kt",
+            "CandidatePayloadTasks.kt",
+            "CandidateRuntimeEvidence.kt",
+            "CentralPortalTask.kt",
+            "PromotedCandidateTasks.kt",
+            "ReleaseToolingCli.kt",
+        )
+        prefix = "gradle/build-logic/src/main/kotlin/"
+        for filename in release_only_sources:
+            with self.subTest(filename=filename):
+                self.assertEqual({"contracts"}, matching_lanes("production", prefix + filename))
+
+        self.assertEqual(
+            {
+                "contracts", "ios-rust-device", "ios-rust-simulator",
+                "ios-framework-device", "ios-framework-simulator",
+                "ios-kotlin-tests", "ios-swift-build", "ios-swift-tests",
+                "ios-package", "ios-privacy-metrics",
+                "consumer-ios-device", "consumer-ios-simulator",
+            },
+            matching_lanes("production", prefix + "AppleReleaseCheckTasks.kt"),
+        )
+        self.assertEqual(
+            {"contracts", "consumer-common"},
+            matching_lanes("production", prefix + "MavenRepositoryTasks.kt"),
+        )
+        self.assertEqual(
+            set(LANES),
+            matching_lanes("production", "gradle/libs.versions.toml"),
+        )
+        self.assertEqual(
+            {"portable", "consumer-common", "consumer-desktop"},
+            matching_lanes(
+                "production",
+                "codex-agent-client/src/jvmMain/kotlin/io/github/codex_agent_labs/ClientJvm.kt",
+            ),
+        )
+
+        imported = prefix + "ImportedAppleFrameworkTasks.kt"
+        self.assertEqual(
+            {"ios-swift-build", "ios-swift-tests", "ios-package", "ios-privacy-metrics"},
+            matching_lanes("production", imported),
+        )
+        self.assertEqual({"contracts"}, matching_lanes("test", imported))
+
+        gradle_tasks = prefix + "ReleaseToolingGradleTasks.kt"
+        self.assertEqual(
+            {
+                "ios-rust-device", "ios-rust-simulator",
+                "ios-framework-device", "ios-framework-simulator",
+                "ios-kotlin-tests", "ios-swift-build", "ios-swift-tests",
+                "ios-package", "ios-privacy-metrics",
+                "consumer-common", "consumer-android", "consumer-desktop",
+                "consumer-ios-device", "consumer-ios-simulator",
+                "consumer-node-js", "consumer-node-wasm",
+            },
+            matching_lanes("production", gradle_tasks),
+        )
+        self.assertEqual(
+            {
+                "contracts", "desktop-macos-arm64", "desktop-macos-x64",
+                "desktop-linux-x64", "desktop-windows-x64",
+            },
+            matching_lanes("test", gradle_tasks),
+        )
+
+        registration = prefix + "ProtectedRuntimeCandidateRegistration.kt"
+        self.assertEqual(set(), matching_lanes("production", registration))
+        self.assertEqual({"contracts"}, matching_lanes("test", registration))
+
+        future_source = prefix + "FutureProductionTask.kt"
+        for category in ("production", "test", "metadata"):
+            self.assertEqual(set(), matching_lanes(category, future_source))
+
+    def test_real_base_to_fixed_head_allows_same_pr_repair_reuse(self) -> None:
+        repository = CI_ROOT.parent
+
+        def git(root: Path, *arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=root,
+                check=check,
+                capture_output=True,
+                text=True,
+            )
+
+        base_result = git(repository, "merge-base", "HEAD", "origin/main", check=False)
+        if base_result.returncode:
+            self.skipTest("origin/main history is unavailable in this checkout")
+        base = base_result.stdout.strip()
+        target = git(repository, "rev-parse", "HEAD").stdout.strip()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            clone = temporary_root / "repository"
+            subprocess.run(
+                ["git", "clone", "--shared", "--quiet", str(repository), str(clone)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            git(clone, "checkout", "--quiet", "--detach", target)
+            git(clone, "config", "user.email", "ci@example.invalid")
+            git(clone, "config", "user.name", "CI Fixture")
+
+            for source in (CI_ROOT / "lanes").glob("*.pathspec"):
+                shutil.copy2(source, clone / "ci/lanes" / source.name)
+            shutil.copy2(CI_ROOT / "impact.py", clone / "ci/impact.py")
+            shutil.copy2(CI_ROOT / "tests/test_ci.py", clone / "ci/tests/test_ci.py")
+            if git(clone, "status", "--porcelain", "--", "ci/impact.py", "ci/lanes", "ci/tests/test_ci.py").stdout:
+                git(clone, "add", "--", "ci/impact.py", "ci/lanes", "ci/tests/test_ci.py")
+                git(clone, "commit", "--quiet", "-m", "Classify build logic inputs")
+            fixed_target = git(clone, "rev-parse", "HEAD").stdout.strip()
+
+            prior_path = clone / "build/test-plans/prior/impact-plan.json"
+            prior = plan(
+                root=clone,
+                base=base,
+                target=fixed_target,
+                head=fixed_target,
+                event="pull_request",
+                pull_request=13,
+                merge_ready=True,
+                force_full=True,
+                require_android_evidence=True,
+                repository="codex-agent-labs/codex-agent",
+                output=prior_path,
+            )
+            self.assertEqual([], prior["unknownPaths"])
+            self.assertTrue(all(state["reuseAllowed"] for state in prior["lanes"].values()))
+
+            package_swift = clone / "Package.swift"
+            package_swift.write_text(
+                package_swift.read_text(encoding="utf-8") + "\n// same-PR checksum repair\n",
+                encoding="utf-8",
+            )
+            git(clone, "add", "--", "Package.swift")
+            git(clone, "commit", "--quiet", "-m", "Repair Swift checksum metadata")
+            repair_target = git(clone, "rev-parse", "HEAD").stdout.strip()
+            repair_path = clone / "build/test-plans/repair/impact-plan.json"
+            repair = plan(
+                root=clone,
+                base=base,
+                target=repair_target,
+                head=repair_target,
+                event="pull_request",
+                pull_request=13,
+                merge_ready=True,
+                force_full=True,
+                require_android_evidence=True,
+                repository="codex-agent-labs/codex-agent",
+                output=repair_path,
+            )
+            self.assertEqual([], repair["unknownPaths"])
+            self.assertTrue(all(state["reuseAllowed"] for state in repair["lanes"].values()))
+
+            receipt_root = temporary_root / "successful-android"
+            receipt_root.mkdir()
+            (receipt_root / "product.bin").write_text("product\n", encoding="utf-8")
+            create_receipt(Namespace(
+                plan=prior_path,
+                lane="android",
+                output=receipt_root,
+                workflow_path=".github/workflows/ci.yml",
+                artifact_name=f"codex-agent-ci-android-{prior['validationTree']}",
+                run_id=101,
+                run_attempt=1,
+                runner=["os=Linux", "arch=X64"],
+                toolchain=["java=25", "gradle=9.4.1", "validationActions=build,metadata,test"],
+                artifact=["product.bin=binary"],
+                evidence=[],
+            ))
+            validate_receipt(
+                receipt_root / "lane-receipt.json",
+                repair_path,
+                receipt_root,
+                "android",
+                allow_compatible=True,
+                runner={"os": "Linux", "arch": "X64"},
+                toolchain={"java": "25", "gradle": "9.4.1"},
+            )
+
+            future_relative = "gradle/build-logic/src/main/kotlin/FutureProductionTask.kt"
+            future = clone / future_relative
+            future.write_text("class FutureProductionTask\n", encoding="utf-8")
+            git(clone, "add", "--", future_relative)
+            git(clone, "commit", "--quiet", "-m", "Add unmapped production build logic")
+            unknown_target = git(clone, "rev-parse", "HEAD").stdout.strip()
+            unknown = plan(
+                root=clone,
+                base=base,
+                target=unknown_target,
+                head=unknown_target,
+                event="pull_request",
+                pull_request=13,
+                merge_ready=True,
+                force_full=False,
+                require_android_evidence=True,
+                repository="codex-agent-labs/codex-agent",
+                output=clone / "build/test-plans/unknown/impact-plan.json",
+            )
+            self.assertEqual([future_relative], unknown["unknownPaths"])
+            self.assertTrue(unknown["full"])
+            self.assertTrue(all(not state["reuseAllowed"] for state in unknown["lanes"].values()))
 
 
 class StageArchiveTest(unittest.TestCase):

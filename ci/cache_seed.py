@@ -186,33 +186,63 @@ def policy(arguments: argparse.Namespace) -> dict[str, object]:
 
 
 def copy_regular_tree(source: Path, destination: Path) -> bool:
+    if source.is_symlink():
+        raise ValueError(f"Cache source is not a regular directory: {source}")
     if not source.exists():
         return False
-    if source.is_symlink() or not source.is_dir():
+    if not source.is_dir():
         raise ValueError(f"Cache source is not a regular directory: {source}")
-    copied = False
-    for path in sorted(source.rglob("*")):
-        relative = path.relative_to(source)
-        target = destination / relative
-        if path.is_symlink():
-            raise ValueError(f"Cache source contains a symlink: {path}")
-        if path.is_dir():
+    root = source.resolve(strict=True)
+    for directory, directories, files in os.walk(root, followlinks=False):
+        for name in sorted(directories + files):
+            path = Path(directory, name)
+            if not path.is_symlink():
+                continue
+            link = os.readlink(path)
+            if os.path.isabs(link):
+                raise ValueError(f"Cache source contains an absolute symlink: {path}")
+            lexical_target = Path(os.path.abspath(path.parent / link))
+            if not lexical_target.is_relative_to(root):
+                raise ValueError(f"Cache source symlink escapes its root: {path}")
+            try:
+                resolved = path.resolve(strict=True)
+            except (OSError, RuntimeError) as error:
+                raise ValueError(f"Cache source contains a dangling or cyclic symlink: {path}") from error
+            if not resolved.is_relative_to(root):
+                raise ValueError(f"Cache source symlink escapes its root: {path}")
+            if not resolved.is_file() and not resolved.is_dir():
+                raise ValueError(f"Cache source symlink targets a special file: {path}")
+
+    def copy(path: Path, target: Path, ancestors: frozenset[Path]) -> bool:
+        resolved = path.resolve(strict=True) if path.is_symlink() else path
+        if resolved.is_dir():
+            if resolved in ancestors:
+                raise ValueError(f"Cache source contains a cyclic symlink: {path}")
             target.mkdir(parents=True, exist_ok=True)
-        elif path.is_file():
+            copied = False
+            for child in sorted(resolved.iterdir()):
+                copied = copy(child, target / child.name, ancestors | {resolved}) or copied
+            return copied
+        if resolved.is_file():
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, target)
-            copied = True
-        else:
-            raise ValueError(f"Cache source contains a special file: {path}")
-    return copied
+            shutil.copy2(resolved, target)
+            return True
+        raise ValueError(f"Cache source contains a special file: {path}")
+
+    return copy(root, destination, frozenset())
 
 
 def tree_digest(root: Path) -> str:
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError(f"Cache payload root is not a regular directory: {root}")
     digest = hashlib.sha256()
-    files = [path for path in root.rglob("*") if path.is_file()]
-    for path in sorted(files):
+    for path in sorted(root.rglob("*")):
         if path.is_symlink():
             raise ValueError(f"Cache payload contains a symlink: {path}")
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise ValueError(f"Cache payload contains a special file: {path}")
         relative = path.relative_to(root).as_posix().encode("utf-8")
         digest.update(len(relative).to_bytes(8, "big"))
         digest.update(relative)
@@ -421,6 +451,7 @@ def install(arguments: argparse.Namespace) -> dict[str, object]:
 
     output_names = {"gradle": "gradle", "konan": "konan", "cargo": "rust-dependencies"}
     outputs: dict[str, object] = {name: False for name in output_names.values()}
+    validated: list[tuple[str, dict[str, object], Path]] = []
     for name, value in caches.items():
         allowed_paths = CACHE_PATHS[str(kind)][name]
         if (
@@ -444,6 +475,11 @@ def install(arguments: argparse.Namespace) -> dict[str, object]:
             source = source_root / relative
             if not source.is_dir() or source.is_symlink():
                 raise ValueError(f"Missing {name} cache seed path: {relative}")
+        validated.append((name, value, source_root))
+
+    for name, value, source_root in validated:
+        for relative in value["paths"]:
+            source = source_root / relative
             destination = arguments.home / relative
             if destination.exists():
                 shutil.rmtree(destination)

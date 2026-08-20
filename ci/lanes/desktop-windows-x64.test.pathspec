@@ -12,6 +12,7 @@ codex-agent-client/src/wasmJsMain/**
 gradle/build-logic/src/main/kotlin/GenerateNodeDistributionSourceTask.kt
 gradle/build-logic/src/main/kotlin/JvmRuntimeEvidence*.kt
 gradle/build-logic/src/main/kotlin/NodeRuntimeEvidence*.kt
+gradle/build-logic/src/main/kotlin/ReleaseToolingGradleTasks.kt
 gradle/build-logic/src/main/kotlin/codexagent.node-runtime.gradle.kts
 gradle/build-logic/src/test/**/*Desktop*
 .github/workflows/desktop-runtime-evidence.yml

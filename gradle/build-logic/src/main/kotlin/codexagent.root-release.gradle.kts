@@ -232,6 +232,8 @@ val stagedConsumerPublicationTasks = mapOf(
         publicationTask("codex-agent-runtime-node", "WasmJs", "node-wasm"),
     ),
 )
+val stagedConsumerGroupId = project.group.toString()
+val stagedConsumerVersion = project.version.toString()
 val stagedConsumerTasks = linkedMapOf(
     "common" to "verifyStagedKmpConsumerCommon",
     "android" to "verifyStagedKmpConsumerAndroid",
@@ -251,19 +253,24 @@ val stagedConsumerTasks = linkedMapOf(
             if (target == "common") dependsOn(generateConsumerCommonRelocationPoms)
         }
         inputs.dir(repository)
+        inputs.property("repositoryPath", repository.map { it.asFile.absolutePath })
+        inputs.property("groupId", stagedConsumerGroupId)
+        inputs.property("version", stagedConsumerVersion)
+        inputs.property("target", target)
         outputs.file(targetInventory)
         doLast {
-            val root = repository.get().asFile
-            check(root.isDirectory) { "Staged $target Maven repository is missing" }
+            val root = File(inputs.properties.getValue("repositoryPath").toString())
+            val inventoryTarget = inputs.properties.getValue("target").toString()
+            check(root.isDirectory) { "Staged $inventoryTarget Maven repository is missing" }
             val files = root.walkTopDown().filter(File::isFile).sortedBy {
                 it.relativeTo(root).invariantSeparatorsPath
             }.toList()
-            check(files.isNotEmpty()) { "Staged $target Maven repository is empty" }
-            targetInventory.get().asFile.atomicWriteJson(buildJsonObject {
+            check(files.isNotEmpty()) { "Staged $inventoryTarget Maven repository is empty" }
+            outputs.files.singleFile.atomicWriteJson(buildJsonObject {
                 put("schemaVersion", JsonPrimitive(1))
-                put("groupId", JsonPrimitive(project.group.toString()))
-                put("version", JsonPrimitive(project.version.toString()))
-                put("target", JsonPrimitive(target))
+                put("groupId", JsonPrimitive(inputs.properties.getValue("groupId").toString()))
+                put("version", JsonPrimitive(inputs.properties.getValue("version").toString()))
+                put("target", JsonPrimitive(inventoryTarget))
                 put("files", buildJsonArray {
                     files.forEach { file -> add(file.releaseRecord(file.relativeTo(root).invariantSeparatorsPath)) }
                 })

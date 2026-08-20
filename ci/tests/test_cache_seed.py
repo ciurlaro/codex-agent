@@ -14,7 +14,7 @@ CI_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = CI_ROOT.parent
 sys.path.insert(0, str(CI_ROOT))
 
-from cache_seed import artifact_name, create, install, policy, source  # noqa: E402
+from cache_seed import artifact_name, copy_regular_tree, create, install, policy, source, tree_digest  # noqa: E402
 
 
 REPO = "codex-agent-labs/codex-agent"
@@ -158,6 +158,44 @@ class CacheSeedTest(unittest.TestCase):
             (destination / ".konan/dependencies/downloaded/archive.tar.gz").read_bytes(),
         )
 
+    def test_cache_tree_dereferences_safe_konan_symlinks_and_rejects_unsafe_links(self) -> None:
+        source = self.root / "konan"
+        clang = source / "llvm-19-aarch64-macos-essentials-79/bin"
+        clang.mkdir(parents=True)
+        (clang / "clang-19").write_bytes(b"clang")
+        (clang / "clang").symlink_to("clang-19")
+        destination = self.root / "payload"
+        self.assertTrue(copy_regular_tree(source, destination))
+        copied = destination / "llvm-19-aarch64-macos-essentials-79/bin/clang"
+        self.assertFalse(copied.is_symlink())
+        self.assertEqual(b"clang", copied.read_bytes())
+        self.assertEqual(
+            b"clang",
+            (destination / "llvm-19-aarch64-macos-essentials-79/bin/clang-19").read_bytes(),
+        )
+
+        outside = self.root / "outside"
+        outside.write_bytes(b"outside")
+        for name, target, message in (
+            ("absolute", outside, "absolute symlink"),
+            ("escape", Path("../outside"), "escapes its root"),
+            ("dangling", Path("missing"), "dangling or cyclic symlink"),
+        ):
+            with self.subTest(name=name):
+                unsafe = self.root / f"unsafe-{name}"
+                unsafe.mkdir()
+                (unsafe / "clang").symlink_to(target)
+                with self.assertRaisesRegex(ValueError, message):
+                    copy_regular_tree(unsafe, self.root / f"rejected-{name}")
+
+        if hasattr(os, "mkfifo"):
+            special = self.root / "unsafe-special"
+            special.mkdir()
+            os.mkfifo(special / "pipe")
+            (special / "clang").symlink_to("pipe")
+            with self.assertRaisesRegex(ValueError, "special file"):
+                copy_regular_tree(special, self.root / "rejected-special")
+
     def test_corrupt_or_wrong_tree_seed_is_rejected_without_touching_home(self) -> None:
         seed = self.root / "seed"
         self.create_kmp(seed)
@@ -193,6 +231,43 @@ class CacheSeedTest(unittest.TestCase):
                 runner_arch="X64",
                 github_output=None,
             ))
+
+    def test_install_validates_every_payload_before_touching_existing_caches(self) -> None:
+        seed = self.root / "seed"
+        self.create_kmp(seed)
+        konan_payload = seed / "payload/konan"
+        llvm = konan_payload / ".konan/dependencies/llvm/lib"
+        llvm.mkdir(parents=True)
+        (llvm.parent / "lib64").symlink_to("lib", target_is_directory=True)
+
+        destination = self.root / "consumer-home"
+        gradle = destination / ".gradle/caches/modules-2/files-2.1/group/module/artifact.jar"
+        konan = destination / ".konan/dependencies/downloaded/archive.tar.gz"
+        for path, contents in ((gradle, b"existing-gradle"), (konan, b"existing-konan")):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
+
+        arguments = Namespace(
+            plan=self.plan_path,
+            promotion_plan=self.promotion_path,
+            aggregate=self.aggregate_path,
+            root=seed,
+            home=destination,
+            kind="kmp",
+            runner_os="Linux",
+            runner_arch="X64",
+            github_output=None,
+        )
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            install(arguments)
+        self.assertEqual(b"existing-gradle", gradle.read_bytes())
+        self.assertEqual(b"existing-konan", konan.read_bytes())
+
+        (llvm.parent / "lib64").unlink()
+        if hasattr(os, "mkfifo"):
+            os.mkfifo(llvm / "pipe")
+            with self.assertRaisesRegex(ValueError, "special file"):
+                tree_digest(konan_payload)
 
     def test_policy_elects_one_merge_group_seed_and_one_pr_writer(self) -> None:
         arguments = Namespace(

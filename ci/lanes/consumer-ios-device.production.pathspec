@@ -3,4 +3,5 @@ gradle/release/kmp-consumer-template/settings.gradle.kts
 gradle/release/kmp-consumer-template/src/commonMain/**
 gradle/release/kmp-consumer-template/src/iosMain/**
 gradle/build-logic/src/main/kotlin/KmpConsumerVerificationTask.kt
+gradle/build-logic/src/main/kotlin/ReleaseToolingGradleTasks.kt
 gradle/build-logic/src/main/kotlin/codexagent.root-release.gradle.kts

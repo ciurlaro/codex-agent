@@ -45,7 +45,6 @@ LANES = (
 CATEGORIES = ("production", "test", "metadata")
 
 DEPENDENCIES = {
-    "contracts": tuple(lane for lane in LANES if lane != "contracts"),
     "android": ("consumer-android",),
     "node-js": ("consumer-node-js",),
     "node-wasm": ("consumer-node-wasm",),
@@ -66,7 +65,6 @@ DEPENDENCIES = {
     "ios-swift-build": ("ios-swift-tests",),
     "ios-swift-tests": ("ios-privacy-metrics",),
     "ios-package": ("ios-privacy-metrics",),
-    "consumer-common": tuple(lane for lane in LANES if lane.startswith("consumer-") and lane != "consumer-common"),
 }
 
 SUPPORT_DEPENDENCIES = {
@@ -169,6 +167,7 @@ def read_pathspecs(root: Path, lane: str, category: str) -> tuple[str, ...]:
 def effective_pathspecs(root: Path, lane: str, category: str) -> tuple[str, ...]:
     specs = set(read_pathspecs(root, lane, category))
     if category == "production":
+        specs.update(read_pathspecs(root, "shared", category))
         specs.update(FULL_VALIDATION_PATHS)
         specs.update(f"{prefix}**" for prefix in FULL_VALIDATION_PREFIXES)
         pending = [upstream for upstream, downstreams in DEPENDENCIES.items() if lane in downstreams]

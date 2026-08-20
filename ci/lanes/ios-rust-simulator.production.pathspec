@@ -1,7 +1,9 @@
 codex-agent-runtime-ios/native/**
 codex-agent-runtime-ios/build.gradle.kts
+gradle/build-logic/src/main/kotlin/AppleReleaseCheckTasks.kt
 gradle/build-logic/src/main/kotlin/AppleRustSlice*.kt
 gradle/build-logic/src/main/kotlin/IosNativeTask*.kt
 gradle/build-logic/src/main/kotlin/IosRustToolchain.kt
 gradle/build-logic/src/main/kotlin/PinnedCargoTask.kt
 gradle/build-logic/src/main/kotlin/PrepareCodexIosSourceTask.kt
+gradle/build-logic/src/main/kotlin/ReleaseToolingGradleTasks.kt

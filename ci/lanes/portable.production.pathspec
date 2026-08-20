@@ -1,4 +1,5 @@
 codex-agent-client/src/commonMain/**
+codex-agent-client/build.gradle.kts
 codex-agent-client/src/jvmMain/**
 codex-agent-client/src/jsMain/**
 codex-agent-client/src/wasmJsMain/**
@@ -16,3 +17,4 @@ gradle/build-logic/src/main/kotlin/GenerateNodeDistributionSourceTask.kt
 gradle/build-logic/src/main/kotlin/JvmRuntimeEvidence*.kt
 gradle/build-logic/src/main/kotlin/NodeRuntimeEvidence*.kt
 gradle/build-logic/src/main/kotlin/RuntimeBundleEvidence.kt
+runtime-host-shared/src/commonMain/**

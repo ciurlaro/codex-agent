@@ -4,7 +4,10 @@ codex-agent-runtime-desktop/native/**
 codex-agent-runtime-desktop/src/commonMain/**
 codex-agent-runtime-desktop/src/nativeMain/**
 codex-agent-runtime-desktop/src/mingwMain/**
+codex-agent-client/build.gradle.kts
+codex-agent-client/src/commonMain/**
 codex-agent-client/src/nativeMain/**
+runtime-host-shared/src/commonMain/**
 codex-agent-runtime-android/src/main/assets/openai-codex-LICENSE.txt
 codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt
 gradle/build-logic/src/main/kotlin/*Desktop*.kt

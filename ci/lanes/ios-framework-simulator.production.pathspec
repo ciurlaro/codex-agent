@@ -1,6 +1,7 @@
 codex-agent-runtime-ios/build.gradle.kts
 codex-agent-runtime-ios/src/iosMain/**
 codex-agent-runtime-ios/src/nativeInterop/**
+codex-agent-client/build.gradle.kts
 codex-agent-client/src/commonMain/**
 codex-agent-client/src/nativeMain/**
 gradle/build-logic/src/main/kotlin/codexagent.ios-runtime.gradle.kts

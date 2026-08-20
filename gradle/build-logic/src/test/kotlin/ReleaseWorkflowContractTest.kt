@@ -281,6 +281,24 @@ class ReleaseWorkflowContractTest {
     }
 
     @Test
+    fun `consumer repository inventories are configuration cache safe`() {
+        val plugin = repository.resolve(
+            "gradle/build-logic/src/main/kotlin/codexagent.root-release.gradle.kts",
+        ).readText()
+        val registration = plugin.substringAfter("val stagedConsumerGroupId =")
+            .substringBefore("tasks.register<VerifyStagedKmpConsumerTask>")
+        val action = registration.substringAfter("doLast {")
+        assertTrue("inputs.property(\"repositoryPath\", repository.map" in registration)
+        assertTrue("inputs.property(\"groupId\", stagedConsumerGroupId)" in registration)
+        assertTrue("inputs.property(\"version\", stagedConsumerVersion)" in registration)
+        assertTrue("inputs.property(\"target\", target)" in registration)
+        assertFalse("project." in action)
+        assertFalse("repository.get()" in action)
+        assertFalse("targetInventory.get()" in action)
+        assertTrue("outputs.files.singleFile.atomicWriteJson" in action)
+    }
+
+    @Test
     fun `publication revalidates exact candidate bytes before protected mutation`() {
         val publish = workflows.getValue("publish.yml")
         val core = publish.substringAfter("\n  publish-core:").substringBefore("\n  swift-resolution:")

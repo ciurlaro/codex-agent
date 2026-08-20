@@ -1,5 +1,7 @@
 codex-agent-runtime-android/build.gradle.kts
 codex-agent-runtime-android/src/main/**
+codex-agent-client/build.gradle.kts
+codex-agent-client/src/commonMain/**
 codex-agent-client/src/androidMain/**
 tooling/android-runtime-evidence/build.gradle.kts
 tooling/android-runtime-evidence/src/androidTest/**
