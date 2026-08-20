@@ -10,10 +10,10 @@ on:
         required: true
         type: string
       artifactName:
-        required: true
+        required: false
         type: string
       planArtifact:
-        required: true
+        required: false
         type: string
 
 permissions:

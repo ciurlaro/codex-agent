@@ -42,9 +42,9 @@ class ReleaseWorkflowContractTest {
     }
 
     @Test
-    fun `ordinary CI is PR plus main and starts Apple after lint`() {
+    fun `ordinary CI is PR only and starts Apple after lint`() {
         val ci = workflows.getValue("ci.yml")
-        assertTrue("branches: [main]" in ci)
+        assertFalse(Regex("(?m)^  push:$").containsMatchIn(ci))
         assertTrue("pull_request:" in ci)
         assertTrue("group: ci-${'$'}{{ github.workflow }}-${'$'}{{ github.event.pull_request.number || github.ref }}" in ci)
         assertTrue("cancel-in-progress: true" in ci)
@@ -87,6 +87,7 @@ class ReleaseWorkflowContractTest {
         assertTrue("run-id: ${'$'}{{ inputs.ciRunId }}" in android)
         assertTrue("name: ${'$'}{{ inputs.planArtifact }}" in android)
         assertTrue("name: ${'$'}{{ inputs.artifactName }}" in android)
+        assertEquals(2, Regex("(?m)^        required: false$").findAll(android).count())
         listOf("firebaseApplicationApk", "firebaseTestApk", "firebaseReleaseAar")
             .forEach { assertTrue("-PcodexAgent.$it=" in android, it) }
         assertFalse("assembleDebug" in android)
