@@ -78,21 +78,22 @@ class ReleaseWorkflowContractTest {
     @Test
     fun `Firebase uses exact main binaries and downloads only XML evidence`() {
         val android = workflows.getValue("android-runtime-evidence.yml")
-        val validation = android.indexOf("Validate protected identity and Google configuration")
+        val validation = android.indexOf("Validate trusted pre-merge identity")
         val checkout = android.indexOf("uses: actions/checkout@")
         val authentication = android.indexOf("uses: google-github-actions/auth@")
         assertFalse("workflow_dispatch:" in android)
         assertTrue(validation in 0 until checkout)
         assertTrue("actions: read" in android)
         assertTrue("run-id: ${'$'}{{ inputs.ciRunId }}" in android)
-        assertTrue("codex-agent-ci-android-binaries-" in android)
+        assertTrue("name: ${'$'}{{ inputs.planArtifact }}" in android)
+        assertTrue("name: ${'$'}{{ inputs.artifactName }}" in android)
         listOf("firebaseApplicationApk", "firebaseTestApk", "firebaseReleaseAar")
             .forEach { assertTrue("-PcodexAgent.$it=" in android, it) }
         assertFalse("assembleDebug" in android)
         assertTrue(authentication > checkout)
         assertTrue("--no-performance-metrics" in android)
         assertTrue("--no-record-video" in android)
-        assertTrue("gcloud storage cp \"${'$'}results_uri/**/*.xml\"" in android)
+        assertTrue("gcloud storage cp \"${'$'}{result_uris[0]}/**/*.xml\"" in android)
         assertFalse("gcloud storage cp --recursive" in android)
     }
 
@@ -130,7 +131,7 @@ class ReleaseWorkflowContractTest {
         listOf(
             "codex-agent-ci-portable-runtime-artifacts-${'$'}{{ github.sha }}",
             "codex-agent-ci-android-binaries-${'$'}{{ github.sha }}",
-            "codex-agent-android-runtime-evidence-${'$'}{{ inputs.candidateCommit }}",
+            "codex-agent-ci-android-firebase-${'$'}{{ inputs.candidateCommit }}",
             "codex-agent-ci-ios-verified-distribution-${'$'}{{ inputs.candidateCommit }}",
             "codex-agent-publication-core-${'$'}{{ github.event.workflow_run.head_sha }}",
         ).forEach { assertTrue(it in combined, it) }
@@ -237,7 +238,7 @@ class ReleaseWorkflowContractTest {
         }
         listOf(
             "windows-node-supervisor", "windowsNodeSupervisor", "commit_a", "commit_b",
-            "byte-parity", "browser", "wasi", "release/scripts/", "python3", "curl ", "shasum",
+            "byte-parity", "browser", "wasi", "release/scripts/", "curl ", "shasum",
         ).forEach { assertFalse(it.lowercase() in combined.lowercase(), it) }
         assertFalse(Regex("(?m)^\\s*jq\\s").containsMatchIn(combined))
         assertTrue("github.com/rhysd/actionlint/cmd/actionlint@v1.7.12" in workflows.getValue("ci.yml"))

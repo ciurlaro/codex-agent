@@ -9,28 +9,30 @@ on:
       ciRunId:
         required: true
         type: string
-    secrets:
-      GRADLE_ENCRYPTION_KEY:
-        required: false
+      artifactName:
+        required: true
+        type: string
+      planArtifact:
+        required: true
+        type: string
 
 permissions:
   actions: read
   contents: read
   id-token: write
 
-concurrency:
-  group: android-runtime-evidence-${{ inputs.candidateCommit }}
-  cancel-in-progress: false
-
 jobs:
   firebase-arm64-runtime:
+    environment: merge-validation
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       GOOGLE_CLOUD_PROJECT: ${{ vars.GOOGLE_CLOUD_PROJECT }}
     steps:
-      - name: Validate protected identity and Google configuration before running code
+      - name: Validate trusted pre-merge identity
         env:
+          ARTIFACT_NAME: ${{ inputs.artifactName }}
+          PLAN_ARTIFACT: ${{ inputs.planArtifact }}
           CANDIDATE_COMMIT: ${{ inputs.candidateCommit }}
           CI_RUN_ID: ${{ inputs.ciRunId }}
           WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
@@ -39,28 +41,42 @@ jobs:
         run: |
           [[ "$CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CI_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$ARTIFACT_NAME" =~ ^codex-agent-ci-android-[0-9a-f]{40}$ ]]
+          [[ "$PLAN_ARTIFACT" =~ ^codex-agent-ci-plan-[0-9a-f]{40}$ ]]
+          tree=${ARTIFACT_NAME#codex-agent-ci-android-}
+          test "$PLAN_ARTIFACT" = "codex-agent-ci-plan-$tree"
+          test "$CI_RUN_ID" = "$GITHUB_RUN_ID"
+          test "$CANDIDATE_COMMIT" = "$GITHUB_SHA"
+          test "$GITHUB_REPOSITORY" = codex-agent-labs/codex-agent
+          [[ "$GITHUB_EVENT_NAME" = pull_request || "$GITHUB_EVENT_NAME" = merge_group ]]
           test -n "$GOOGLE_CLOUD_PROJECT"
           test -n "$WORKLOAD_IDENTITY_PROVIDER"
           test -n "$GOOGLE_SERVICE_ACCOUNT"
-          test "$GITHUB_SHA" = "$CANDIDATE_COMMIT"
-          test "$GITHUB_REF_TYPE" = tag
-          test "$GITHUB_REF_PROTECTED" = true
-          [[ "$GITHUB_REF_NAME" =~ ^candidate/v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]]
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.candidateCommit }}
-          fetch-depth: 1
-      - uses: ./.github/actions/setup-kmp
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+          ref: main
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ inputs.ciRunId }}
           github-token: ${{ github.token }}
-          name: codex-agent-ci-android-binaries-${{ inputs.candidateCommit }}
-          path: build/android-ci-binaries
+          name: ${{ inputs.planArtifact }}
+          path: build/ci/plan
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          run-id: ${{ inputs.ciRunId }}
+          github-token: ${{ github.token }}
+          name: ${{ inputs.artifactName }}
+          path: build/ci/android
+      - id: evidence
+        run: >-
+          python3 ci/evidence.py check --artifact build/ci/android
+          --plan build/ci/plan/impact-plan.json
+          --expected-commit "${{ inputs.candidateCommit }}"
+          --expected-artifact "${{ inputs.artifactName }}"
+          --expected-plan-artifact "${{ inputs.planArtifact }}"
+          --expected-repository "${{ github.repository }}"
+          --expected-event "${{ github.event_name }}"
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ vars.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
@@ -74,47 +90,97 @@ jobs:
         run: |
           matrix_file="$RUNNER_TEMP/firebase-test-matrix.json"
           results="$RUNNER_TEMP/firebase-test-results"
+          app=build/ci/android/payload/tooling/android-runtime-evidence/build/outputs/apk/debug/android-runtime-evidence-debug.apk
+          test_apk=build/ci/android/payload/tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk
+          test -f "$app"
+          test -f "$test_apk"
           gcloud firebase test android run \
-            --type=instrumentation \
-            --app=build/android-ci-binaries/tooling/android-runtime-evidence/build/outputs/apk/debug/android-runtime-evidence-debug.apk \
-            --test=build/android-ci-binaries/tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk \
-            --test-targets=class:io.github.ciurlaro.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest \
+            --type=instrumentation --app="$app" --test="$test_apk" \
+            --test-targets=class:io.github.codex_agent_labs.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest \
             --device=model=SmallPhone.arm,version=35,locale=en,orientation=portrait \
             --num-flaky-test-attempts=0 --timeout=15m \
             --no-auto-google-login --no-performance-metrics --no-record-video \
             --project="$GOOGLE_CLOUD_PROJECT" --format=json > "$matrix_file"
-          mapfile -t result_uris < <(
-            sed -nE 's/^[[:space:]]*"gcsPath":[[:space:]]*"([^"]+)".*$/\1/p' "$matrix_file"
-          )
+          mapfile -t result_uris < <(sed -nE 's/^[[:space:]]*"gcsPath":[[:space:]]*"([^"]+)".*$/\1/p' "$matrix_file")
           test "${#result_uris[@]}" -eq 1
-          results_uri="${result_uris[0]}"
-          [[ "$results_uri" == gs://* ]]
           mkdir -p "$results"
-          gcloud storage cp "$results_uri/**/*.xml" "$results"
+          gcloud storage cp "${result_uris[0]}/**/*.xml" "$results"
           find "$results" -type f -name '*.xml' -print -quit | grep -q .
-          {
-            printf 'matrix_file=%s\n' "$matrix_file"
-            printf 'results=%s\n' "$results"
-          } >> "$GITHUB_OUTPUT"
-      - name: Record hash-bound Firebase evidence from the exact CI binaries
-        env:
-          CANDIDATE_COMMIT: ${{ inputs.candidateCommit }}
-          FIREBASE_MATRIX_FILE: ${{ steps.firebase.outputs.matrix_file }}
-          FIREBASE_RESULTS_DIRECTORY: ${{ steps.firebase.outputs.results }}
-        run: >-
-          ./gradlew :tooling:android-runtime-evidence:recordFirebaseAndroidRuntimeEvidence
-          -PcodexAgent.candidateCommit="$CANDIDATE_COMMIT"
-          -PcodexAgent.firebaseMatrixFile="$FIREBASE_MATRIX_FILE"
-          -PcodexAgent.firebaseResultsDirectory="$FIREBASE_RESULTS_DIRECTORY"
-          -PcodexAgent.firebaseApplicationApk="$PWD/build/android-ci-binaries/tooling/android-runtime-evidence/build/outputs/apk/debug/android-runtime-evidence-debug.apk"
-          -PcodexAgent.firebaseTestApk="$PWD/build/android-ci-binaries/tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk"
-          -PcodexAgent.firebaseReleaseAar="$PWD/build/android-ci-binaries/codex-agent-runtime-android/build/outputs/aar/codex-agent-runtime-android-release.aar"
-          --parallel --stacktrace
+          printf 'matrix=%s\nresults=%s\n' "$matrix_file" "$results" >> "$GITHUB_OUTPUT"
+      - name: Stage raw Firebase results as untrusted data
+        shell: bash
+        run: |
+          mkdir -p build/ci/firebase/results
+          cp "${{ steps.firebase.outputs.matrix }}" build/ci/firebase/matrix.json
+          cp -R "${{ steps.firebase.outputs.results }}/." build/ci/firebase/results/
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
-          name: codex-agent-android-runtime-evidence-${{ inputs.candidateCommit }}
-          path: tooling/android-runtime-evidence/build/reports/firebase-android-runtime-evidence/**
+          name: codex-agent-ci-android-firebase-${{ inputs.candidateCommit }}
+          path: build/ci/firebase
           compression-level: 0
-          retention-days: 30
+          retention-days: 1
+
+  attach-evidence:
+    needs: firebase-arm64-runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: main
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          run-id: ${{ inputs.ciRunId }}
+          github-token: ${{ github.token }}
+          name: ${{ inputs.planArtifact }}
+          path: build/ci/plan
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          run-id: ${{ inputs.ciRunId }}
+          github-token: ${{ github.token }}
+          name: ${{ inputs.artifactName }}
+          path: build/ci/android
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          run-id: ${{ inputs.ciRunId }}
+          github-token: ${{ github.token }}
+          name: codex-agent-ci-android-firebase-${{ inputs.candidateCommit }}
+          path: build/ci/firebase
+      - uses: ./.github/actions/setup-kmp
+        with:
+          cache-read-only: "true"
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      - name: Record evidence against the exact Android lane bytes
+        run: >-
+          ./gradlew :tooling:android-runtime-evidence:recordFirebaseAndroidRuntimeEvidence
+          -PcodexAgent.candidateCommit=${{ inputs.candidateCommit }}
+          -PcodexAgent.firebaseMatrixFile="$PWD/build/ci/firebase/matrix.json"
+          -PcodexAgent.firebaseResultsDirectory="$PWD/build/ci/firebase/results"
+          -PcodexAgent.firebaseApplicationApk="$PWD/build/ci/android/payload/tooling/android-runtime-evidence/build/outputs/apk/debug/android-runtime-evidence-debug.apk"
+          -PcodexAgent.firebaseTestApk="$PWD/build/ci/android/payload/tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk"
+          -PcodexAgent.firebaseReleaseAar="$PWD/build/ci/android/payload/codex-agent-runtime-android/build/outputs/aar/codex-agent-runtime-android-release.aar"
+          --parallel --stacktrace
+      - name: Attach trusted evidence to the Android lane artifact
+        run: >-
+          python3 ci/evidence.py attach --artifact build/ci/android
+          --plan build/ci/plan/impact-plan.json
+          --source tooling/android-runtime-evidence/build/reports/firebase-android-runtime-evidence
+          --expected-commit "${{ inputs.candidateCommit }}"
+          --expected-artifact "${{ inputs.artifactName }}"
+          --expected-plan-artifact "${{ inputs.planArtifact }}"
+          --expected-repository "${{ github.repository }}"
+          --expected-event "${{ github.event_name }}" --replace
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: ${{ inputs.artifactName }}
+          path: build/ci/android
+          compression-level: 0
+          retention-days: 90
