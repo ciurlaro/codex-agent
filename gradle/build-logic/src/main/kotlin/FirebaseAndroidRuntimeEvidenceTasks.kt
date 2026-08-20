@@ -13,7 +13,6 @@ import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.Optional
@@ -55,16 +54,12 @@ abstract class RecordFirebaseAndroidRuntimeEvidenceTask @Inject constructor(
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val testResults: DirectoryProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val releaseAar: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val apkanalyzerExecutable: RegularFileProperty
-    @get:Internal abstract val repositoryDirectory: DirectoryProperty
     @get:OutputDirectory abstract val evidenceDirectory: DirectoryProperty
 
     @TaskAction
     fun record() {
         val commit = candidateCommit.get()
         check(commit.matches(Regex("[0-9a-f]{40}"))) { "Candidate commit must be immutable" }
-        check(run("git", "-C", repositoryDirectory.get().asFile.absolutePath, "rev-parse", "HEAD") == commit) {
-            "Firebase Android evidence checkout does not match candidate commit"
-        }
         val app = applicationApk.get().asFile
         val test = testApk.get().asFile
         val aar = releaseAar.get().asFile

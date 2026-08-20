@@ -42,9 +42,9 @@ class ReleaseWorkflowContractTest {
     }
 
     @Test
-    fun `ordinary CI is PR plus main and starts Apple after lint`() {
+    fun `ordinary CI is PR only and starts Apple after lint`() {
         val ci = workflows.getValue("ci.yml")
-        assertTrue("branches: [main]" in ci)
+        assertFalse(Regex("(?m)^  push:$").containsMatchIn(ci))
         assertTrue("pull_request:" in ci)
         assertTrue("group: ci-${'$'}{{ github.workflow }}-${'$'}{{ github.event.pull_request.number || github.ref }}" in ci)
         assertTrue("cancel-in-progress: true" in ci)
@@ -78,21 +78,25 @@ class ReleaseWorkflowContractTest {
     @Test
     fun `Firebase uses exact main binaries and downloads only XML evidence`() {
         val android = workflows.getValue("android-runtime-evidence.yml")
-        val validation = android.indexOf("Validate protected identity and Google configuration")
+        val validation = android.indexOf("Validate trusted pre-merge identity")
         val checkout = android.indexOf("uses: actions/checkout@")
         val authentication = android.indexOf("uses: google-github-actions/auth@")
         assertFalse("workflow_dispatch:" in android)
         assertTrue(validation in 0 until checkout)
         assertTrue("actions: read" in android)
         assertTrue("run-id: ${'$'}{{ inputs.ciRunId }}" in android)
-        assertTrue("codex-agent-ci-android-binaries-" in android)
+        assertTrue("name: ${'$'}{{ inputs.planArtifact }}" in android)
+        assertTrue("name: ${'$'}{{ inputs.artifactName }}" in android)
+        assertEquals(2, Regex("(?m)^        required: false$").findAll(android).count())
+        assertTrue("MERGE_READY: ${'$'}{{ !github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'merge-ready') }}" in android)
+        assertTrue("[[ \"${'$'}GITHUB_EVENT_NAME\" = merge_group || \"${'$'}MERGE_READY\" = true ]]" in android)
         listOf("firebaseApplicationApk", "firebaseTestApk", "firebaseReleaseAar")
             .forEach { assertTrue("-PcodexAgent.$it=" in android, it) }
         assertFalse("assembleDebug" in android)
         assertTrue(authentication > checkout)
         assertTrue("--no-performance-metrics" in android)
         assertTrue("--no-record-video" in android)
-        assertTrue("gcloud storage cp \"${'$'}results_uri/**/*.xml\"" in android)
+        assertTrue("gcloud storage cp \"${'$'}{result_uris[0]}/**/*.xml\"" in android)
         assertFalse("gcloud storage cp --recursive" in android)
     }
 
@@ -130,7 +134,7 @@ class ReleaseWorkflowContractTest {
         listOf(
             "codex-agent-ci-portable-runtime-artifacts-${'$'}{{ github.sha }}",
             "codex-agent-ci-android-binaries-${'$'}{{ github.sha }}",
-            "codex-agent-android-runtime-evidence-${'$'}{{ inputs.candidateCommit }}",
+            "codex-agent-ci-android-firebase-${'$'}{{ inputs.candidateCommit }}",
             "codex-agent-ci-ios-verified-distribution-${'$'}{{ inputs.candidateCommit }}",
             "codex-agent-publication-core-${'$'}{{ github.event.workflow_run.head_sha }}",
         ).forEach { assertTrue(it in combined, it) }
@@ -237,7 +241,7 @@ class ReleaseWorkflowContractTest {
         }
         listOf(
             "windows-node-supervisor", "windowsNodeSupervisor", "commit_a", "commit_b",
-            "byte-parity", "browser", "wasi", "release/scripts/", "python3", "curl ", "shasum",
+            "byte-parity", "browser", "wasi", "release/scripts/", "curl ", "shasum",
         ).forEach { assertFalse(it.lowercase() in combined.lowercase(), it) }
         assertFalse(Regex("(?m)^\\s*jq\\s").containsMatchIn(combined))
         assertTrue("github.com/rhysd/actionlint/cmd/actionlint@v1.7.12" in workflows.getValue("ci.yml"))

@@ -46,7 +46,6 @@ tasks.register<RecordFirebaseAndroidRuntimeEvidenceTask>("recordFirebaseAndroidR
     apkanalyzerExecutable.set(layout.file(androidSdkPath.map {
         JavaFile(it, "cmdline-tools/latest/bin/apkanalyzer")
     }))
-    repositoryDirectory.set(rootProject.layout.projectDirectory)
     evidenceDirectory.set(localEvidenceDirectory)
 }
 
