@@ -35,6 +35,7 @@ jobs:
           PLAN_ARTIFACT: ${{ inputs.planArtifact }}
           CANDIDATE_COMMIT: ${{ inputs.candidateCommit }}
           CI_RUN_ID: ${{ inputs.ciRunId }}
+          MERGE_READY: ${{ contains(github.event.pull_request.labels.*.name, 'merge-ready') }}
           WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
           GOOGLE_SERVICE_ACCOUNT: ${{ vars.GOOGLE_SERVICE_ACCOUNT }}
         shell: bash
@@ -49,6 +50,7 @@ jobs:
           test "$CANDIDATE_COMMIT" = "$GITHUB_SHA"
           test "$GITHUB_REPOSITORY" = codex-agent-labs/codex-agent
           [[ "$GITHUB_EVENT_NAME" = pull_request || "$GITHUB_EVENT_NAME" = merge_group ]]
+          [[ "$GITHUB_EVENT_NAME" = merge_group || "$MERGE_READY" = true ]]
           test -n "$GOOGLE_CLOUD_PROJECT"
           test -n "$WORKLOAD_IDENTITY_PROVIDER"
           test -n "$GOOGLE_SERVICE_ACCOUNT"
