@@ -46,7 +46,9 @@ class ReleaseWorkflowContractTest {
             Regex("(?m)^\\s+if-no-files-found: error$").findAll(combined).count() + optionalDiagnostics,
         )
         assertEquals(2, optionalDiagnostics)
-        assertTrue("name: codex-agent-diagnostics-" in actions.getValue("run-ci-lane"))
+        val lane = actions.getValue("run-ci-lane")
+        assertTrue("name: codex-agent-diagnostics-" in lane)
+        assertTrue(lane.indexOf("PYTHONDONTWRITEBYTECODE=1") in 0 until lane.indexOf("python3 "))
         assertTrue("name: codex-agent-protected-candidate-diagnostics-" in workflows.getValue("release-candidate.yml"))
         assertEquals(uploads, Regex("(?m)^\\s+overwrite: (?:true|false)$").findAll(combined).count())
     }

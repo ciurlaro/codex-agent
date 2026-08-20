@@ -57,6 +57,7 @@ runs:
         REUSE_ONLY: ${{ inputs.reuse-only }}
       shell: bash
       run: |
+        printf 'PYTHONDONTWRITEBYTECODE=1\n' >> "$GITHUB_ENV"
         if [ "$PREPARED_PRODUCTION" = true ]; then
           test "$LANE" = desktop-linux-arm64
           test "$REUSE_DISABLED" = true
