@@ -88,7 +88,7 @@ class ReleaseWorkflowContractTest {
         assertTrue("name: ${'$'}{{ inputs.planArtifact }}" in android)
         assertTrue("name: ${'$'}{{ inputs.artifactName }}" in android)
         assertEquals(2, Regex("(?m)^        required: false$").findAll(android).count())
-        assertTrue("MERGE_READY: ${'$'}{{ contains(github.event.pull_request.labels.*.name, 'merge-ready') }}" in android)
+        assertTrue("MERGE_READY: ${'$'}{{ !github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'merge-ready') }}" in android)
         assertTrue("[[ \"${'$'}GITHUB_EVENT_NAME\" = merge_group || \"${'$'}MERGE_READY\" = true ]]" in android)
         listOf("firebaseApplicationApk", "firebaseTestApk", "firebaseReleaseAar")
             .forEach { assertTrue("-PcodexAgent.$it=" in android, it) }

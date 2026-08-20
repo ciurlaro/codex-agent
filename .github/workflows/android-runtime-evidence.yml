@@ -35,7 +35,7 @@ jobs:
           PLAN_ARTIFACT: ${{ inputs.planArtifact }}
           CANDIDATE_COMMIT: ${{ inputs.candidateCommit }}
           CI_RUN_ID: ${{ inputs.ciRunId }}
-          MERGE_READY: ${{ contains(github.event.pull_request.labels.*.name, 'merge-ready') }}
+          MERGE_READY: ${{ !github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'merge-ready') }}
           WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GOOGLE_WORKLOAD_IDENTITY_PROVIDER }}
           GOOGLE_SERVICE_ACCOUNT: ${{ vars.GOOGLE_SERVICE_ACCOUNT }}
         shell: bash
