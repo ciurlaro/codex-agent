@@ -1,16 +1,20 @@
 package io.github.ciurlaro.codexmobile.agent
 
 import io.github.ciurlaro.codexmobile.agent.*
+import io.github.ciurlaro.codexmobile.appserver.client.AppServerConnectionState
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.*
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
+import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.system.measureTimeMillis
 import kotlin.test.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
 
 class CodexRuntimeFailureTest {
@@ -92,28 +96,47 @@ class CodexRuntimeFailureTest {
 
     @Test
     fun terminalFailureClosesRuntimeWhileEventDeliveryIsBackpressured(): Unit = runBlocking {
+        val notificationsSent = CountDownLatch(1)
         val process = FakeCodexRuntime { message, server ->
             when (message.method) {
                 "initialize" -> server.respond(message.id, buildJsonObject {})
                 "skills/list" -> {
                     server.respond(message.id, buildJsonObject { put("data", buildJsonArray {}) })
                     repeat(64) { server.notify("skills/changed", buildJsonObject {}) }
-                    server.sendRaw("{")
+                    notificationsSent.countDown()
                 }
             }
         }
-        val client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000)
+        val failureArmed = AtomicBoolean()
+        val failureHandled = CountDownLatch(1)
+        val worker = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        lateinit var client: CodexAgentClient
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = worker.dispatch(context) {
+                block.run()
+                if (
+                    failureArmed.get() &&
+                    client.knownSkillPaths.isEmpty() &&
+                    client.connection.state.value is AppServerConnectionState.Failed
+                ) failureHandled.countDown()
+            }
+        }
+        client = CodexAgentClient({ process }, requestTimeoutMillis = 1_000, coroutineDispatcher = dispatcher)
         try {
             client.listSkills("/workspace")
-            withTimeout(1_000) {
-                while (!process.allClientStreamsClosed()) kotlinx.coroutines.yield()
-            }
+            assertTrue(notificationsSent.await(1, TimeUnit.SECONDS))
+            client.stateLock.withLock { client.knownSkillPaths += "/failure-sentinel" }
+            failureArmed.set(true)
+            process.sendRaw("{")
+            assertTrue(failureHandled.await(1, TimeUnit.SECONDS))
+            assertTrue(process.allClientStreamsClosed())
 
             val events = withTimeout(1_000) { client.events.take(2).toList() }
             assertEquals("event_backlog_overflow", assertIs<AgentEvent.Failure>(events[0]).code)
             assertEquals("protocol_failure", assertIs<AgentEvent.Failure>(events[1]).code)
         } finally {
             client.close()
+            worker.close()
         }
     }
 
