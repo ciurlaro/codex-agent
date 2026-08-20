@@ -91,6 +91,7 @@ jobs:
         shell: bash
         run: |
           matrix_file="$RUNNER_TEMP/firebase-test-matrix.json"
+          matrix_status="$RUNNER_TEMP/firebase-test-status.txt"
           results="$RUNNER_TEMP/firebase-test-results"
           app=build/ci/android/payload/tooling/android-runtime-evidence/build/outputs/apk/debug/android-runtime-evidence-debug.apk
           test_apk=build/ci/android/payload/tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk
@@ -98,15 +99,49 @@ jobs:
           test -f "$test_apk"
           gcloud firebase test android run \
             --type=instrumentation --app="$app" --test="$test_apk" \
-            --test-targets=class:io.github.codex_agent_labs.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest \
+            --test-targets="class io.github.codex_agent_labs.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest" \
             --device=model=SmallPhone.arm,version=35,locale=en,orientation=portrait \
             --num-flaky-test-attempts=0 --timeout=15m \
             --no-auto-google-login --no-performance-metrics --no-record-video \
-            --project="$GOOGLE_CLOUD_PROJECT" --format=json > "$matrix_file"
-          mapfile -t result_uris < <(sed -nE 's/^[[:space:]]*"gcsPath":[[:space:]]*"([^"]+)".*$/\1/p' "$matrix_file")
-          test "${#result_uris[@]}" -eq 1
+            --project="$GOOGLE_CLOUD_PROJECT" --format=none 2>&1 | tee "$matrix_status"
+          mapfile -t matrix_ids < <(
+            sed -nE 's/^Test \[(matrix-[A-Za-z0-9_-]+)\] has been created in the Google Cloud\.$/\1/p' "$matrix_status"
+          )
+          test "${#matrix_ids[@]}" -eq 1
+          access_token=$(gcloud auth print-access-token)
+          results_uri=$(FIREBASE_ACCESS_TOKEN="$access_token" python3 - \
+            "$matrix_file" "${matrix_ids[0]}" "$GOOGLE_CLOUD_PROJECT" <<'PY'
+          import json
+          import os
+          import sys
+          from http.client import HTTPSConnection
+          from pathlib import Path
+          from urllib.parse import quote, urlsplit
+
+          path = f"/v1/projects/{quote(sys.argv[3], safe='')}/testMatrices/{quote(sys.argv[2], safe='')}"
+          connection = HTTPSConnection("testing.googleapis.com", timeout=30)
+          try:
+              connection.request("GET", path, headers={"Authorization": f"Bearer {os.environ['FIREBASE_ACCESS_TOKEN']}"})
+              response = connection.getresponse()
+              raw = response.read()
+              if response.status != 200:
+                  raise SystemExit(f"Testing API returned HTTP {response.status}")
+          finally:
+              connection.close()
+          Path(sys.argv[1]).write_bytes(raw)
+          matrix = json.loads(raw)
+          if matrix.get("testMatrixId") != sys.argv[2] or matrix.get("projectId") != sys.argv[3]:
+              raise SystemExit("Firebase matrix identity mismatch")
+          uri = matrix["resultStorage"]["googleCloudStorage"]["gcsPath"].rstrip("/")
+          parsed = urlsplit(uri)
+          if parsed.scheme != "gs" or not parsed.netloc or not parsed.path:
+              raise SystemExit("Firebase matrix results URI is invalid")
+          print(uri)
+          PY
+          )
+          unset access_token
           mkdir -p "$results"
-          gcloud storage cp "${result_uris[0]}/**/*.xml" "$results"
+          gcloud storage cp "$results_uri/**/*.xml" "$results"
           find "$results" -type f -name '*.xml' -print -quit | grep -q .
           printf 'matrix=%s\nresults=%s\n' "$matrix_file" "$results" >> "$GITHUB_OUTPUT"
       - name: Stage raw Firebase results as untrusted data

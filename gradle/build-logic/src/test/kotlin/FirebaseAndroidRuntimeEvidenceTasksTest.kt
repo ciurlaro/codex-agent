@@ -131,13 +131,13 @@ class FirebaseAndroidRuntimeEvidenceTasksTest {
         private fun matrixJson(): String = """
             {
               "testMatrixId":"matrix-test","projectId":"test-project","state":"FINISHED",
+              "outcomeSummary":"SUCCESS",
               "resultStorage":{"googleCloudStorage":{"gcsPath":"gs://bucket/results"}},
               "testExecutions":[{
                 "state":"FINISHED",
                 "environment":{"androidDevice":{"androidModelId":"$FIREBASE_DEVICE_MODEL",
                   "androidVersionId":"$FIREBASE_DEVICE_API","locale":"$FIREBASE_DEVICE_LOCALE",
-                  "orientation":"$FIREBASE_DEVICE_ORIENTATION"}},
-                "toolExecution":{"outcome":{"summary":"SUCCESS"}}
+                  "orientation":"$FIREBASE_DEVICE_ORIENTATION"}}
               }]
             }
         """.trimIndent()
