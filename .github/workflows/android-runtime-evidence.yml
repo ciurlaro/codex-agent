@@ -98,7 +98,7 @@ jobs:
           test -f "$test_apk"
           gcloud firebase test android run \
             --type=instrumentation --app="$app" --test="$test_apk" \
-            --test-targets=class:io.github.codex_agent_labs.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest \
+            --test-targets="class io.github.codex_agent_labs.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest" \
             --device=model=SmallPhone.arm,version=35,locale=en,orientation=portrait \
             --num-flaky-test-attempts=0 --timeout=15m \
             --no-auto-google-login --no-performance-metrics --no-record-video \

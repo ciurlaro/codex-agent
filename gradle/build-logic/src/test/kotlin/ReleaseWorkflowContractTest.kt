@@ -96,6 +96,7 @@ class ReleaseWorkflowContractTest {
         assertTrue(authentication > checkout)
         assertTrue("--no-performance-metrics" in android)
         assertTrue("--no-record-video" in android)
+        assertTrue("--test-targets=\"class io.github.codex_agent_labs.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest\"" in android)
         assertTrue("gcloud storage cp \"${'$'}{result_uris[0]}/**/*.xml\"" in android)
         assertFalse("gcloud storage cp --recursive" in android)
     }
