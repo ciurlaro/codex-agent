@@ -35,7 +35,7 @@ jobs:
           test "$GITHUB_REF_PROTECTED" = true
           [[ "$GITHUB_REF_NAME" =~ ^candidate/v([0-9]+\.[0-9]+\.[0-9]+)-rc\.([1-9][0-9]*)$ ]]
           printf 'release_tag=v%s\n' "${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -104,7 +104,7 @@ jobs:
             printf 'ci_run_id=%s\n' "$ci_run_id"
             printf 'ci_run_attempt=%s\n' "$attempt"
           } >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -140,7 +140,7 @@ jobs:
         run: |
           test -n "$SIGNING_IN_MEMORY_KEY"
           test -n "$SIGNING_IN_MEMORY_KEY_PASSWORD"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ needs.portable-gates.outputs.candidate_commit }}
@@ -149,7 +149,7 @@ jobs:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
           node-version: "24.18.0"
           xcode-fingerprint: auto
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       - name: Resolve isolated candidate paths
         id: paths
         run: |
@@ -161,49 +161,49 @@ jobs:
             printf 'ci=%s\n' "$RUNNER_TEMP/ci-provenance"
             printf 'payload=%s\n' "$GITHUB_WORKSPACE/build/protected-candidate/${{ needs.portable-gates.outputs.candidate_commit }}/payload"
           } >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
           pattern: codex-agent-ci-runtime-evidence-*-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.runtime }}/evidence
           merge-multiple: true
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
           pattern: codex-agent-ci-desktop-classifier-*-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.runtime }}/classifiers
           merge-multiple: true
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
           name: codex-agent-ci-portable-runtime-artifacts-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.runtime }}/portable
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-android-runtime-evidence-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.android }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-ci-provenance-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.ci }}
       - name: Download the three exact native evidence artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
           pattern: codex-agent-ci-ios-*arm64-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.ios_native }}
           merge-multiple: true
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
           name: codex-agent-ci-ios-native-tests-${{ needs.portable-gates.outputs.candidate_commit }}
           path: ${{ steps.paths.outputs.ios_native }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ needs.resolve-ci-evidence.outputs.ci_run_id }}
           github-token: ${{ github.token }}
@@ -244,7 +244,7 @@ jobs:
           printf 'candidateTag=%s\nreleaseTag=%s\ncandidateCommit=%s\ncandidateRunId=%s\ncandidateRunAttempt=%s\n' \
             "$GITHUB_REF_NAME" "$RELEASE_TAG" "$CANDIDATE_COMMIT" \
             "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > build/candidate-identity.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: false
@@ -253,7 +253,7 @@ jobs:
           compression-level: 0
           retention-days: 30
       - name: Upload the exact technical candidate
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: false
@@ -263,7 +263,7 @@ jobs:
           retention-days: 30
       - name: Upload candidate diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true

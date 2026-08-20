@@ -46,7 +46,7 @@ jobs:
           test "$GITHUB_REF_TYPE" = tag
           test "$GITHUB_REF_PROTECTED" = true
           [[ "$GITHUB_REF_NAME" =~ ^candidate/v[0-9]+\.[0-9]+\.[0-9]+-rc\.[1-9][0-9]*$ ]]
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.candidateCommit }}
@@ -54,8 +54,8 @@ jobs:
       - uses: ./.github/actions/setup-kmp
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           run-id: ${{ inputs.ciRunId }}
           github-token: ${{ github.token }}
@@ -110,7 +110,7 @@ jobs:
           -PcodexAgent.firebaseTestApk="$PWD/build/android-ci-binaries/tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk"
           -PcodexAgent.firebaseReleaseAar="$PWD/build/android-ci-binaries/codex-agent-runtime-android/build/outputs/aar/codex-agent-runtime-android-release.aar"
           --parallel --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true

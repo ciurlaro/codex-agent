@@ -72,7 +72,7 @@ jobs:
             supervisor: codex-process-supervisor.exe
             developerDir: ""
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.candidateCommit }}
@@ -83,7 +83,7 @@ jobs:
           cache-encryption-key: ${{ inputs.trustedCacheWriter && secrets.GRADLE_ENCRYPTION_KEY || '' }}
           node-version: "24.18.0"
           xcode-fingerprint: ${{ startsWith(matrix.target, 'macos') && 'auto' || 'none' }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-ci-portable-runtime-artifacts-${{ inputs.candidateCommit }}
           path: build/portable-runtime-artifacts
@@ -121,7 +121,7 @@ jobs:
           -PcodexAgent.nodeWasmRuntimeEvidenceRunnerArchive="$PWD/build/portable-runtime-artifacts/codex-agent-node-wasm-runtime-evidence-runner.zip"
           -PcodexAgent.desktopDistributionManifest="$PWD/codex-agent-runtime-desktop/codex-app-server-distributions.json"
           --no-parallel --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -133,7 +133,7 @@ jobs:
             codex-agent-runtime-node/build/reports/node-runtime-evidence/node-wasm-runtime-${{ matrix.target }}.json
           compression-level: 0
           retention-days: 30
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -144,7 +144,7 @@ jobs:
       - if: >-
           inputs.trustedCacheWriter && matrix.target == 'mingwX64' &&
           steps.build.outputs.konan-cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.konan
           key: ${{ steps.build.outputs.konan-cache-primary-key }}
@@ -153,7 +153,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.candidateCommit }}
@@ -162,7 +162,7 @@ jobs:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Compile only the supervisor on the ARM host
         run: ./gradlew :codex-agent-runtime-desktop:compileDesktopProcessSupervisor --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -176,18 +176,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.candidateCommit }}
       - uses: ./.github/actions/setup-kmp
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-ci-portable-runtime-artifacts-${{ inputs.candidateCommit }}
           path: build/portable-runtime-artifacts
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-ci-linux-arm64-supervisor-${{ inputs.candidateCommit }}
           path: build/desktop-supervisors
@@ -210,7 +210,7 @@ jobs:
           -PcodexAgent.desktopDistributionManifest="$PWD/codex-agent-runtime-desktop/codex-app-server-distributions.json"
           -PcodexAgent.linuxArm64RuntimeEvidenceBundle="$PWD/build/linux-arm64-inputs/runtime.zip"
           --parallel --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -218,7 +218,7 @@ jobs:
           path: build/linux-arm64-inputs/runtime.zip
           compression-level: 0
           retention-days: 1
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
@@ -235,7 +235,7 @@ jobs:
       RUNNER_OS: Linux
       RUNNER_ARCH: ARM64
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.candidateCommit }}
@@ -243,7 +243,7 @@ jobs:
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
           node-version: "24.18.0"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codex-agent-ci-linux-arm64-execution-input-${{ inputs.candidateCommit }}
           path: build/linux-arm64-inputs
@@ -257,7 +257,7 @@ jobs:
           -PcodexAgent.nodeEvidenceOutput="$PWD/codex-agent-runtime-node/build/reports/node-runtime-evidence/node-runtime-linuxArm64.json"
           -PcodexAgent.nodeWasmEvidenceOutput="$PWD/codex-agent-runtime-node/build/reports/node-runtime-evidence/node-wasm-runtime-linuxArm64.json"
           -PcodexAgent.javaExecutable=java --parallel --stacktrace
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
