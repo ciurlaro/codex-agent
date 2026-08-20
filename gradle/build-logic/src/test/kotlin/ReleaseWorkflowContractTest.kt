@@ -70,6 +70,7 @@ class ReleaseWorkflowContractTest {
         val android = workflows.getValue("android-runtime-evidence.yml")
         assertTrue("MERGE_READY: ${'$'}{{ !github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'merge-ready') }}" in android)
         assertTrue("[[ \"${'$'}GITHUB_EVENT_NAME\" = merge_group || \"${'$'}MERGE_READY\" = true ]]" in android)
+        assertTrue("--test-targets=\"class io.github.codex_agent_labs.codexmobile.app.runtime.bootstrap.RuntimeBootstrapDeviceTest\"" in android)
         listOf("./gradlew", "setup-kmp", "setup-android", "cargo ", "xcodebuild", "firebase").forEach {
             assertFalse(it.lowercase() in promote.lowercase(), it)
         }

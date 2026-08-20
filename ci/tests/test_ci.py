@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+import urllib.error
 import zipfile
 from argparse import Namespace
 from pathlib import Path
@@ -28,7 +29,7 @@ from receipt import (  # noqa: E402
     safe_extract,
     validate_receipt,
 )
-from reuse import candidate_artifacts, restore  # noqa: E402
+from reuse import candidate_artifacts, promoted_artifacts, restore  # noqa: E402
 from stage import archive_tree, restore_production_files, safe_extract_tar  # noqa: E402
 from validation_reuse import (  # noqa: E402
     discover as discover_validation,
@@ -939,6 +940,31 @@ class ReceiptTest(GitFixture):
         ):
             exact = restore(arguments(self.plan_path, "restored-full", "full"))
             self.assertTrue(exact["reused"])
+
+            with (
+                urllib.error.HTTPError(
+                    "https://api.github.invalid/promote.yml", 404, "Not Found", {}, None,
+                ) as not_found,
+                patch("reuse.promoted_artifacts", side_effect=promoted_artifacts),
+                patch("reuse.api_json", side_effect=not_found),
+            ):
+                missing_promotion = restore(arguments(
+                    self.plan_path, "restored-without-promotion-workflow", "full",
+                ))
+            self.assertTrue(missing_promotion["reused"], missing_promotion)
+
+            with (
+                urllib.error.HTTPError(
+                    "https://api.github.invalid/promote.yml", 500, "Server Error", {}, None,
+                ) as server_error,
+                patch("reuse.promoted_artifacts", side_effect=promoted_artifacts),
+                patch("reuse.api_json", side_effect=server_error),
+            ):
+                promotion_failure = restore(arguments(
+                    self.plan_path, "rejected-promotion-failure", "full",
+                ))
+            self.assertFalse(promotion_failure["reused"])
+            self.assertEqual("discovery-unavailable:HTTPError", promotion_failure["reason"])
 
             valid_digest = artifact["digest"]
             artifact["digest"] = f"sha256:{'0' * 64}"

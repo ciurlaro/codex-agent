@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import tempfile
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -127,11 +128,16 @@ def promoted_artifacts(
 ) -> list[dict[str, object]]:
     workflow_id = urllib.parse.quote("promote.yml", safe="")
     query = urllib.parse.urlencode({"event": "push", "status": "completed"})
-    runs = paginated_items(
-        f"{api_url}/repos/{repository}/actions/workflows/{workflow_id}/runs?{query}",
-        "workflow_runs",
-        token,
-    )
+    try:
+        runs = paginated_items(
+            f"{api_url}/repos/{repository}/actions/workflows/{workflow_id}/runs?{query}",
+            "workflow_runs",
+            token,
+        )
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return []
+        raise
     result: list[dict[str, object]] = []
     prefix = f"codex-agent-promoted-{lane}-"
     for run in runs:

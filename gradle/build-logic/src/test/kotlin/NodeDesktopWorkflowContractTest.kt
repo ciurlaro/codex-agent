@@ -35,6 +35,15 @@ class NodeDesktopWorkflowContractTest {
     }
 
     @Test
+    fun `every direct desktop Gradle invocation receives its evidence target`() {
+        val directDesktop = driver.substringAfter("run_desktop() {").substringBefore("\n}\n\ncase ")
+        val targetArgument = "args+=(-PcodexAgent.desktopEvidenceTarget=\"${'$'}target\")"
+
+        assertEquals(1, Regex(Regex.escape(targetArgument)).findAll(directDesktop).count())
+        assertTrue(directDesktop.indexOf(targetArgument) < directDesktop.indexOf("./gradlew"))
+    }
+
+    @Test
     fun `Linux ARM stages and executes one strict bundle`() {
         val desktop = workflows.getValue("desktop-runtime-evidence.yml")
         val combined = desktop + driver

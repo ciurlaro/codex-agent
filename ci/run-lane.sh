@@ -32,6 +32,7 @@ run_desktop() {
     *) echo "Unsupported direct desktop target: $target" >&2; return 2 ;;
   esac
   if [ "$test_lane" = true ]; then
+    args+=(-PcodexAgent.desktopEvidenceTarget="$target")
     ./gradlew ":codex-agent-runtime-desktop:$native_task" "${args[@]}"
   elif [ "$build" = true ]; then
     ./gradlew ":codex-agent-runtime-desktop:$package_task" "${args[@]}"
@@ -50,7 +51,6 @@ run_desktop() {
     [ "${CI_NODE_JS_REQUIRED:-true}" != true ] || tasks+=(":codex-agent-runtime-node:$node_task")
     [ "${CI_NODE_WASM_REQUIRED:-true}" != true ] || tasks+=(":codex-agent-runtime-node:$wasm_task")
     ./gradlew "${tasks[@]}" \
-      -PcodexAgent.desktopEvidenceTarget="$target" \
       -PcodexAgent.jvmClassifierArchive="$PWD/${archives[0]}" \
       -PcodexAgent.jvmRuntimeEvidenceRunner="$PWD/codex-agent-runtime-desktop/build/distributions/codex-agent-jvm-runtime-evidence-runner.zip" \
       -PcodexAgent.nodeClassifierArchive="$PWD/${archives[0]}" \
