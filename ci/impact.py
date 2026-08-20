@@ -46,25 +46,9 @@ CATEGORIES = ("production", "test", "metadata")
 
 DEPENDENCIES = {
     "contracts": tuple(lane for lane in LANES if lane != "contracts"),
-    "portable": (
-        "android",
-        "node-js",
-        "node-wasm",
-        "desktop-macos-arm64",
-        "desktop-macos-x64",
-        "desktop-linux-arm64",
-        "desktop-linux-x64",
-        "desktop-windows-x64",
-    ),
     "android": ("consumer-android",),
-    "node-js": (
-        "desktop-macos-arm64", "desktop-macos-x64", "desktop-linux-arm64",
-        "desktop-linux-x64", "desktop-windows-x64", "consumer-node-js",
-    ),
-    "node-wasm": (
-        "desktop-macos-arm64", "desktop-macos-x64", "desktop-linux-arm64",
-        "desktop-linux-x64", "desktop-windows-x64", "consumer-node-wasm",
-    ),
+    "node-js": ("consumer-node-js",),
+    "node-wasm": ("consumer-node-wasm",),
     "desktop-macos-arm64": ("consumer-desktop",),
     "desktop-macos-x64": ("consumer-desktop",),
     "desktop-linux-arm64": ("consumer-desktop",),
@@ -144,6 +128,10 @@ PRODUCT_MATRIX_LANES = ("contracts", "portable", "node-js", "node-wasm")
 CONSUMER_MATRIX_LANES = (
     "consumer-android", "consumer-desktop", "consumer-node-js", "consumer-node-wasm",
 )
+CONSUMER_RUNNERS = {
+    lane: "macos-26" if lane == "consumer-desktop" else "ubuntu-24.04"
+    for lane in CONSUMER_MATRIX_LANES
+}
 DESKTOP_LANES = tuple(lane for lane in LANES if lane.startswith("desktop-")) + ("consumer-desktop",)
 APPLE_LANES = tuple(lane for lane in LANES if lane.startswith("ios-")) + (
     "consumer-common", "consumer-ios-device", "consumer-ios-simulator",
@@ -181,6 +169,8 @@ def read_pathspecs(root: Path, lane: str, category: str) -> tuple[str, ...]:
 def effective_pathspecs(root: Path, lane: str, category: str) -> tuple[str, ...]:
     specs = set(read_pathspecs(root, lane, category))
     if category == "production":
+        specs.update(FULL_VALIDATION_PATHS)
+        specs.update(f"{prefix}**" for prefix in FULL_VALIDATION_PREFIXES)
         pending = [upstream for upstream, downstreams in DEPENDENCIES.items() if lane in downstreams]
         seen: set[str] = set()
         while pending:
@@ -339,7 +329,7 @@ def plan(
         reason = "ci-full-label" if force_full else "planner-core-changed" if core_change else "unknown-path"
         for lane in LANES:
             require_production(root, lanes, lane, reason)
-            lanes[lane]["reuseAllowed"] = False
+            lanes[lane]["reuseAllowed"] = not bool(unknown)
     else:
         propagated = True
         while propagated:
@@ -413,7 +403,11 @@ def write_github_outputs(path: Path, result: dict[str, object]) -> None:
         ("consumer_matrix", CONSUMER_MATRIX_LANES),
     ):
         matrix = [
-            {"lane": lane, **{action: bool(result["lanes"][lane][action]) for action in ("build", "test", "metadata")}}
+            {
+                "lane": lane,
+                **({"runner": CONSUMER_RUNNERS[lane]} if name == "consumer_matrix" else {}),
+                **{action: bool(result["lanes"][lane][action]) for action in ("build", "test", "metadata")},
+            }
             for lane in selected
             if any(result["lanes"][lane][action] for action in ("build", "test", "metadata"))
         ]

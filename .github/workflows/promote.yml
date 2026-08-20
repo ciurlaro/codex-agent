@@ -1,0 +1,233 @@
+name: Promote
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Promotion bootstrap / queue disabled
+    if: github.ref == 'refs/heads/main' && vars.CI_MERGE_QUEUE_ENABLED != 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record the intentional bootstrap result
+        run: |
+          {
+            echo '## Promotion bootstrap'
+            echo
+            echo 'Result: success — promotion intentionally skipped until the merge queue is enabled.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  discover:
+    if: github.ref == 'refs/heads/main' && vars.CI_MERGE_QUEUE_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    outputs:
+      already_promoted: ${{ steps.discover.outputs.already_promoted }}
+      has_lanes: ${{ steps.discover.outputs.has_lanes }}
+      matrix: ${{ steps.discover.outputs.matrix }}
+      validation_run_id: ${{ steps.discover.outputs.validation_run_id }}
+      promoted_aggregate: ${{ steps.discover.outputs.promoted_aggregate }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - id: discover
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python3 ci/promote.py discover
+          --repository "$GITHUB_REPOSITORY"
+          --final-commit "$GITHUB_SHA"
+          --output build/promotion
+          --github-output "$GITHUB_OUTPUT"
+      - if: steps.discover.outputs.already_promoted != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          overwrite: true
+          include-hidden-files: true
+          name: codex-agent-promotion-handoff-${{ github.sha }}-${{ github.run_id }}
+          path: build/promotion
+          compression-level: 0
+          retention-days: 1
+
+  lanes:
+    if: needs.discover.outputs.already_promoted != 'true' && needs.discover.outputs.has_lanes == 'true'
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-agent-promotion-handoff-${{ github.sha }}-${{ github.run_id }}
+          path: build/promotion
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.sourceArtifactName }}
+          path: build/promotion/lane
+          run-id: ${{ matrix.sourceRunId }}
+          github-token: ${{ github.token }}
+      - name: Validate the immutable lane artifact
+        run: >-
+          python3 ci/promote.py validate-lane
+          --promotion-plan build/promotion/promotion-plan.json
+          --plan build/promotion/plan/impact-plan.json
+          --aggregate build/promotion/source/validation-receipt.json
+          --root build/promotion/lane
+          --lane "${{ matrix.lane }}"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          overwrite: true
+          include-hidden-files: true
+          name: ${{ matrix.promotedArtifactName }}
+          path: build/promotion/lane
+          compression-level: 0
+          retention-days: 90
+
+  cache-seeds:
+    if: needs.discover.outputs.already_promoted != 'true'
+    needs: discover
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: kmp
+            image: ubuntu-24.04
+            runner_os: Linux
+            runner_arch: X64
+          - kind: kmp
+            image: macos-26
+            runner_os: macOS
+            runner_arch: ARM64
+          - kind: kmp
+            image: macos-26-intel
+            runner_os: macOS
+            runner_arch: X64
+          - kind: kmp
+            image: windows-2025
+            runner_os: Windows
+            runner_arch: X64
+          - kind: cargo
+            image: macos-26
+            runner_os: macOS
+            runner_arch: ARM64
+    runs-on: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-agent-promotion-handoff-${{ github.sha }}-${{ github.run_id }}
+          path: build/promotion
+      - id: source
+        continue-on-error: true
+        shell: bash
+        run: >-
+          python3 ci/cache_seed.py source
+          --plan build/promotion/plan/impact-plan.json
+          --promotion-plan build/promotion/promotion-plan.json
+          --aggregate build/promotion/source/validation-receipt.json
+          --kind "${{ matrix.kind }}" --runner-os "${{ matrix.runner_os }}"
+          --runner-arch "${{ matrix.runner_arch }}" --github-output "$GITHUB_OUTPUT"
+      - id: download
+        if: steps.source.outputs.available == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ steps.source.outputs.artifact-name }}
+          path: build/cache-seed
+          run-id: ${{ steps.source.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - id: install
+        if: steps.download.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: >-
+          python3 ci/cache_seed.py install
+          --plan build/promotion/plan/impact-plan.json --root build/cache-seed
+          --promotion-plan build/promotion/promotion-plan.json
+          --aggregate build/promotion/source/validation-receipt.json
+          --kind "${{ matrix.kind }}"
+          --runner-os "${{ matrix.runner_os }}" --runner-arch "${{ matrix.runner_arch }}"
+          --github-output "$GITHUB_OUTPUT"
+      - if: steps.install.outputs.gradle == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.gradle/caches/modules-2
+          key: ${{ steps.install.outputs.gradle-key }}
+      - if: steps.install.outputs.konan == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.konan/dependencies
+          key: ${{ steps.install.outputs.konan-key }}
+      - if: steps.install.outputs.rust-dependencies == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ steps.install.outputs.cargo-key }}
+
+  aggregate:
+    if: >-
+      always() && needs.discover.result == 'success' &&
+      needs.discover.outputs.already_promoted != 'true' &&
+      (needs.lanes.result == 'success' || needs.lanes.result == 'skipped')
+    needs: [discover, lanes]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-agent-promotion-handoff-${{ github.sha }}-${{ github.run_id }}
+          path: build/promotion
+      - name: Record the completed promotion
+        run: >-
+          python3 ci/promote.py receipt
+          --promotion-plan build/promotion/promotion-plan.json
+          --output build/promotion/source/promotion-receipt.json
+          --run-id "$GITHUB_RUN_ID"
+          --run-attempt "$GITHUB_RUN_ATTEMPT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          overwrite: true
+          include-hidden-files: true
+          name: codex-agent-promoted-inventories-${{ github.sha }}
+          path: build/promotion/plan
+          compression-level: 0
+          retention-days: 90
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          overwrite: true
+          include-hidden-files: true
+          name: ${{ needs.discover.outputs.promoted_aggregate }}
+          path: |
+            build/promotion/source/impact-plan.json
+            build/promotion/source/validation-receipt.json
+            build/promotion/source/promotion-receipt.json
+          compression-level: 0
+          retention-days: 90

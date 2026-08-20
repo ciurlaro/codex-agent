@@ -96,7 +96,15 @@ tasks.register("packageDesktopAppServers") {
     dependsOn(desktopPackageTasks.values)
 }
 
-tasks.matching { it.name in setOf("commonizeCInterop", "compileNativeMainKotlinMetadata") }.configureEach {
+tasks.matching {
+    it.name in setOf(
+        "commonizeCInterop",
+        "compileNativeMainKotlinMetadata",
+        "compileAppleMainKotlinMetadata",
+        "compileMacosMainKotlinMetadata",
+        "compileLinuxMainKotlinMetadata",
+    )
+}.configureEach {
     notCompatibleWithConfigurationCache("Kotlin/Native commonization accesses project state at execution time")
 }
 extensions.configure<KotlinMultiplatformExtension> {
@@ -187,7 +195,7 @@ desktopManifest.distributions.forEach { distribution ->
         distributionManifest.set(layout.projectDirectory.file("codex-app-server-distributions.json"))
         testReport.set(layout.buildDirectory.file(
             "test-results/${distribution.target}Test/TEST-${distribution.target}Test." +
-                "io.github.ciurlaro.codexmobile.appserver.runtime.DesktopCodexRuntimeTest.xml",
+                "io.github.codex_agent_labs.codexmobile.appserver.runtime.DesktopCodexRuntimeTest.xml",
         ))
         evidenceFile.set(layout.buildDirectory.file(
             "reports/desktop-runtime-evidence/${desktopRuntimeEvidenceFileName(distribution.target)}",

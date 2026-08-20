@@ -81,21 +81,34 @@ fun Project.registerIosAppleReleaseVerificationTasks(
         evidenceFile.set(reportDirectory.map { it.file("evidence.json") })
     }
 
+    val importedPrivacyEvidence = providers.environmentVariable("CODEX_AGENT_IMPORTED_PRIVACY_EVIDENCE").orNull
+    val privacyPolicyFile = importedPrivacyEvidence?.let { rootProject.layout.projectDirectory.file("$it/policy.json") }
+    val privacyEvidenceFile = importedPrivacyEvidence?.let { rootProject.layout.projectDirectory.file("$it/evidence.json") }
     val generateIosPrivacyRequiredReasonReview =
         tasks.register<GenerateIosPrivacyRequiredReasonReviewTask>("generateIosPrivacyRequiredReasonReview") {
-            dependsOn(collectIosPrivacyEvidence)
+            if (importedPrivacyEvidence == null) dependsOn(collectIosPrivacyEvidence)
             templateFile.set(rootProject.layout.projectDirectory.file("gradle/release/privacy-required-reason-review.json"))
-            policyFile.set(collectIosPrivacyEvidence.flatMap { it.policyFile })
-            evidenceFile.set(collectIosPrivacyEvidence.flatMap { it.evidenceFile })
+            if (privacyPolicyFile == null || privacyEvidenceFile == null) {
+                policyFile.set(collectIosPrivacyEvidence.flatMap { it.policyFile })
+                evidenceFile.set(collectIosPrivacyEvidence.flatMap { it.evidenceFile })
+            } else {
+                policyFile.set(privacyPolicyFile)
+                evidenceFile.set(privacyEvidenceFile)
+            }
             outputFile.set(layout.buildDirectory.file(
                 "reports/ios-release/privacy/privacy-required-reason-review.json",
             ))
         }
 
     val verifyIosPrivacyManifest = tasks.register<VerifyIosPrivacyAuditTask>("verifyIosPrivacyManifest") {
-        dependsOn(collectIosPrivacyEvidence)
-        policyFile.set(collectIosPrivacyEvidence.flatMap { it.policyFile })
-        evidenceFile.set(collectIosPrivacyEvidence.flatMap { it.evidenceFile })
+        if (importedPrivacyEvidence == null) dependsOn(collectIosPrivacyEvidence)
+        if (privacyPolicyFile == null || privacyEvidenceFile == null) {
+            policyFile.set(collectIosPrivacyEvidence.flatMap { it.policyFile })
+            evidenceFile.set(collectIosPrivacyEvidence.flatMap { it.evidenceFile })
+        } else {
+            policyFile.set(privacyPolicyFile)
+            evidenceFile.set(privacyEvidenceFile)
+        }
         providers.gradleProperty("codexAgent.privacyRequiredReasonReview").orNull?.let { reviewPath ->
             reviewFile.set(rootProject.file(reviewPath))
         } ?: run {
@@ -105,24 +118,34 @@ fun Project.registerIosAppleReleaseVerificationTasks(
         auditFile.set(layout.buildDirectory.file("reports/ios-release/privacy/audit.json"))
     }
 
+    val importedArtifactMetrics = providers.environmentVariable("CODEX_AGENT_IMPORTED_IOS_METRICS").orNull
     val verifyIosReleaseBudgets = tasks.register<VerifyIosReleaseBudgetsTask>("verifyIosReleaseBudgets") {
-        dependsOn(packageCodexAgentSwiftPackageBinary, distribution.verifyCodexAgentSwiftPackage)
         policyFile.set(rootProject.layout.projectDirectory.file("gradle/release/ios-resource-policy.json"))
-        archiveFile.set(packageCodexAgentSwiftPackageBinary.flatMap { it.archiveFile })
-        deviceBinary.set(distribution.releaseXCFrameworkDirectory.map {
-            it.file("ios-arm64/CodexAgent.framework/CodexAgent")
-        })
-        applicationDirectory.set(
-            layout.buildDirectory.dir("CodexAgentTestApp.xcarchive/Products/Applications/CodexAgentTestApp.app"),
-        )
+        if (importedArtifactMetrics == null) {
+            dependsOn(packageCodexAgentSwiftPackageBinary, distribution.verifyCodexAgentSwiftPackage)
+            archiveFile.set(packageCodexAgentSwiftPackageBinary.flatMap { it.archiveFile })
+            deviceBinary.set(distribution.releaseXCFrameworkDirectory.map {
+                it.file("ios-arm64/CodexAgent.framework/CodexAgent")
+            })
+            applicationDirectory.set(
+                layout.buildDirectory.dir("CodexAgentTestApp.xcarchive/Products/Applications/CodexAgentTestApp.app"),
+            )
+        } else {
+            importedReport.set(rootProject.layout.projectDirectory.file(importedArtifactMetrics))
+        }
         reportFile.set(layout.buildDirectory.file("reports/ios-release/artifact-metrics.json"))
     }
 
     val swiftPackageChecksumFile = layout.buildDirectory.file("distributions/$swiftPackageArchiveName.sha256")
+    val importedSwiftPackageArchive = providers.environmentVariable("CODEX_AGENT_IMPORTED_SWIFT_ZIP").orNull
     val generateCodexAgentSwiftPackageChecksum =
         tasks.register<GenerateSha256Task>("generateCodexAgentSwiftPackageChecksum") {
-            dependsOn(packageCodexAgentSwiftPackageBinary)
-            inputFile.set(packageCodexAgentSwiftPackageBinary.flatMap { it.archiveFile })
+            if (importedSwiftPackageArchive == null) {
+                dependsOn(packageCodexAgentSwiftPackageBinary)
+                inputFile.set(packageCodexAgentSwiftPackageBinary.flatMap { it.archiveFile })
+            } else {
+                inputFile.set(rootProject.layout.file(providers.provider { rootProject.file(importedSwiftPackageArchive) }))
+            }
             outputFile.set(swiftPackageChecksumFile)
         }
 
@@ -133,7 +156,7 @@ fun Project.registerIosAppleReleaseVerificationTasks(
         expectedCommit.set(candidateCommit)
         version.set(project.version.toString())
         expectedUrl.set(
-            "https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/$swiftPackageArchiveName",
+            "https://github.com/${CodexAgentBuild.REPOSITORY}/releases/download/v${project.version}/$swiftPackageArchiveName",
         )
         repositoryDirectory.set(rootProject.layout.projectDirectory)
         archiveFile.set(packageCodexAgentSwiftPackageBinary.flatMap { it.archiveFile })
@@ -152,7 +175,7 @@ fun Project.registerIosAppleReleaseVerificationTasks(
             manifest.set(rootProject.layout.projectDirectory.file("Package.swift"))
             checksumFile.set(swiftPackageChecksumFile)
             expectedUrl.set(
-                "https://github.com/ciurlaro/codex-agent/releases/download/v${project.version}/$swiftPackageArchiveName",
+                "https://github.com/${CodexAgentBuild.REPOSITORY}/releases/download/v${project.version}/$swiftPackageArchiveName",
             )
         }
 

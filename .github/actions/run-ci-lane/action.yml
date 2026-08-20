@@ -1,0 +1,520 @@
+name: Run one incremental CI lane
+description: Restore or execute one Git-input-bound lane and upload its strict receipt.
+inputs:
+  lane:
+    required: true
+  plan-artifact:
+    required: true
+  validation-commit:
+    required: true
+  validation-tree:
+    required: true
+  build:
+    default: ""
+  test:
+    default: ""
+  metadata:
+    default: ""
+  node-version:
+    default: none
+  rust-version:
+    default: none
+  xcode-version:
+    default: none
+  force-build:
+    default: "false"
+  reuse-only:
+    description: Check and transport exact full or production reuse without executing the lane.
+    default: "false"
+  reuse-disabled:
+    description: Execute from already transported inputs without another remote reuse lookup.
+    default: "false"
+  producer-identities:
+    description: Optional directory containing exact auxiliary producer identity manifests.
+    default: ""
+  production-prepared:
+    description: Trust already transported production bytes in the current workspace.
+    default: "false"
+  record-producer-role:
+    description: Optional producer role to capture into producer-identities before reuse.
+    default: ""
+outputs:
+  artifact_name:
+    value: ${{ steps.identity.outputs.artifact_name }}
+  reused:
+    value: ${{ steps.reuse.outputs.reused }}
+  production_reused:
+    value: ${{ steps.production.outputs.reused }}
+runs:
+  using: composite
+  steps:
+    - name: Reject incompatible reuse controls
+      env:
+        LANE: ${{ inputs.lane }}
+        PREPARED_PRODUCTION: ${{ inputs.production-prepared }}
+        PRODUCER_IDENTITIES: ${{ inputs.producer-identities }}
+        REUSE_DISABLED: ${{ inputs.reuse-disabled }}
+        REUSE_ONLY: ${{ inputs.reuse-only }}
+      shell: bash
+      run: |
+        if [ "$PREPARED_PRODUCTION" = true ]; then
+          test "$LANE" = desktop-linux-arm64
+          test "$REUSE_DISABLED" = true
+          test "$REUSE_ONLY" != true
+          test -n "$PRODUCER_IDENTITIES"
+        fi
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: ${{ inputs.plan-artifact }}
+        path: build/ci
+    - id: cache-policy
+      env:
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      shell: bash
+      run: >-
+        python3 ci/cache_seed.py policy --plan build/ci/impact-plan.json
+        --lane "${{ inputs.lane }}" --validation-commit "${{ inputs.validation-commit }}"
+        --runner-os "$RUNNER_OS" --runner-arch "$RUNNER_ARCH"
+        --github-output "$GITHUB_OUTPUT"
+    - id: setup-kmp
+      uses: ./.github/actions/setup-kmp
+      with:
+        cache-read-only: ${{ inputs.reuse-only == 'true' || steps.cache-policy.outputs.write != 'true' }}
+        node-version: ${{ inputs.node-version != 'none' && inputs.node-version || '' }}
+        xcode-fingerprint: ${{ inputs.xcode-version != 'none' && 'auto' || 'none' }}
+    - id: selection
+      shell: bash
+      run: >-
+        python3 ci/lane_selection.py --plan build/ci/impact-plan.json --lane "${{ inputs.lane }}"
+        --github-output "$GITHUB_OUTPUT"
+    - if: inputs.rust-version != 'none'
+      uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+      with:
+        toolchain: ${{ inputs.rust-version }}
+        components: llvm-tools-preview,rust-src
+        targets: aarch64-apple-ios,aarch64-apple-ios-sim
+    - id: setup-sccache
+      if: inputs.rust-version != 'none'
+      uses: ./.github/actions/setup-sccache
+      with:
+        write: ${{ steps.cache-policy.outputs.rust-write }}
+    - id: environment
+      env:
+        NODE_REQUESTED: ${{ inputs.node-version }}
+        RUST_REQUESTED: ${{ inputs.rust-version }}
+        XCODE_REQUESTED: ${{ inputs.xcode-version }}
+      shell: bash
+      run: |
+        gradle_output=$(./gradlew --version --no-daemon)
+        gradle=$(printf '%s\n' "$gradle_output" | tr -d '\r' | awk '/^Gradle / { print $2; exit }')
+        kotlin=$(awk -F'"' '/^kotlin = / { print $2; exit }' gradle/libs.versions.toml)
+        java_output=$(java -XshowSettings:properties -version 2>&1)
+        java_runtime=$(printf '%s\n' "$java_output" | tr -d '\r' | awk -F'= ' '/^[[:space:]]*java.runtime.version = / { print $2; exit }')
+        java_vendor=$(printf '%s\n' "$java_output" | tr -d '\r' | awk -F'= ' '/^[[:space:]]*java.vendor = / { print $2; exit }')
+
+        node=unavailable
+        if [ "$NODE_REQUESTED" != none ]; then
+          node=$(node --version | tr -d '\r')
+        fi
+        rustc=unavailable
+        cargo=unavailable
+        if [ "$RUST_REQUESTED" != none ]; then
+          rustc=$(rustc -vV | tr -d '\r' | awk -F': ' '
+            /^release:/ { release=$2 }
+            /^commit-hash:/ { commit=$2 }
+            /^host:/ { host=$2 }
+            END { printf "release=%s;commit=%s;host=%s", release, commit, host }
+          ')
+          cargo=$(cargo --version | tr -d '\r')
+        fi
+        xcode=unavailable
+        swift=unavailable
+        if [ "$XCODE_REQUESTED" != none ]; then
+          xcode=$(xcodebuild -version | tr -d '\r' | awk '{ printf "%s%s", separator, $0; separator=";" } END { print "" }')
+          swift=$(xcrun swift --version | tr '\r\n' '  ' | awk '{$1=$1; print}')
+        fi
+
+        for value in "$gradle" "$kotlin" "$java_runtime" "$java_vendor" "$node" "$rustc" "$cargo" "$xcode" "$swift"; do
+          test -n "$value"
+          case "$value" in *$'\n'*|*$'\r'*) exit 1 ;; esac
+        done
+        image=${ImageOS:-unavailable}
+        image_version=${ImageVersion:-unavailable}
+        {
+          printf 'runner-os=%s\nrunner-arch=%s\nrunner-image=%s\nrunner-image-version=%s\n' \
+            "$RUNNER_OS" "$RUNNER_ARCH" "$image" "$image_version"
+          printf 'gradle=%s\nkotlin-plugin=%s\njava-runtime=%s\njava-vendor=%s\n' \
+            "$gradle" "$kotlin" "$java_runtime" "$java_vendor"
+          printf 'node=%s\nrustc=%s\ncargo=%s\nxcode=%s\nswift=%s\n' \
+            "$node" "$rustc" "$cargo" "$xcode" "$swift"
+        } >> "$GITHUB_OUTPUT"
+        {
+          printf 'CODEX_CI_RUNNER_OS=%s\nCODEX_CI_RUNNER_ARCH=%s\nCODEX_CI_RUNNER_IMAGE=%s\nCODEX_CI_RUNNER_IMAGE_VERSION=%s\n' \
+            "$RUNNER_OS" "$RUNNER_ARCH" "$image" "$image_version"
+          printf 'CODEX_CI_GRADLE=%s\nCODEX_CI_KOTLIN_PLUGIN=%s\nCODEX_CI_JAVA_RUNTIME=%s\nCODEX_CI_JAVA_VENDOR=%s\n' \
+            "$gradle" "$kotlin" "$java_runtime" "$java_vendor"
+          printf 'CODEX_CI_NODE=%s\nCODEX_CI_RUSTC=%s\nCODEX_CI_CARGO=%s\nCODEX_CI_XCODE=%s\nCODEX_CI_SWIFT=%s\n' \
+            "$node" "$rustc" "$cargo" "$xcode" "$swift"
+        } >> "$GITHUB_ENV"
+    - name: Capture the exact auxiliary producer identity
+      if: inputs.record-producer-role != ''
+      env:
+        PRODUCER_IDENTITIES: ${{ inputs.producer-identities }}
+        PRODUCER_ROLE: ${{ inputs.record-producer-role }}
+      shell: bash
+      run: |
+        test -n "$PRODUCER_IDENTITIES"
+        python3 ci/runner_identity.py record --role "$PRODUCER_ROLE" \
+          --output "$PRODUCER_IDENTITIES/$PRODUCER_ROLE.json"
+    - id: producer-identities
+      if: inputs.producer-identities != ''
+      env:
+        PRODUCER_IDENTITIES: ${{ inputs.producer-identities }}
+      shell: bash
+      run: >-
+        python3 ci/runner_identity.py bind --directory "$PRODUCER_IDENTITIES"
+        --github-output "$GITHUB_OUTPUT"
+    - id: reuse
+      env:
+        ARM_PRODUCER_IDENTITY: ${{ steps.producer-identities.outputs.arm_digest }}
+        DISABLE_REUSE: ${{ inputs.reuse-disabled }}
+        GITHUB_TOKEN: ${{ github.token }}
+        LANE: ${{ inputs.lane }}
+        RUNNER_ARCH: ${{ steps.environment.outputs.runner-arch }}
+        RUNNER_IMAGE: ${{ steps.environment.outputs.runner-image }}
+        RUNNER_IMAGE_VERSION: ${{ steps.environment.outputs.runner-image-version }}
+        RUNNER_OS: ${{ steps.environment.outputs.runner-os }}
+        GRADLE_VERSION: ${{ steps.environment.outputs.gradle }}
+        KOTLIN_PLUGIN_VERSION: ${{ steps.environment.outputs.kotlin-plugin }}
+        JAVA_RUNTIME: ${{ steps.environment.outputs.java-runtime }}
+        JAVA_VENDOR: ${{ steps.environment.outputs.java-vendor }}
+        NODE_VERSION: ${{ steps.environment.outputs.node }}
+        RUST_VERSION: ${{ steps.environment.outputs.rustc }}
+        CARGO_VERSION: ${{ steps.environment.outputs.cargo }}
+        XCODE_VERSION: ${{ steps.environment.outputs.xcode }}
+        SWIFT_VERSION: ${{ steps.environment.outputs.swift }}
+        X64_PRODUCER_IDENTITY: ${{ steps.producer-identities.outputs.x64_digest }}
+      shell: bash
+      run: |
+        if [ "$DISABLE_REUSE" = true ]; then
+          printf 'reused=false\nmode=full\nreason=disabled\n' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        producer_toolchain=()
+        if [ -n "$ARM_PRODUCER_IDENTITY$X64_PRODUCER_IDENTITY" ]; then
+          test -n "$ARM_PRODUCER_IDENTITY" && test -n "$X64_PRODUCER_IDENTITY"
+          producer_toolchain=(
+            --toolchain "producerLinuxArm64Supervisor=$ARM_PRODUCER_IDENTITY"
+            --toolchain "producerLinuxX64CrossBuilder=$X64_PRODUCER_IDENTITY"
+          )
+        fi
+        python3 ci/reuse.py --plan build/ci/impact-plan.json --lane "$LANE" \
+          --destination build/ci/reuse/full --mode full --github-output "$GITHUB_OUTPUT" \
+          --runner "os=$RUNNER_OS" --runner "arch=$RUNNER_ARCH" --runner "image=$RUNNER_IMAGE" \
+          --runner "imageVersion=$RUNNER_IMAGE_VERSION" \
+          --toolchain "gradle=$GRADLE_VERSION" --toolchain "kotlinPlugin=$KOTLIN_PLUGIN_VERSION" \
+          --toolchain "javaRuntime=$JAVA_RUNTIME" --toolchain "javaVendor=$JAVA_VENDOR" \
+          --toolchain "node=$NODE_VERSION" --toolchain "rustc=$RUST_VERSION" --toolchain "cargo=$CARGO_VERSION" \
+          --toolchain "xcode=$XCODE_VERSION" --toolchain "swift=$SWIFT_VERSION" \
+          "${producer_toolchain[@]}"
+    - name: Verify transported full-reuse producer identities
+      if: steps.reuse.outputs.reused == 'true' && inputs.producer-identities != ''
+      env:
+        EXPECTED: ${{ inputs.producer-identities }}
+      shell: bash
+      run: >-
+        python3 ci/runner_identity.py verify --expected "$EXPECTED"
+        --actual build/ci/reuse/full/payload/build/ci/linux-arm64-producer-identities
+    - id: production
+      if: steps.reuse.outputs.reused != 'true'
+      env:
+        ARM_PRODUCER_IDENTITY: ${{ steps.producer-identities.outputs.arm_digest }}
+        DISABLE_REUSE: ${{ inputs.reuse-disabled }}
+        GITHUB_TOKEN: ${{ github.token }}
+        LANE: ${{ inputs.lane }}
+        RUNNER_ARCH: ${{ steps.environment.outputs.runner-arch }}
+        RUNNER_IMAGE: ${{ steps.environment.outputs.runner-image }}
+        RUNNER_IMAGE_VERSION: ${{ steps.environment.outputs.runner-image-version }}
+        RUNNER_OS: ${{ steps.environment.outputs.runner-os }}
+        GRADLE_VERSION: ${{ steps.environment.outputs.gradle }}
+        KOTLIN_PLUGIN_VERSION: ${{ steps.environment.outputs.kotlin-plugin }}
+        JAVA_RUNTIME: ${{ steps.environment.outputs.java-runtime }}
+        JAVA_VENDOR: ${{ steps.environment.outputs.java-vendor }}
+        NODE_VERSION: ${{ steps.environment.outputs.node }}
+        RUST_VERSION: ${{ steps.environment.outputs.rustc }}
+        CARGO_VERSION: ${{ steps.environment.outputs.cargo }}
+        XCODE_VERSION: ${{ steps.environment.outputs.xcode }}
+        SWIFT_VERSION: ${{ steps.environment.outputs.swift }}
+        PRODUCTION_PREPARED: ${{ inputs.production-prepared }}
+        X64_PRODUCER_IDENTITY: ${{ steps.producer-identities.outputs.x64_digest }}
+      shell: bash
+      run: |
+        if [ "$PRODUCTION_PREPARED" = true ]; then
+          printf 'reused=true\nmode=production\nreason=prepared\n' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [ "$DISABLE_REUSE" = true ]; then
+          printf 'reused=false\nmode=production\nreason=disabled\n' >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        producer_toolchain=()
+        if [ -n "$ARM_PRODUCER_IDENTITY$X64_PRODUCER_IDENTITY" ]; then
+          test -n "$ARM_PRODUCER_IDENTITY" && test -n "$X64_PRODUCER_IDENTITY"
+          producer_toolchain=(
+            --toolchain "producerLinuxArm64Supervisor=$ARM_PRODUCER_IDENTITY"
+            --toolchain "producerLinuxX64CrossBuilder=$X64_PRODUCER_IDENTITY"
+          )
+        fi
+        python3 ci/reuse.py --plan build/ci/impact-plan.json --lane "$LANE" \
+          --destination build/ci/reuse/production --mode production --github-output "$GITHUB_OUTPUT" \
+          --runner "os=$RUNNER_OS" --runner "arch=$RUNNER_ARCH" --runner "image=$RUNNER_IMAGE" \
+          --runner "imageVersion=$RUNNER_IMAGE_VERSION" \
+          --toolchain "gradle=$GRADLE_VERSION" --toolchain "kotlinPlugin=$KOTLIN_PLUGIN_VERSION" \
+          --toolchain "javaRuntime=$JAVA_RUNTIME" --toolchain "javaVendor=$JAVA_VENDOR" \
+          --toolchain "node=$NODE_VERSION" --toolchain "rustc=$RUST_VERSION" --toolchain "cargo=$CARGO_VERSION" \
+          --toolchain "xcode=$XCODE_VERSION" --toolchain "swift=$SWIFT_VERSION" \
+          "${producer_toolchain[@]}"
+    - name: Verify transported production-reuse producer identities
+      if: >-
+        inputs.production-prepared != 'true' && steps.production.outputs.reused == 'true' &&
+        inputs.producer-identities != ''
+      env:
+        EXPECTED: ${{ inputs.producer-identities }}
+      shell: bash
+      run: >-
+        python3 ci/runner_identity.py verify --expected "$EXPECTED"
+        --actual build/ci/reuse/production/payload/build/ci/linux-arm64-producer-identities
+    - name: Transport selected production reuse to downstream jobs
+      if: >-
+        inputs.reuse-only == 'true' && steps.reuse.outputs.reused != 'true' &&
+        steps.production.outputs.reused == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        if-no-files-found: error
+        overwrite: true
+        name: codex-agent-arm64-production-transport-${{ inputs.validation-tree }}
+        path: build/ci/reuse/production
+        compression-level: 0
+        retention-days: 1
+    - if: >-
+        inputs.reuse-only != 'true' && inputs.production-prepared != 'true' &&
+        steps.reuse.outputs.reused != 'true' &&
+        steps.production.outputs.reused == 'true'
+      shell: bash
+      run: |
+        cp -R build/ci/reuse/production/payload/. .
+        if [ -d build/ci/reuse/production/payload/maven ]; then
+          printf 'MAVEN_REPOSITORY=%s/build/ci/reuse/production/payload/maven\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+        fi
+    - id: production-execution
+      if: >-
+        inputs.reuse-only != 'true' && steps.reuse.outputs.reused != 'true' &&
+        steps.production.outputs.reused != 'true'
+      continue-on-error: true
+      env:
+        CI_LANE_BUILD: 'true'
+        CI_LANE_TEST: 'false'
+        CI_LANE_METADATA: 'false'
+        CI_NODE_JS_REQUIRED: ${{ steps.selection.outputs.node_js }}
+        CI_NODE_WASM_REQUIRED: ${{ steps.selection.outputs.node_wasm }}
+        CI_PRODUCTION_REUSED: 'false'
+        CI_VALIDATION_COMMIT: ${{ inputs.validation-commit }}
+      shell: bash
+      run: ci/run-lane.sh "${{ inputs.lane }}"
+    - id: execution
+      if: >-
+        inputs.reuse-only != 'true' && steps.reuse.outputs.reused != 'true' &&
+        steps.production-execution.outcome != 'failure' &&
+        (inputs.force-build == 'true' || steps.selection.outputs.test == 'true' ||
+        steps.selection.outputs.metadata == 'true' ||
+        (steps.selection.outputs.build != 'true' && steps.production.outputs.reused != 'true'))
+      continue-on-error: true
+      env:
+        CI_LANE_BUILD: 'false'
+        CI_LANE_TEST: ${{ inputs.force-build == 'true' || steps.selection.outputs.test == 'true' }}
+        CI_LANE_METADATA: ${{ steps.selection.outputs.metadata }}
+        CI_NODE_JS_REQUIRED: ${{ steps.selection.outputs.node_js }}
+        CI_NODE_WASM_REQUIRED: ${{ steps.selection.outputs.node_wasm }}
+        CI_PRODUCTION_REUSED: 'true'
+        CI_VALIDATION_COMMIT: ${{ inputs.validation-commit }}
+      shell: bash
+      run: ci/run-lane.sh "${{ inputs.lane }}"
+    - name: Stage reusable production after a later validation failure
+      if: >-
+        inputs.reuse-only != 'true' && steps.reuse.outputs.reused != 'true' &&
+        (inputs.production-prepared == 'true' || steps.production-execution.outcome == 'success') &&
+        steps.execution.outcome == 'failure'
+      env:
+        LANE: ${{ inputs.lane }}
+        TREE: ${{ inputs.validation-tree }}
+        CI_NODE_JS_REQUIRED: ${{ steps.selection.outputs.node_js }}
+        CI_NODE_WASM_REQUIRED: ${{ steps.selection.outputs.node_wasm }}
+      shell: bash
+      run: |
+        producer=()
+        [ -z "${{ inputs.producer-identities }}" ] || producer=(--producer-identities "${{ inputs.producer-identities }}")
+        python3 ci/stage.py --plan build/ci/impact-plan.json --lane "$LANE" \
+          --output build/ci/production-lane \
+          --artifact-name "codex-agent-ci-$LANE-production-$TREE" --production-only \
+          "${producer[@]}"
+    - name: Upload reusable production after a later validation failure
+      if: >-
+        inputs.reuse-only != 'true' && steps.reuse.outputs.reused != 'true' &&
+        (inputs.production-prepared == 'true' || steps.production-execution.outcome == 'success') &&
+        steps.execution.outcome == 'failure'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        if-no-files-found: error
+        overwrite: true
+        name: codex-agent-ci-${{ inputs.lane }}-production-${{ inputs.validation-tree }}
+        path: build/ci/production-lane
+        compression-level: 0
+        retention-days: 90
+    - name: Report the exact SwiftPM checksum repair after preservation
+      if: >-
+        inputs.reuse-only != 'true' && steps.reuse.outputs.reused != 'true' &&
+        steps.production-execution.outcome == 'success' && steps.execution.outcome == 'failure' &&
+        inputs.lane == 'ios-package'
+      shell: bash
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        archives=(build/ci/production-lane/payload/codex-agent-runtime-ios/build/distributions/CodexAgent-*.xcframework.zip)
+        test "${#archives[@]}" -eq 1
+        checksum=$(swift package compute-checksum "${archives[0]}")
+        [[ "$checksum" =~ ^[0-9a-f]{64}$ ]]
+        sha256=$(shasum -a 256 "${archives[0]}" | awk '{print $1}')
+        test "$checksum" = "$sha256"
+        printf '%s\n' "Apply: \`perl -0pi -e 's/(?<=checksum: \")[0-9a-f]{64}(?=\")/$checksum/' Package.swift\`" >> "$GITHUB_STEP_SUMMARY"
+    - if: >-
+        inputs.reuse-only != 'true' && steps.reuse.outputs.reused != 'true' &&
+        steps.production-execution.outcome != 'failure' && steps.execution.outcome != 'failure'
+      env:
+        LANE: ${{ inputs.lane }}
+        PREPARED_PRODUCTION: ${{ inputs.production-prepared }}
+        TREE: ${{ inputs.validation-tree }}
+        PRODUCTION_REUSED: ${{ steps.production.outputs.reused }}
+        PRODUCER_IDENTITIES: ${{ inputs.producer-identities }}
+        CI_NODE_JS_REQUIRED: ${{ steps.selection.outputs.node_js }}
+        CI_NODE_WASM_REQUIRED: ${{ steps.selection.outputs.node_wasm }}
+      shell: bash
+      run: |
+        restored=()
+        if [ "$PRODUCTION_REUSED" = true ] && [ "$PREPARED_PRODUCTION" != true ]; then
+          restored=(--restored-production build/ci/reuse/production)
+        fi
+        forced=()
+        if [ "$PREPARED_PRODUCTION" = true ] && [ "${{ steps.selection.outputs.build }}" != true ]; then
+          forced=(--force-production)
+        elif [ "${{ inputs.force-build }}" = true ] || {
+          [ "${{ steps.selection.outputs.test }}" = true ] &&
+          [ "${{ steps.selection.outputs.build }}" != true ] && [ "$PRODUCTION_REUSED" != true ]
+        }; then
+          forced=(--force-build)
+        elif [ "${{ steps.selection.outputs.build }}" != true ] && [ "$PRODUCTION_REUSED" != true ]; then
+          forced=(--force-production)
+        fi
+        producer=()
+        [ -z "$PRODUCER_IDENTITIES" ] || producer=(--producer-identities "$PRODUCER_IDENTITIES")
+        python3 ci/stage.py --plan build/ci/impact-plan.json --lane "$LANE" \
+          --output build/ci/lane --artifact-name "codex-agent-ci-$LANE-$TREE" \
+          "${restored[@]}" "${forced[@]}" "${producer[@]}"
+    - id: identity
+      if: >-
+        steps.reuse.outputs.reused == 'true' ||
+        (inputs.reuse-only != 'true' &&
+        steps.production-execution.outcome != 'failure' && steps.execution.outcome != 'failure')
+      env:
+        REUSED: ${{ steps.reuse.outputs.reused }}
+        REUSED_NAME: ${{ steps.reuse.outputs.artifact_name }}
+        LANE: ${{ inputs.lane }}
+        TREE: ${{ inputs.validation-tree }}
+      shell: bash
+      run: |
+        if [ "$REUSED" = true ]; then
+          printf 'artifact_name=%s\npath=build/ci/reuse/full\n' "$REUSED_NAME" >> "$GITHUB_OUTPUT"
+        else
+          printf 'artifact_name=codex-agent-ci-%s-%s\npath=build/ci/lane\n' "$LANE" "$TREE" >> "$GITHUB_OUTPUT"
+        fi
+    - if: >-
+        steps.reuse.outputs.reused == 'true' ||
+        (inputs.reuse-only != 'true' &&
+        steps.production-execution.outcome != 'failure' && steps.execution.outcome != 'failure')
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        if-no-files-found: error
+        overwrite: true
+        name: ${{ steps.identity.outputs.artifact_name }}
+        path: ${{ steps.identity.outputs.path }}
+        compression-level: 0
+        retention-days: 90
+    - name: Stage the elected KMP dependency seed
+      if: inputs.reuse-only != 'true' && steps.cache-policy.outputs.seed == 'true'
+      continue-on-error: true
+      shell: bash
+      run: >-
+        python3 ci/cache_seed.py create --plan build/ci/impact-plan.json
+        --root build/ci/cache-seed-kmp --kind kmp
+        --artifact-name "${{ steps.cache-policy.outputs.seed-artifact }}"
+        --repository "$GITHUB_REPOSITORY" --event "$GITHUB_EVENT_NAME"
+        --validation-commit "${{ inputs.validation-commit }}"
+        --validation-tree "${{ inputs.validation-tree }}"
+        --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+        --lane "${{ inputs.lane }}" --runner-os "$RUNNER_OS" --runner-arch "$RUNNER_ARCH"
+        --cache-key "gradle=${{ steps.setup-kmp.outputs.gradle-main-cache-key }}"
+        --cache-key "konan=${{ steps.setup-kmp.outputs.konan-main-cache-key }}"
+    - if: inputs.reuse-only != 'true' && steps.cache-policy.outputs.seed == 'true'
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        if-no-files-found: error
+        overwrite: false
+        include-hidden-files: true
+        name: ${{ steps.cache-policy.outputs.seed-artifact }}
+        path: build/ci/cache-seed-kmp
+        compression-level: 0
+        retention-days: 90
+    - name: Stage the elected Cargo dependency seed
+      if: inputs.reuse-only != 'true' && steps.cache-policy.outputs.rust-seed == 'true'
+      continue-on-error: true
+      shell: bash
+      run: >-
+        python3 ci/cache_seed.py create --plan build/ci/impact-plan.json
+        --root build/ci/cache-seed-cargo --kind cargo
+        --artifact-name "${{ steps.cache-policy.outputs.rust-seed-artifact }}"
+        --repository "$GITHUB_REPOSITORY" --event "$GITHUB_EVENT_NAME"
+        --validation-commit "${{ inputs.validation-commit }}"
+        --validation-tree "${{ inputs.validation-tree }}"
+        --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+        --lane "${{ inputs.lane }}" --runner-os "$RUNNER_OS" --runner-arch "$RUNNER_ARCH"
+        --cache-key "cargo=${{ steps.setup-sccache.outputs.cargo-main-cache-key }}"
+    - if: inputs.reuse-only != 'true' && steps.cache-policy.outputs.rust-seed == 'true'
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        if-no-files-found: error
+        overwrite: false
+        include-hidden-files: true
+        name: ${{ steps.cache-policy.outputs.rust-seed-artifact }}
+        path: build/ci/cache-seed-cargo
+        compression-level: 0
+        retention-days: 90
+    - if: inputs.reuse-only != 'true' && always() && runner.os == 'macOS'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        if-no-files-found: ignore
+        overwrite: true
+        name: codex-agent-diagnostics-${{ inputs.lane }}-${{ inputs.validation-tree }}-${{ github.run_attempt }}
+        path: |
+          **/build/reports/**
+          **/build/test-results/**
+          **/*.xcresult/**
+          **/*summary*.json
+        compression-level: 6
+        retention-days: 30
+    - name: Fail after preserving reusable production and diagnostics
+      if: >-
+        inputs.reuse-only != 'true' && always() && steps.reuse.outputs.reused != 'true' &&
+        (steps.production-execution.outcome == 'failure' || steps.execution.outcome == 'failure')
+      shell: bash
+      run: exit 1

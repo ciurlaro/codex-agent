@@ -21,6 +21,8 @@ data class IosAppleDistributionTasks(
 fun Project.registerIosAppleDistributionTasks(
     expectedSwiftTestCount: Int,
     pinnedRustToolchain: String,
+    importedDeviceFramework: TaskProvider<ImportCodexAgentFrameworkTask>?,
+    importedSimulatorFramework: TaskProvider<ImportCodexAgentFrameworkTask>?,
 ): IosAppleDistributionTasks {
     val appleDistributionDirectory = layout.buildDirectory.dir("apple-distribution")
     val assembledXCFrameworkDirectory = layout.buildDirectory.dir("XCFrameworks/release/CodexAgent.xcframework")
@@ -35,9 +37,19 @@ fun Project.registerIosAppleDistributionTasks(
         "codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt",
     )
 
+    val assembleDependency: Any = if (importedDeviceFramework != null && importedSimulatorFramework != null) {
+        tasks.register<AssembleImportedCodexAgentXCFrameworkTask>("assembleCodexAgentReleaseXCFrameworkFromImports") {
+            dependsOn(importedDeviceFramework, importedSimulatorFramework)
+            deviceFrameworkDirectory.set(importedDeviceFramework.flatMap { it.importedFrameworkDirectory })
+            simulatorFrameworkDirectory.set(importedSimulatorFramework.flatMap { it.importedFrameworkDirectory })
+            xcframeworkDirectory.set(assembledXCFrameworkDirectory)
+        }
+    } else {
+        "assembleCodexAgentReleaseXCFramework"
+    }
     val prepareCodexAgentReleaseXCFramework =
         tasks.register<PrepareCodexAgentReleaseXCFrameworkTask>("prepareCodexAgentReleaseXCFramework") {
-            dependsOn("assembleCodexAgentReleaseXCFramework")
+            dependsOn(assembleDependency)
             this.assembledXCFrameworkDirectory.set(assembledXCFrameworkDirectory)
             privacyManifest.set(privacyManifestFile)
             forbiddenAbsolutePathPrefixes.set(iosReleaseAbsolutePathPrefixes(pinnedRustToolchain))
@@ -82,10 +94,13 @@ fun Project.registerIosAppleDistributionTasks(
         tasks.register<VerifySwiftAuthenticationTestsTask>("verifyCodexAgentSwiftAuthenticationTests") {
             dependsOn(stageCodexAgentAppleDistribution)
             packageDirectory.set(appleDistributionDirectory.map { it.dir("CodexAgentPackage") })
+            providers.environmentVariable("CODEX_AGENT_SWIFT_COMPILATION_DIRECTORY").orNull?.let {
+                compiledProductsDirectory.set(layout.dir(providers.provider { file(it) }))
+            }
             runtimeName.set("iOS 26.5")
             deviceTypeIdentifier.set("com.apple.CoreSimulator.SimDeviceType.iPhone-17")
             this.expectedTestCount.set(expectedSwiftTestCount)
-            derivedDataDirectory.set(layout.buildDirectory.dir("swift-tests-derived-data"))
+            derivedDataDirectory.set(layout.buildDirectory.dir("swift-simulator-compilation-derived-data"))
             simulatorDevicesFile.set(layout.buildDirectory.file("simulator-devices.json"))
             resultBundleDirectory.set(layout.buildDirectory.dir("swift-authentication-tests.xcresult"))
             summaryFile.set(layout.buildDirectory.file("swift-authentication-tests-summary.json"))

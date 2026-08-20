@@ -1,0 +1,4 @@
+codex-agent-runtime-ios/apple/Sources/**/PrivacyInfo.xcprivacy
+codex-agent-runtime-ios/native/**
+gradle/build-logic/src/main/kotlin/IosPrivacy*.kt
+gradle/build-logic/src/main/kotlin/PrivacyReleaseVerificationTasks.kt

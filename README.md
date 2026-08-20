@@ -39,11 +39,11 @@ general-purpose shell.
 ## Coordinates
 
 ```kotlin
-implementation("io.github.ciurlaro:codex-agent-client:0.2.0")
-implementation("io.github.ciurlaro:codex-agent-runtime-android:0.2.0")
-implementation("io.github.ciurlaro:codex-agent-runtime-ios:0.2.0")
-implementation("io.github.ciurlaro:codex-agent-runtime-desktop:0.2.0")
-implementation("io.github.ciurlaro:codex-agent-runtime-node:0.2.0")
+implementation("io.github.codex-agent-labs:codex-agent-client:0.2.0")
+implementation("io.github.codex-agent-labs:codex-agent-runtime-android:0.2.0")
+implementation("io.github.codex-agent-labs:codex-agent-runtime-ios:0.2.0")
+implementation("io.github.codex-agent-labs:codex-agent-runtime-desktop:0.2.0")
+implementation("io.github.codex-agent-labs:codex-agent-runtime-node:0.2.0")
 ```
 
 Version `0.2.0` has not yet been tagged or published.
@@ -239,22 +239,25 @@ Model API network access remains available through the App Server.
 
 ## Release evidence
 
-The exact successful `main` CI run packages the portable runners once, then a
-five-host matrix executes the native desktop, JVM, JS-on-Node, and
-WasmJS-on-Node lifecycle checks against each exact matching classifier. That CI
-run also builds the Android APKs and release AAR once. Candidate Firebase Test
-Lab evidence uses those imported binaries on an ARM virtual device, so no
-connected physical phone is required. Apple host tests and device/simulator
-slices run independently; CI verifies and exports their whole distribution
-once for candidate import.
+An unlabeled pull request runs only lightweight workflow and impact checks.
+Adding `merge-ready` validates the prospective merge tree and runs only its
+affected product, platform, and consumer lanes. Successful lanes from an
+earlier run of the same pull request may be reused; `ci:full` may add work but
+never suppresses required work. A merge group reuses the pull-request result
+when its Git tree is identical, otherwise it reevaluates the changed base and
+runs the newly affected lanes.
 
-A protected candidate is created from a `candidate/v<version>-rc.N` tag on an
-exact successful `main` commit. Candidate assembly and publication consume the
-recorded CI artifacts rather than rebuilding them. Protected environments hold
-signing and publication credentials and require their configured approvals.
-Reruns reuse logically matching successful work; they do not require two
-independent builds to be byte-identical. Integrity hashes and signatures still
-bind every artifact that is actually promoted.
+A push to `main` only promotes equal-tree validation receipts, their exact
+GitHub-hosted artifacts, and selected cache seeds; it never compiles or tests.
+A protected `candidate/v<version>-rc.N` tag consumes those promoted bytes and
+performs verification, signing, sidecar generation, and release assembly only.
+Publication consumes the exact candidate bytes. Protected environments hold
+the Android evidence, signing, and publication authority.
+
+Git commit, tree, and blob identities determine whether inputs changed.
+Checksums remain only where a format or integrity boundary requires them; they
+never decide whether source changed, whether a lane must run, or whether two
+independent builds are equivalent.
 
 See [protocol provenance](docs/PROTOCOL.md), the
 [iOS runtime design](docs/RUNTIME_IOS.md), the

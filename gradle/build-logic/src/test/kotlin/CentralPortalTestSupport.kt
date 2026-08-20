@@ -11,7 +11,7 @@ internal const val CENTRAL_API = "https://central.example/api/v1/publisher"
 internal const val CENTRAL_ID = "28570f16-da32-4c14-bd2e-c1acc0782365"
 internal const val CENTRAL_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 internal const val CENTRAL_ANDROID_AAR_ENTRY =
-    "io/github/ciurlaro/codex-agent-runtime-android/0.2.0/codex-agent-runtime-android-0.2.0.aar"
+    "io/github/codex-agent-labs/codex-agent-runtime-android/0.2.0/codex-agent-runtime-android-0.2.0.aar"
 internal val CENTRAL_ANDROID_AAR_BYTES = zipBytes(mapOf(AAR_RUNTIME_ENTRY to FIXTURE_ANDROID_RUNTIME_BYTES))
 internal val CENTRAL_ENTRIES = linkedMapOf(
     CENTRAL_ANDROID_AAR_ENTRY to CENTRAL_ANDROID_AAR_BYTES,

@@ -113,7 +113,7 @@ internal class CandidateRuntimeReleaseFixture(
     fun writeCentralBundle(output: File, runtime: ByteArray = androidRuntime): File = output.apply {
         parentFile.mkdirs()
         nodeEvidenceWriteZip(mapOf(
-            "io/github/ciurlaro/codex-agent-runtime-android/$version/" +
+            "io/github/codex-agent-labs/codex-agent-runtime-android/$version/" +
                 "codex-agent-runtime-android-$version.aar" to zipBytes(mapOf(AAR_RUNTIME_ENTRY to runtime)),
         ))
     }
@@ -131,7 +131,7 @@ internal class CandidateRuntimeReleaseFixture(
         val archive = classifiers.getValue(target)
         buildJsonObject {
             put("path", JsonPrimitive(
-                "io/github/ciurlaro/codex-agent-runtime-desktop/$version/" +
+                "io/github/codex-agent-labs/codex-agent-runtime-desktop/$version/" +
                     "codex-agent-runtime-desktop-$version-${spec.classifier}.zip",
             ))
             put("bytes", JsonPrimitive(archive.length()))

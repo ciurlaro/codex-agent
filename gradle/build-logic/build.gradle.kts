@@ -1,6 +1,8 @@
 import java.io.File as JavaFile
 import java.io.Serializable
+import org.gradle.api.file.DuplicatesStrategy
 import org.gradle.api.provider.Provider
+import org.gradle.jvm.tasks.Jar
 import org.gradle.api.tasks.testing.Test
 import org.gradle.process.CommandLineArgumentProvider
 
@@ -26,6 +28,115 @@ dependencies {
     testImplementation(kotlin("test-junit"))
 }
 tasks.withType<Test>().configureEach { maxParallelForks = 2 }
+
+val releaseToolingRuntime by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = true
+}
+dependencies.add(releaseToolingRuntime.name, libs.kotlinx.serialization.json)
+val releaseToolingClasses = listOf(
+    "AndroidRuntimeEvidenceFilesKt",
+    "AndroidRuntimeEvidenceSupportKt",
+    "AppleArtifactMetrics",
+    "AppleNativeTestCommand",
+    "AppleNativeTestsIdentity",
+    "AppleReleaseCheckTasksKt",
+    "AppleRustEvidenceIdentity",
+    "AppleRustSliceModelKt",
+    "AppleRustSliceSpec",
+    "BoundProducedEvidence",
+    "BoundRuntimeEvidence",
+    "CandidateCiProvenanceKt",
+    "CandidateInputFiles",
+    "CandidateIosNativeEvidenceKt",
+    "CandidateManifestValidationKt",
+    "CandidateModelKt",
+    "CandidatePayloadTasksKt",
+    "CandidateRuntimeEvidenceKt",
+    "CentralBundleTasksKt",
+    "CentralDeployment",
+    "CentralExpectedFile",
+    "CentralIdentity",
+    "CentralPortalHttpKt",
+    "CentralPortalRecordKt",
+    "CentralPortalRequest",
+    "CentralPortalResponse",
+    "CentralPortalTaskKt",
+    "CentralPortalVerificationKt",
+    "DeploymentTargetRecord",
+    "DesktopClassifierInspectionKt",
+    "DesktopClassifierProof",
+    "DesktopCodexDistributionSpec",
+    "DesktopCodexManifest",
+    "DesktopRuntimeEvidenceTarget",
+    "DesktopRuntimeEvidenceTasksKt",
+    "DesktopRuntimeEvidenceValues",
+    "DesktopRuntimeExecutables",
+    "DesktopRuntimePackageTaskKt",
+    "FirebaseAndroidEvidenceValues",
+    "FirebaseAndroidRuntimeEvidenceModelKt",
+    "FirebaseTestMatrix",
+    "InspectedDesktopClassifier",
+    "IosPrivacyAuditVerificationKt",
+    "IosPrivacyCategory",
+    "IosPrivacyHit",
+    "IosPrivacyPolicy",
+    "IosPrivacyPolicyKt",
+    "IosPrivacyReviewBindingKt",
+    "IosPrivacySignals",
+    "JdkCentralPortalSender",
+    "JvmRuntimeEvidenceModelKt",
+    "JvmRuntimeEvidenceValues",
+    "KmpConsumerVerificationTaskKt",
+    "MavenArtifactSpec",
+    "MavenRepositoryTasksKt",
+    "NodeRuntimeEvidenceModelKt",
+    "NodeRuntimeEvidenceValues",
+    "PrivacyReleaseVerificationTasksKt",
+    "PromotedCandidateInputs",
+    "PromotedCandidateTasksKt",
+    "PromotedIosEvidence",
+    "PromotedLane",
+    "PromotedRuntimeEvidence",
+    "PromotedRustProof",
+    "ReleaseIoKt",
+    "ReleaseToolingArguments",
+    "ReleaseToolingCliKt",
+    "ReviewedPrivacyApi",
+    "TransportProducerIdentity",
+    "TransportedRuntimeEvidence",
+)
+val releaseToolingJar = tasks.register<Jar>("releaseToolingJar") {
+    group = "build"
+    description = "Packages the no-Gradle release CLI used by candidate and publication runners."
+    dependsOn(tasks.named("classes"))
+    archiveFileName.set("codex-agent-release-tooling.jar")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+    manifest.attributes["Main-Class"] = "ReleaseToolingCliKt"
+    from(sourceSets.main.get().output) {
+        include(releaseToolingClasses.map { "$it*.class" })
+    }
+    from(provider {
+        releaseToolingRuntime.filter { dependency ->
+            dependency.name.startsWith("kotlin-stdlib-") ||
+                dependency.name.startsWith("kotlinx-serialization-core-jvm-") ||
+                dependency.name.startsWith("kotlinx-serialization-json-jvm-")
+        }.map(::zipTree)
+    })
+    exclude(
+        "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/gradle-plugins/**",
+        "gradle/**", "Codexagent_*",
+    )
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(releaseToolingJar)
+    doFirst {
+        systemProperty("codexAgent.releaseToolingJar", releaseToolingJar.get().archiveFile.get().asFile)
+    }
+}
 
 val candidateCommit = providers.gradleProperty("codexAgent.candidateCommit")
 val bundle = providers.gradleProperty("codexAgent.linuxArm64RuntimeEvidenceBundle").map(::JavaFile)
@@ -60,19 +171,19 @@ tasks.register<JavaExec>("executeLinuxArm64RuntimeEvidenceBundle") {
         layout.buildDirectory.file("reports/desktop-runtime-evidence/desktop-runtime-linuxArm64.json").map { it.asFile })
     val desktopReport = providers.gradleProperty("codexAgent.desktopTestReportOutput").map(::JavaFile).orElse(
         layout.buildDirectory.file("test-results/linuxArm64SplitTest/TEST-linuxArm64Test." +
-            "io.github.ciurlaro.codexmobile.appserver.runtime.DesktopCodexRuntimeTest.xml").map { it.asFile })
+            "io.github.codex_agent_labs.codexmobile.appserver.runtime.DesktopCodexRuntimeTest.xml").map { it.asFile })
     val jvmEvidence = providers.gradleProperty("codexAgent.jvmEvidenceOutput").map(::JavaFile).orElse(
         layout.buildDirectory.file("reports/jvm-runtime-evidence/jvm-runtime-linuxArm64.json").map { it.asFile })
     val nodeEvidence = providers.gradleProperty("codexAgent.nodeEvidenceOutput").map(::JavaFile).orElse(
         layout.buildDirectory.file("reports/node-runtime-evidence/node-runtime-linuxArm64.json").map { it.asFile })
     val nodeReport = providers.gradleProperty("codexAgent.nodeTestReportOutput").map(::JavaFile).orElse(
         layout.buildDirectory.file("test-results/linuxArm64NodeSplitTest/TEST-nodeRuntimeLinuxArm64Test." +
-            "io.github.ciurlaro.codexmobile.appserver.runtime.NodeCodexRuntimeTest.xml").map { it.asFile })
+            "io.github.codex_agent_labs.codexmobile.appserver.runtime.NodeCodexRuntimeTest.xml").map { it.asFile })
     val wasmEvidence = providers.gradleProperty("codexAgent.nodeWasmEvidenceOutput").map(::JavaFile).orElse(
         layout.buildDirectory.file("reports/node-runtime-evidence/node-wasm-runtime-linuxArm64.json").map { it.asFile })
     val wasmReport = providers.gradleProperty("codexAgent.nodeWasmTestReportOutput").map(::JavaFile).orElse(
         layout.buildDirectory.file("test-results/linuxArm64NodeWasmSplitTest/TEST-nodeWasmRuntimeLinuxArm64Test." +
-            "io.github.ciurlaro.codexmobile.appserver.runtime.NodeCodexRuntimeTest.xml").map { it.asFile })
+            "io.github.codex_agent_labs.codexmobile.appserver.runtime.NodeCodexRuntimeTest.xml").map { it.asFile })
     dependsOn(tasks.named("classes")); classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("LinuxArm64RuntimeEvidenceBundleKt")
     inputs.property("candidateCommit", candidateCommit); inputs.file(bundle)

@@ -1,0 +1,8 @@
+codex-agent-runtime-ios/apple/Package.swift
+codex-agent-runtime-ios/apple/Sources/**
+codex-agent-runtime-ios/apple/RemoteConsumer/Package.swift
+codex-agent-runtime-ios/apple/RemoteConsumer/Sources/**
+codex-agent-runtime-ios/apple/TestApp/**
+gradle/build-logic/src/main/kotlin/SwiftAuthenticationTestTask.kt
+gradle/build-logic/src/main/kotlin/SwiftReleaseMetadataTasks.kt
+gradle/build-logic/src/main/kotlin/codexagent.ios-runtime.gradle.kts

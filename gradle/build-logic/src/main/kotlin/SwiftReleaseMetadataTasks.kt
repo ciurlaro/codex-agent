@@ -109,8 +109,9 @@ abstract class VerifyReleaseMetadataTask : DefaultTask() {
         }
 
         val remoteConsumer = remoteConsumerManifest.get().asFile.readText()
+        val repositoryUrl = Regex.escape("https://github.com/${CodexAgentBuild.REPOSITORY}.git")
         val exactVersion = Regex(
-            """\.package\s*\(\s*url\s*:\s*\"https://github\.com/ciurlaro/codex-agent\.git\"\s*,\s*exact\s*:\s*\"([^\"]+)\"\s*\)""",
+            """\.package\s*\(\s*url\s*:\s*\"$repositoryUrl\"\s*,\s*exact\s*:\s*\"([^\"]+)\"\s*\)""",
             RegexOption.DOT_MATCHES_ALL,
         ).find(remoteConsumer)?.groupValues?.get(1)
             ?: error("RemoteConsumer exact codex-agent dependency is missing")

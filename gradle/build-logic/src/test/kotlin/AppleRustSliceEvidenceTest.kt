@@ -81,6 +81,13 @@ class AppleRustSliceEvidenceTest {
     }
 
     @Test
+    fun `compatible imports preserve the immutable producer identity`() = fixture().use {
+        val expected = it.identities.getValue(IOS_DEVICE_RUST_TARGET)
+        val proof = it.evidence.resolve(appleRustSliceSpecs[0].proofName).readReleaseObject()
+        assertEquals(expected.commit to expected.tree, appleProofProducerIdentity(proof))
+    }
+
+    @Test
     fun `native input digest is stable and rejects outside input`() {
         val root = createTempDirectory("apple-native-inputs").toFile()
         val outside = createTempDirectory("apple-native-outside").toFile().resolve("input").apply { writeText("x") }
@@ -131,7 +138,7 @@ class AppleRustSliceEvidenceTest {
     @Test
     fun `evidence tasks always execute live checkout validation`() {
         val source = File("src/main/kotlin/AppleRustSliceTasks.kt").readText()
-        assertEquals(3, Regex("init \\{ outputs\\.upToDateWhen \\{ false } }").findAll(source).count())
+        assertEquals(4, Regex("init \\{ outputs\\.upToDateWhen \\{ false } }").findAll(source).count())
     }
 }
 

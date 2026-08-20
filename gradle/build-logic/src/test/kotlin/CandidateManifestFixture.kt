@@ -126,7 +126,7 @@ internal fun writeTestIosRuntimeMetrics(file: File, startup: Long = 10): File = 
 
 internal fun writeTestCandidateCiProvenance(file: File, commit: String): File = file.apply {
     atomicWriteJson(buildJsonObject {
-        put("schemaVersion", JsonPrimitive(1)); put("repository", JsonPrimitive("ciurlaro/codex-agent"))
+        put("schemaVersion", JsonPrimitive(1)); put("repository", JsonPrimitive("codex-agent-labs/codex-agent"))
         put("workflowPath", JsonPrimitive(".github/workflows/ci.yml")); put("runId", JsonPrimitive(123L))
         put("runAttempt", JsonPrimitive(2)); put("event", JsonPrimitive("push"))
         put("headBranch", JsonPrimitive("main")); put("headSha", JsonPrimitive(commit))

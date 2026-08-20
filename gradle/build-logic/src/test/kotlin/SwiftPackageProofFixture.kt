@@ -109,7 +109,7 @@ internal fun writeTestSwiftPackageProof(
         put("archiveName", JsonPrimitive(archive.name)); put("archiveBytes", JsonPrimitive(archive.length()))
         put("swiftPmChecksum", JsonPrimitive(hash)); put("checksumFileSha256", JsonPrimitive(checksum.releaseDigest()))
         put("packageSwiftUrl", JsonPrimitive(
-            "https://github.com/ciurlaro/codex-agent/releases/download/v$version/${archive.name}",
+            "https://github.com/codex-agent-labs/codex-agent/releases/download/v$version/${archive.name}",
         ))
         put("packageSwiftSha256", JsonPrimitive(packageSwift.releaseDigest()))
         put("packageSwiftChecksum", JsonPrimitive(hash))
@@ -121,4 +121,4 @@ internal fun writeTestSwiftPackageProof(
 }
 
 private const val SWIFTPM_TEST_URL =
-    "https://github.com/ciurlaro/codex-agent/releases/download/v0.2.0/CodexAgent-0.2.0.xcframework.zip"
+    "https://github.com/codex-agent-labs/codex-agent/releases/download/v0.2.0/CodexAgent-0.2.0.xcframework.zip"

@@ -1,0 +1,3 @@
+codex-agent-runtime-node/src/webTest/**
+codex-agent-runtime-node/src/jsTest/**
+gradle/build-logic/src/test/**/*Node*

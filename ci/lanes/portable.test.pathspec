@@ -1,0 +1,3 @@
+gradle/build-logic/src/test/**/*RuntimeEvidence*
+codex-agent-runtime-desktop/src/jvmTest/**
+codex-agent-runtime-node/src/*Test/**

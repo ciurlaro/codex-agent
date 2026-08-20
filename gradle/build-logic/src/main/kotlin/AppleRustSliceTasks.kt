@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import javax.inject.Inject
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -101,6 +102,48 @@ abstract class ExportAppleRustSliceTask @Inject constructor(private val exec: Ex
     }
 }
 
+@DisableCachingByDefault(because = "Validates one immutable Rust slice against the current checkout")
+abstract class ImportAppleRustSliceTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
+    @get:Input abstract val candidateCommit: Property<String>
+    @get:Input abstract val target: Property<String>
+    @get:Input abstract val compilerSettings: MapProperty<String, String>
+    @get:Input abstract val rustCompilerIdentity: Property<String>
+    @get:Input abstract val appleToolchainIdentity: Property<String>
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.NONE) abstract val evidenceDirectory: DirectoryProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val provenanceFile: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val xcodeVersionFile: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val swiftVersionFile: RegularFileProperty
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val nativeInputs: ConfigurableFileCollection
+    @get:Internal abstract val repositoryDirectory: DirectoryProperty
+    @get:OutputFile abstract val importedArchive: RegularFileProperty
+
+    init { outputs.upToDateWhen { false } }
+
+    @TaskAction fun importSlice() {
+        val repository = repositoryDirectory.get().asFile.canonicalFile
+        verifyAppleEvidenceCheckout(exec, repository, candidateCommit.get())
+        val spec = appleRustSliceSpecs.single { it.target == target.get() }
+        val evidence = evidenceDirectory.get().asFile
+        val actual = evidence.listFiles()?.onEach {
+            check(it.isFile && !Files.isSymbolicLink(it.toPath())) { "Apple Rust slice contains an unsafe entry" }
+        }?.map(File::getName)?.toSet().orEmpty()
+        check(actual == setOf(spec.archiveName, spec.proofName)) { "Apple Rust slice file set mismatch" }
+        val archive = evidence.resolve(spec.archiveName)
+        verifyStaticArchive(archive)
+        val proof = evidence.resolve(spec.proofName).readReleaseObject()
+        val (producerCommit, producerTree) = appleProofProducerIdentity(proof)
+        val identity = appleEvidenceIdentity(
+            repository, nativeInputs.files, provenanceFile.get().asFile, compilerSettings.get(), producerCommit, producerTree,
+            rustCompilerIdentity.get(), appleToolchainIdentity.get(),
+            xcodeVersionFile.get().asFile, swiftVersionFile.get().asFile,
+        )
+        verifySliceProof(proof, spec, archive, identity)
+        val output = importedArchive.get().asFile
+        output.parentFile.mkdirs()
+        Files.copy(archive.toPath(), output.toPath(), REPLACE_EXISTING)
+    }
+}
+
 @DisableCachingByDefault(because = "Exports fresh host-test evidence from a clean checkout")
 abstract class ExportAppleNativeTestsProofTask @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:Input abstract val candidateCommit: Property<String>
@@ -150,19 +193,26 @@ abstract class ImportAppleRustEvidenceTask @Inject constructor(private val exec:
     @TaskAction fun importEvidence() {
         val repository = repositoryDirectory.get().asFile.canonicalFile
         val (commit, tree) = verifyAppleEvidenceCheckout(exec, repository, candidateCommit.get())
+        val evidence = evidenceDirectory.get().asFile
         val identities = appleRustSliceSpecs.associate { spec ->
+            val (producerCommit, producerTree) = appleProofProducerIdentity(
+                evidence.resolve(spec.proofName).readReleaseObject(),
+            )
             spec.target to appleEvidenceIdentity(
-                repository, nativeInputs.files, provenanceFile.get().asFile, compilerSettings.get(), commit, tree,
+                repository, nativeInputs.files, provenanceFile.get().asFile, compilerSettings.get(),
+                producerCommit, producerTree,
                 rustCompilerIdentity.get(), appleToolchainIdentities.get().getValue(spec.target),
                 xcodeVersionFile.get().asFile, swiftVersionFile.get().asFile,
             )
         }
         val identity = identities.values.first()
+        val (nativeTestsCommit, nativeTestsTree) = appleProofProducerIdentity(
+            evidence.resolve(IOS_NATIVE_TESTS_PROOF).readReleaseObject(),
+        )
         val nativeTestsIdentity = appleNativeTestsIdentity(
-            repository, nativeInputs.files, provenanceFile.get().asFile, commit, tree,
+            repository, nativeInputs.files, provenanceFile.get().asFile, nativeTestsCommit, nativeTestsTree,
             nativeTestRustToolchain.get(), nativeTestRustSrcComponent.get(),
         )
-        val evidence = evidenceDirectory.get().asFile
         val commands = encodedNativeTestCommands(nativeTestCommands.get())
         verifyAppleRustEvidenceDirectory(evidence, identities, nativeTestsIdentity, commands)
         val output = importedRustDirectory.get().asFile
@@ -194,6 +244,15 @@ abstract class ImportAppleRustEvidenceTask @Inject constructor(private val exec:
             }) } })
         })
     }
+}
+
+internal fun appleProofProducerIdentity(proof: JsonObject): Pair<String, String> {
+    val commit = proof.releaseString("candidateCommit")
+    val tree = proof.releaseString("candidateTree")
+    check(listOf(commit, tree).all { value ->
+        value.length == 40 && value.all { it in '0'..'9' || it in 'a'..'f' }
+    }) { "Apple proof producer Git identity is invalid" }
+    return commit to tree
 }
 
 internal fun verifyAppleEvidenceCheckout(

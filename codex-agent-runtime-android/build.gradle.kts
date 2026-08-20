@@ -12,13 +12,15 @@ plugins {
     id("codexagent.codex-runtime")
 }
 
+val codexAgentRepositoryUrl = rootProject.extra["codexAgent.repositoryUrl"].toString()
+
 val bundledSqliteTest = dependencies.create(libs.androidx.sqlite.bundled.get()) as ExternalModuleDependency
 bundledSqliteTest.attributes {
     attribute(KotlinPlatformType.attribute, KotlinPlatformType.jvm)
 }
 
 extensions.configure<LibraryExtension> {
-    namespace = "io.github.ciurlaro.codexmobile.agent.runtime.android"
+    namespace = "io.github.codex_agent_labs.codexmobile.agent.runtime.android"
     compileSdk = 37
 
     defaultConfig {
@@ -65,7 +67,7 @@ mavenPublishing {
             variant = "release",
         ),
     )
-    coordinates("io.github.ciurlaro", "codex-agent-runtime-android", project.version.toString())
+    coordinates(project.group.toString(), "codex-agent-runtime-android", project.version.toString())
     if (
         providers.gradleProperty("signingInMemoryKey").isPresent ||
         providers.gradleProperty("signing.secretKeyRingFile").isPresent
@@ -76,7 +78,7 @@ mavenPublishing {
         name.set("Codex Agent Runtime for Android")
         description.set("Android process runtime and verified Codex App Server distribution for Codex Agent.")
         inceptionYear.set("2026")
-        url.set("https://github.com/ciurlaro/codex-agent")
+        url.set(codexAgentRepositoryUrl)
         licenses {
             license {
                 name.set("GNU General Public License v3.0 or later")
@@ -92,9 +94,9 @@ mavenPublishing {
             }
         }
         scm {
-            url.set("https://github.com/ciurlaro/codex-agent")
-            connection.set("scm:git:https://github.com/ciurlaro/codex-agent.git")
-            developerConnection.set("scm:git:ssh://git@github.com/ciurlaro/codex-agent.git")
+            url.set(codexAgentRepositoryUrl)
+            connection.set("scm:git:$codexAgentRepositoryUrl.git")
+            developerConnection.set("scm:git:ssh://git@github.com/${codexAgentRepositoryUrl.substringAfter("github.com/")}.git")
         }
     }
 }

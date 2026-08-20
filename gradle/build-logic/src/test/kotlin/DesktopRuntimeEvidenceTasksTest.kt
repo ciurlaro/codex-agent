@@ -43,7 +43,7 @@ class DesktopRuntimeEvidenceTasksTest {
             put("files", buildJsonArray { desktopRuntimeEvidenceTargets.values.forEach { target ->
                 add(buildJsonObject {
                     put("path", JsonPrimitive(
-                        "io/github/ciurlaro/codex-agent-runtime-desktop/0.2.0/" +
+                        "io/github/codex-agent-labs/codex-agent-runtime-desktop/0.2.0/" +
                             "codex-agent-runtime-desktop-0.2.0-${target.classifier}.zip",
                     ))
                     put("sha256", JsonPrimitive(archive))

@@ -13,7 +13,7 @@ val verifyProtocolSource = tasks.register<VerifyProtocolSourceTask>("verifyProto
     descriptor.set(layout.projectDirectory.file("protocol/schema/descriptors.json"))
     generatedSources.set(
         layout.projectDirectory.dir(
-            "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated",
+            "src/commonMain/kotlin/io/github/codex_agent_labs/codexmobile/appserver/protocol/generated",
         ),
     )
     expectedSchemaSha256.set("32b26f2ab3fb7a4a409db958f438f48b0ef106e3a01468f8618fdf65bc823cc4")

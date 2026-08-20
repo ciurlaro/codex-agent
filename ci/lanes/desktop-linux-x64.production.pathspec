@@ -1,0 +1,12 @@
+codex-agent-runtime-desktop/build.gradle.kts
+codex-agent-runtime-desktop/codex-app-server-distributions.json
+codex-agent-runtime-desktop/native/**
+codex-agent-runtime-desktop/src/commonMain/**
+codex-agent-runtime-desktop/src/nativeMain/**
+codex-agent-runtime-desktop/src/linuxMain/**
+codex-agent-client/src/nativeMain/**
+codex-agent-runtime-android/src/main/assets/openai-codex-LICENSE.txt
+codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt
+gradle/build-logic/src/main/kotlin/*Desktop*.kt
+gradle/build-logic/src/main/kotlin/RuntimeBundleEvidence.kt
+gradle/build-logic/src/main/kotlin/codexagent.desktop-runtime.gradle.kts

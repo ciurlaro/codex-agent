@@ -1,0 +1,4 @@
+gradle/build-logic/src/test/**
+codex-agent-client/src/commonTest/**
+codex-agent-client/src/jvmTest/**
+tooling/protocol-generator/src/test/**

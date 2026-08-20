@@ -28,8 +28,8 @@ Add the client and runtime to a Kotlin/JS or Kotlin/WasmJS Node application:
 
 ```kotlin
 dependencies {
-    implementation("io.github.ciurlaro:codex-agent-client:0.2.0")
-    implementation("io.github.ciurlaro:codex-agent-runtime-node:0.2.0")
+    implementation("io.github.codex-agent-labs:codex-agent-client:0.2.0")
+    implementation("io.github.codex-agent-labs:codex-agent-runtime-node:0.2.0")
 }
 ```
 

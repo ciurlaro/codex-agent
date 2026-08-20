@@ -1,0 +1,9 @@
+codex-agent-runtime-ios/build.gradle.kts
+codex-agent-runtime-ios/src/iosMain/**
+codex-agent-runtime-ios/src/nativeInterop/**
+codex-agent-client/src/commonMain/**
+codex-agent-client/src/nativeMain/**
+gradle/build-logic/src/main/kotlin/codexagent.ios-runtime.gradle.kts
+gradle/build-logic/src/main/kotlin/IosAppleDistributionTasks.kt
+gradle/build-logic/src/main/kotlin/IosAppleReleaseVerificationTasks.kt
+gradle/build-logic/src/main/kotlin/IosVerifiedDistributionRegistration.kt

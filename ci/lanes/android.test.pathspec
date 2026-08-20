@@ -1,0 +1,2 @@
+codex-agent-runtime-android/src/test/**
+gradle/build-logic/src/test/**/*Android*

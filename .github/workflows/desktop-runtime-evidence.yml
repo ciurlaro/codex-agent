@@ -3,232 +3,287 @@ name: Desktop Runtime Evidence
 on:
   workflow_call:
     inputs:
-      candidateCommit:
+      planArtifact:
         required: true
         type: string
-      trustedCacheWriter:
+      validationCommit:
+        required: true
+        type: string
+      validationTree:
+        required: true
+        type: string
+      matrix:
+        required: true
+        type: string
+      linuxArm64:
         required: true
         type: boolean
-    secrets:
-      GRADLE_ENCRYPTION_KEY:
-        required: false
+      linuxArm64Build:
+        required: true
+        type: boolean
+      linuxArm64Test:
+        required: true
+        type: boolean
+      linuxArm64Metadata:
+        required: true
+        type: boolean
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: desktop-runtime-evidence-${{ inputs.candidateCommit }}
-  cancel-in-progress: false
-
-env:
-  CANDIDATE_COMMIT: ${{ inputs.candidateCommit }}
+  group: ci-desktop-${{ inputs.validationTree }}
+  cancel-in-progress: true
 
 jobs:
   runtime:
-    name: ${{ matrix.target }} runtime
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    env:
-      DEVELOPER_DIR: ${{ matrix.developerDir }}
+    if: inputs.matrix != '[]'
+    name: ${{ matrix.lane }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: macosArm64
-            runner: macos-26
-            nativeTask: recordMacosArm64DesktopRuntimeEvidence
-            jvmTask: recordJvmRuntimeMacosArm64Evidence
-            nodeTask: nodeRuntimeMacosArm64Test
-            wasmTask: nodeWasmRuntimeMacosArm64Test
-            classifier: app-server-macos-arm64
-            supervisor: codex-process-supervisor
-            developerDir: /Applications/Xcode_26.6.app/Contents/Developer
-          - target: macosX64
-            runner: macos-26-intel
-            nativeTask: recordMacosX64DesktopRuntimeEvidence
-            jvmTask: recordJvmRuntimeMacosX64Evidence
-            nodeTask: nodeRuntimeMacosX64Test
-            wasmTask: nodeWasmRuntimeMacosX64Test
-            classifier: app-server-macos-x64
-            supervisor: codex-process-supervisor
-            developerDir: /Applications/Xcode_26.6.app/Contents/Developer
-          - target: linuxX64
-            runner: ubuntu-24.04
-            nativeTask: recordLinuxX64DesktopRuntimeEvidence
-            jvmTask: recordJvmRuntimeLinuxX64Evidence
-            nodeTask: nodeRuntimeLinuxX64Test
-            wasmTask: nodeWasmRuntimeLinuxX64Test
-            classifier: app-server-linux-x64
-            supervisor: codex-process-supervisor
-            developerDir: ""
-          - target: mingwX64
-            runner: windows-2025
-            nativeTask: recordMingwX64DesktopRuntimeEvidence
-            jvmTask: recordJvmRuntimeMingwX64Evidence
-            nodeTask: nodeRuntimeMingwX64Test
-            wasmTask: nodeWasmRuntimeMingwX64Test
-            classifier: app-server-windows-x64
-            supervisor: codex-process-supervisor.exe
-            developerDir: ""
+        include: ${{ fromJSON(inputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: ${{ startsWith(matrix.lane, 'desktop-macos') && '/Applications/Xcode_26.6.app/Contents/Developer' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.candidateCommit }}
-      - id: build
-        uses: ./.github/actions/setup-kmp
+          ref: ${{ inputs.validationCommit }}
+      - if: matrix.test
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          cache-read-only: ${{ !inputs.trustedCacheWriter || matrix.target != 'mingwX64' }}
-          cache-encryption-key: ${{ inputs.trustedCacheWriter && secrets.GRADLE_ENCRYPTION_KEY || '' }}
+          name: codex-agent-ci-portable-${{ inputs.validationTree }}
+          path: build/ci/portable
+      - if: matrix.test
+        shell: bash
+        run: cp -R build/ci/portable/payload/. .
+      - if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-msvc
+      - uses: ./.github/actions/run-ci-lane
+        with:
+          lane: ${{ matrix.lane }}
+          plan-artifact: ${{ inputs.planArtifact }}
+          validation-commit: ${{ inputs.validationCommit }}
+          validation-tree: ${{ inputs.validationTree }}
           node-version: "24.18.0"
-          xcode-fingerprint: ${{ startsWith(matrix.target, 'macos') && 'auto' || 'none' }}
+          xcode-version: ${{ runner.os == 'macOS' && '26.6' || 'none' }}
+
+  linux-arm64-cross-builder-identity:
+    if: inputs.linuxArm64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.validationCommit }}
+      - uses: ./.github/actions/setup-kmp
+        with:
+          cache-read-only: "true"
+          node-version: "24.18.0"
+      - name: Capture the prospective x64 cross-builder identity
+        run: >-
+          python3 ci/runner_identity.py capture --node-requested 24.18.0
+          --role linux-x64-cross-builder
+          --output build/ci/linux-arm64-producer-identities/linux-x64-cross-builder.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: codex-agent-linux-arm64-cross-builder-identity-${{ inputs.validationTree }}
+          path: build/ci/linux-arm64-producer-identities/linux-x64-cross-builder.json
+          compression-level: 0
+          retention-days: 1
+
+  linux-arm64-reuse:
+    if: inputs.linuxArm64 && needs.linux-arm64-cross-builder-identity.result == 'success'
+    needs: linux-arm64-cross-builder-identity
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    outputs:
+      reused: ${{ steps.lane.outputs.reused }}
+      production_reused: ${{ steps.lane.outputs.production_reused }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.validationCommit }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: codex-agent-ci-portable-runtime-artifacts-${{ inputs.candidateCommit }}
-          path: build/portable-runtime-artifacts
-      - uses: ./.github/actions/setup-msvc
-      - name: Record native evidence and build one classifier with its supervisor
-        shell: bash
-        run: >-
-          ./gradlew :codex-agent-runtime-desktop:${{ matrix.nativeTask }}
-          -PcodexAgent.candidateCommit="$CANDIDATE_COMMIT"
-          -PcodexAgent.desktopEvidenceTarget=${{ matrix.target }}
-          --parallel --stacktrace
-      - name: Resolve the exact classifier and preserve its supervisor
-        id: classifier
-        shell: bash
-        run: |
-          shopt -s nullglob
-          archives=(codex-agent-runtime-desktop/build/distributions/*-${{ matrix.classifier }}.zip)
-          test "${#archives[@]}" -eq 1
-          supervisor="codex-agent-runtime-desktop/build/supervisor/${{ matrix.target }}/${{ matrix.supervisor }}"
-          test -x "$supervisor"
-          printf 'archive=%s/%s\n' "$GITHUB_WORKSPACE" "${archives[0]}" >> "$GITHUB_OUTPUT"
-      - name: Run JVM, Node JS, and Node Wasm against that classifier
-        shell: bash
-        run: >-
-          ./gradlew
-          :codex-agent-runtime-desktop:${{ matrix.jvmTask }}
-          :codex-agent-runtime-node:${{ matrix.nodeTask }}
-          :codex-agent-runtime-node:${{ matrix.wasmTask }}
-          -PcodexAgent.candidateCommit="$CANDIDATE_COMMIT"
-          -PcodexAgent.desktopEvidenceTarget=${{ matrix.target }}
-          -PcodexAgent.jvmClassifierArchive="${{ steps.classifier.outputs.archive }}"
-          -PcodexAgent.jvmRuntimeEvidenceRunner="$PWD/build/portable-runtime-artifacts/codex-agent-jvm-runtime-evidence-runner.zip"
-          -PcodexAgent.nodeClassifierArchive="${{ steps.classifier.outputs.archive }}"
-          -PcodexAgent.nodeRuntimeEvidenceRunnerArchive="$PWD/build/portable-runtime-artifacts/codex-agent-node-runtime-evidence-runner.zip"
-          -PcodexAgent.nodeWasmRuntimeEvidenceRunnerArchive="$PWD/build/portable-runtime-artifacts/codex-agent-node-wasm-runtime-evidence-runner.zip"
-          -PcodexAgent.desktopDistributionManifest="$PWD/codex-agent-runtime-desktop/codex-app-server-distributions.json"
-          --no-parallel --stacktrace
+          name: codex-agent-linux-arm64-cross-builder-identity-${{ inputs.validationTree }}
+          path: build/ci/linux-arm64-producer-identities
+      - id: lane
+        uses: ./.github/actions/run-ci-lane
+        with:
+          lane: desktop-linux-arm64
+          plan-artifact: ${{ inputs.planArtifact }}
+          validation-commit: ${{ inputs.validationCommit }}
+          validation-tree: ${{ inputs.validationTree }}
+          build: ${{ inputs.linuxArm64Build }}
+          test: ${{ inputs.linuxArm64Test }}
+          metadata: ${{ inputs.linuxArm64Metadata }}
+          node-version: "24.18.0"
+          producer-identities: build/ci/linux-arm64-producer-identities
+          record-producer-role: linux-arm64-supervisor
+          reuse-only: "true"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
-          name: codex-agent-ci-runtime-evidence-${{ matrix.target }}-${{ inputs.candidateCommit }}
-          path: |
-            codex-agent-runtime-desktop/build/reports/desktop-runtime-evidence/desktop-runtime-${{ matrix.target }}.json
-            codex-agent-runtime-desktop/build/reports/jvm-runtime-evidence/jvm-runtime-${{ matrix.target }}.json
-            codex-agent-runtime-node/build/reports/node-runtime-evidence/node-runtime-${{ matrix.target }}.json
-            codex-agent-runtime-node/build/reports/node-runtime-evidence/node-wasm-runtime-${{ matrix.target }}.json
+          name: codex-agent-linux-arm64-producer-identities-${{ inputs.validationTree }}
+          path: build/ci/linux-arm64-producer-identities
           compression-level: 0
-          retention-days: 30
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          if-no-files-found: error
-          overwrite: true
-          name: codex-agent-ci-desktop-classifier-${{ matrix.target }}-${{ inputs.candidateCommit }}
-          path: ${{ steps.classifier.outputs.archive }}
-          compression-level: 0
-          retention-days: 30
-      - if: >-
-          inputs.trustedCacheWriter && matrix.target == 'mingwX64' &&
-          steps.build.outputs.konan-cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.konan
-          key: ${{ steps.build.outputs.konan-cache-primary-key }}
+          retention-days: 1
 
   linux-arm64-supervisor:
+    if: >-
+      always() && inputs.linuxArm64 &&
+      needs.linux-arm64-reuse.result == 'success' &&
+      needs.linux-arm64-reuse.outputs.reused != 'true' &&
+      needs.linux-arm64-reuse.outputs.production_reused != 'true'
+    needs: linux-arm64-reuse
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.candidateCommit }}
+          ref: ${{ inputs.validationCommit }}
       - uses: ./.github/actions/setup-kmp
         with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      - name: Compile only the supervisor on the ARM host
-        run: ./gradlew :codex-agent-runtime-desktop:compileDesktopProcessSupervisor --stacktrace
+          cache-read-only: "true"
+          node-version: "24.18.0"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-agent-linux-arm64-producer-identities-${{ inputs.validationTree }}
+          path: build/ci/linux-arm64-producer-identities
+      - name: Reject a changed ARM supervisor environment
+        run: |
+          python3 ci/runner_identity.py capture --node-requested 24.18.0 \
+            --role linux-arm64-supervisor --output build/ci/current-linux-arm64-supervisor.json
+          python3 ci/runner_identity.py verify-one --role linux-arm64-supervisor \
+            --expected build/ci/linux-arm64-producer-identities/linux-arm64-supervisor.json \
+            --actual build/ci/current-linux-arm64-supervisor.json
+      - run: ./gradlew :codex-agent-runtime-desktop:compileDesktopProcessSupervisor --stacktrace
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
-          name: codex-agent-ci-linux-arm64-supervisor-${{ inputs.candidateCommit }}
+          name: codex-agent-ci-linux-arm64-supervisor-${{ inputs.validationTree }}
           path: codex-agent-runtime-desktop/build/supervisor
           compression-level: 0
           retention-days: 1
 
   linux-arm64-cross-build:
-    needs: linux-arm64-supervisor
+    if: >-
+      always() && inputs.linuxArm64 &&
+      needs.linux-arm64-reuse.result == 'success' &&
+      needs.linux-arm64-reuse.outputs.reused != 'true' &&
+      (needs.linux-arm64-reuse.outputs.production_reused == 'true' ||
+      needs.linux-arm64-supervisor.result == 'success')
+    needs: [linux-arm64-reuse, linux-arm64-supervisor]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.candidateCommit }}
+          ref: ${{ inputs.validationCommit }}
       - uses: ./.github/actions/setup-kmp
         with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          cache-read-only: "true"
+          node-version: "24.18.0"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: codex-agent-ci-portable-runtime-artifacts-${{ inputs.candidateCommit }}
-          path: build/portable-runtime-artifacts
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+          name: codex-agent-linux-arm64-producer-identities-${{ inputs.validationTree }}
+          path: build/ci/linux-arm64-producer-identities
+      - name: Reject a changed x64 cross-builder environment
+        run: |
+          python3 ci/runner_identity.py capture --node-requested 24.18.0 \
+            --role linux-x64-cross-builder --output build/ci/current-linux-x64-cross-builder.json
+          python3 ci/runner_identity.py verify-one --role linux-x64-cross-builder \
+            --expected build/ci/linux-arm64-producer-identities/linux-x64-cross-builder.json \
+            --actual build/ci/current-linux-x64-cross-builder.json
+      - if: needs.linux-arm64-reuse.outputs.production_reused == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: codex-agent-ci-linux-arm64-supervisor-${{ inputs.candidateCommit }}
+          name: codex-agent-arm64-production-transport-${{ inputs.validationTree }}
+          path: build/ci/linux-arm64-production
+      - name: Restore only the verified production classifier
+        if: needs.linux-arm64-reuse.outputs.production_reused == 'true'
+        shell: bash
+        run: |
+          python3 ci/runner_identity.py verify \
+            --expected build/ci/linux-arm64-producer-identities \
+            --actual build/ci/linux-arm64-production/payload/build/ci/linux-arm64-producer-identities
+          shopt -s nullglob
+          archives=(build/ci/linux-arm64-production/payload/codex-agent-runtime-desktop/build/distributions/*-app-server-linux-arm64.zip)
+          test "${#archives[@]}" -eq 1
+          mkdir -p codex-agent-runtime-desktop/build/distributions
+          cp "${archives[0]}" codex-agent-runtime-desktop/build/distributions/
+      - if: inputs.linuxArm64Test
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-agent-ci-portable-${{ inputs.validationTree }}
+          path: build/ci/portable
+      - if: inputs.linuxArm64Test
+        run: cp -R build/ci/portable/payload/. .
+      - if: needs.linux-arm64-reuse.outputs.production_reused != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-agent-ci-linux-arm64-supervisor-${{ inputs.validationTree }}
           path: build/desktop-supervisors
-      - name: Cross-build one classifier and native test
+      - name: Cross-build one classifier
+        if: needs.linux-arm64-reuse.outputs.production_reused != 'true'
         run: >-
           ./gradlew
-          :codex-agent-runtime-desktop:linkDebugTestLinuxArm64
           :codex-agent-runtime-desktop:packageLinuxArm64AppServer
           -PcodexAgent.desktopSupervisorDirectory="$PWD/build/desktop-supervisors"
           --parallel --stacktrace
+      - name: Cross-build the native test executable
+        if: inputs.linuxArm64Test
+        run: ./gradlew :codex-agent-runtime-desktop:linkDebugTestLinuxArm64 --parallel --stacktrace
       - name: Stage one strict ARM execution bundle
+        if: inputs.linuxArm64Test
         run: >-
           ./gradlew -p gradle/build-logic stageLinuxArm64RuntimeEvidenceBundle
-          -PcodexAgent.candidateCommit="$CANDIDATE_COMMIT"
+          -PcodexAgent.candidateCommit="${{ inputs.validationCommit }}"
           -PcodexAgent.linuxArm64TestExecutable="$PWD/codex-agent-runtime-desktop/build/bin/linuxArm64/debugTest/test.kexe"
           -PcodexAgent.linuxArm64DistributionsDirectory="$PWD/codex-agent-runtime-desktop/build/distributions"
-          -PcodexAgent.jvmRuntimeEvidenceRunner="$PWD/build/portable-runtime-artifacts/codex-agent-jvm-runtime-evidence-runner.zip"
-          -PcodexAgent.nodeRuntimeEvidenceRunnerArchive="$PWD/build/portable-runtime-artifacts/codex-agent-node-runtime-evidence-runner.zip"
-          -PcodexAgent.nodeWasmRuntimeEvidenceRunnerArchive="$PWD/build/portable-runtime-artifacts/codex-agent-node-wasm-runtime-evidence-runner.zip"
+          -PcodexAgent.jvmRuntimeEvidenceRunner="$PWD/codex-agent-runtime-desktop/build/distributions/codex-agent-jvm-runtime-evidence-runner.zip"
+          -PcodexAgent.nodeRuntimeEvidenceRunnerArchive="$PWD/codex-agent-runtime-node/build/distributions/codex-agent-node-runtime-evidence-runner.zip"
+          -PcodexAgent.nodeWasmRuntimeEvidenceRunnerArchive="$PWD/codex-agent-runtime-node/build/distributions/codex-agent-node-wasm-runtime-evidence-runner.zip"
           -PcodexAgent.desktopDistributionManifest="$PWD/codex-agent-runtime-desktop/codex-app-server-distributions.json"
           -PcodexAgent.linuxArm64RuntimeEvidenceBundle="$PWD/build/linux-arm64-inputs/runtime.zip"
           --parallel --stacktrace
+      - name: Preserve the exact classifier with the execution bundle
+        shell: bash
+        run: |
+          shopt -s nullglob
+          archives=(codex-agent-runtime-desktop/build/distributions/*-app-server-linux-arm64.zip)
+          test "${#archives[@]}" -eq 1
+          mkdir -p build/linux-arm64-inputs
+          cp "${archives[0]}" build/linux-arm64-inputs/
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
           overwrite: true
-          name: codex-agent-ci-linux-arm64-execution-input-${{ inputs.candidateCommit }}
-          path: build/linux-arm64-inputs/runtime.zip
+          name: codex-agent-ci-linux-arm64-input-${{ inputs.validationTree }}
+          path: build/linux-arm64-inputs
           compression-level: 0
           retention-days: 1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          if-no-files-found: error
-          overwrite: true
-          name: codex-agent-ci-desktop-classifier-linuxArm64-${{ inputs.candidateCommit }}
-          path: codex-agent-runtime-desktop/build/distributions/*-app-server-linux-arm64.zip
-          compression-level: 0
-          retention-days: 30
 
   linux-arm64-runtime:
-    needs: linux-arm64-cross-build
+    if: >-
+      always() && inputs.linuxArm64 &&
+      needs.linux-arm64-reuse.result == 'success' &&
+      needs.linux-arm64-reuse.outputs.reused != 'true' &&
+      needs.linux-arm64-cross-build.result == 'success'
+    needs: [linux-arm64-reuse, linux-arm64-cross-build]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     env:
@@ -238,34 +293,35 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.candidateCommit }}
-      - uses: ./.github/actions/setup-kmp
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          node-version: "24.18.0"
+          ref: ${{ inputs.validationCommit }}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: codex-agent-ci-linux-arm64-execution-input-${{ inputs.candidateCommit }}
-          path: build/linux-arm64-inputs
-      - name: Extract once and execute native, JVM, Node JS, and Node Wasm
-        run: >-
-          ./gradlew -p gradle/build-logic executeLinuxArm64RuntimeEvidenceBundle
-          -PcodexAgent.candidateCommit="$CANDIDATE_COMMIT"
-          -PcodexAgent.linuxArm64RuntimeEvidenceBundle="$PWD/build/linux-arm64-inputs/runtime.zip"
-          -PcodexAgent.desktopEvidenceOutput="$PWD/codex-agent-runtime-desktop/build/reports/desktop-runtime-evidence/desktop-runtime-linuxArm64.json"
-          -PcodexAgent.jvmEvidenceOutput="$PWD/codex-agent-runtime-desktop/build/reports/jvm-runtime-evidence/jvm-runtime-linuxArm64.json"
-          -PcodexAgent.nodeEvidenceOutput="$PWD/codex-agent-runtime-node/build/reports/node-runtime-evidence/node-runtime-linuxArm64.json"
-          -PcodexAgent.nodeWasmEvidenceOutput="$PWD/codex-agent-runtime-node/build/reports/node-runtime-evidence/node-wasm-runtime-linuxArm64.json"
-          -PcodexAgent.javaExecutable=java --parallel --stacktrace
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+          name: codex-agent-linux-arm64-producer-identities-${{ inputs.validationTree }}
+          path: build/ci/linux-arm64-producer-identities
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          if-no-files-found: error
-          overwrite: true
-          name: codex-agent-ci-runtime-evidence-linuxArm64-${{ inputs.candidateCommit }}
-          path: |
-            codex-agent-runtime-desktop/build/reports/desktop-runtime-evidence/desktop-runtime-linuxArm64.json
-            codex-agent-runtime-desktop/build/reports/jvm-runtime-evidence/jvm-runtime-linuxArm64.json
-            codex-agent-runtime-node/build/reports/node-runtime-evidence/node-runtime-linuxArm64.json
-            codex-agent-runtime-node/build/reports/node-runtime-evidence/node-wasm-runtime-linuxArm64.json
-          compression-level: 0
-          retention-days: 30
+          name: codex-agent-ci-linux-arm64-input-${{ inputs.validationTree }}
+          path: build/ci/linux-arm64-input
+      - shell: bash
+        run: |
+          shopt -s nullglob
+          archives=(build/ci/linux-arm64-input/*-app-server-linux-arm64.zip)
+          test "${#archives[@]}" -eq 1
+          mkdir -p codex-agent-runtime-desktop/build/distributions
+          cp "${archives[0]}" codex-agent-runtime-desktop/build/distributions/
+          if [ -f build/ci/linux-arm64-input/runtime.zip ]; then
+            printf 'LINUX_ARM64_RUNTIME_BUNDLE=%s/build/ci/linux-arm64-input/runtime.zip\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          fi
+      - uses: ./.github/actions/run-ci-lane
+        with:
+          lane: desktop-linux-arm64
+          plan-artifact: ${{ inputs.planArtifact }}
+          validation-commit: ${{ inputs.validationCommit }}
+          validation-tree: ${{ inputs.validationTree }}
+          build: ${{ inputs.linuxArm64Build }}
+          test: ${{ inputs.linuxArm64Test }}
+          metadata: ${{ inputs.linuxArm64Metadata }}
+          node-version: "24.18.0"
+          producer-identities: build/ci/linux-arm64-producer-identities
+          production-prepared: "true"
+          reuse-disabled: "true"

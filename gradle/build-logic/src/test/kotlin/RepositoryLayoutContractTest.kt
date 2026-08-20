@@ -18,6 +18,7 @@ class RepositoryLayoutContractTest {
         assertTrue("id(\"codexagent.root-release\")" in rootBuild)
         assertTrue("id(\"codexagent.codex-runtime\")" in androidBuild)
         assertTrue(repository.resolve("gradle/build-logic/src/main/kotlin/codexagent.root-release.gradle.kts").isFile)
+        assertTrue(repository.resolve("gradle/build-logic/src/main/kotlin/PromotedCandidateTasks.kt").isFile)
         assertTrue(repository.resolve("gradle/build-logic/src/main/kotlin/codexagent.codex-runtime.gradle.kts").isFile)
         assertTrue(repository.resolve("gradle/release/kmp-consumer-template").isDirectory)
         assertTrue(repository.resolve("gradle/kotlin-js-store/package-lock.json").isFile)
@@ -39,6 +40,19 @@ class RepositoryLayoutContractTest {
     }
 
     @Test
+    fun `canonical repository identity has one production owner`() {
+        val canonicalRepository = "codex-agent-labs" + "/codex-agent"
+        val production = repository.resolve("gradle/build-logic/src/main/kotlin")
+        val owners = production.walkTopDown()
+            .filter { it.isFile && it.extension in setOf("kt", "kts") && canonicalRepository in it.readText() }
+            .map { it.relativeTo(production).invariantSeparatorsPath }
+            .sorted()
+            .toList()
+
+        assertEquals(listOf("CodexAgentBuild.kt"), owners)
+    }
+
+    @Test
     fun `Central publishing has one verified transport path`() {
         listOf(
             "codex-agent-client", "codex-agent-runtime-android", "codex-agent-runtime-desktop",
@@ -47,8 +61,12 @@ class RepositoryLayoutContractTest {
             assertFalse("publishToMavenCentral(" in repository.resolve("$module/build.gradle.kts").readText(), module)
         }
         val publish = repository.resolve(".github/workflows/publish.yml").readText()
+        listOf("central-prepare", "central-await", "central-release").forEach {
+            assertTrue("java -jar \"${'$'}RELEASE_TOOL\" $it" in publish, it)
+        }
         listOf("prepareCentralDeployment", "awaitCentralValidation", "releaseCentralDeployment")
-            .forEach { assertTrue(it in publish, it) }
+            .forEach { assertFalse(it in publish, it) }
+        assertFalse("./gradlew" in publish)
     }
 
     @Test

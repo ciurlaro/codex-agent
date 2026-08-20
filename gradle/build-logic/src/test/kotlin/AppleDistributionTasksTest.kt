@@ -90,6 +90,12 @@ class AppleDistributionTasksTest {
         assertEquals("xcodebuild", xcodebuild.first())
         assertTrue("platform=iOS Simulator,id=device" in xcodebuild)
         assertEquals(
+            "test-without-building",
+            swiftAuthenticationXcodebuildCommand(
+                "device", root.resolve("derived"), root.resolve("tests.xcresult"), true,
+            ).last(),
+        )
+        assertEquals(
             listOf(
                 "xcodebuild", "-create-xcframework", "-framework", "/tmp/release args/CodexAgent.framework",
                 "-output", "/tmp/release args/CodexAgent.xcframework",

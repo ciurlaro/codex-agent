@@ -152,7 +152,12 @@ private val sliceKeys = setOf(
     "xcodeVersionSha256", "swiftVersionSha256",
 )
 
-private fun verifySliceProof(proof: JsonObject, spec: AppleRustSliceSpec, archive: File, expected: AppleRustEvidenceIdentity) {
+internal fun verifySliceProof(
+    proof: JsonObject,
+    spec: AppleRustSliceSpec,
+    archive: File,
+    expected: AppleRustEvidenceIdentity,
+) {
     check(proof.keys == sliceKeys && proof.releaseInt("schemaVersion") == 2 &&
         proof.releaseString("protocol") == "codex-agent-ios-rust-slice-v2" && proof.releaseString("result") == "passed") {
         "Invalid Apple Rust slice proof schema"

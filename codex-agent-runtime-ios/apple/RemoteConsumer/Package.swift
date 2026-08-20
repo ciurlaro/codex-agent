@@ -13,7 +13,7 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            url: "https://github.com/ciurlaro/codex-agent.git",
+            url: "https://github.com/codex-agent-labs/codex-agent.git",
             exact: "0.2.0"
         ),
     ],

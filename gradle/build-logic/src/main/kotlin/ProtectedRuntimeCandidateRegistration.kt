@@ -19,7 +19,7 @@ fun Project.registerProtectedRuntimeCandidates(
     val classifiers = objects.fileCollection().apply {
         desktopRuntimeEvidenceTargets.values.forEach { target ->
             from(centralStagingDirectory.map { repository -> repository.file(
-                "io/github/ciurlaro/codex-agent-runtime-desktop/$version/" +
+                "${CodexAgentBuild.MAVEN_GROUP.replace('.', '/')}/codex-agent-runtime-desktop/$version/" +
                     "codex-agent-runtime-desktop-$version-${target.classifier}.zip",
             ) })
         }

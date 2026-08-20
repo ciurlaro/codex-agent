@@ -17,10 +17,10 @@ dependencyResolutionManagement {
                     url = uri(staging)
                 }
             }
-            filter { includeGroup("io.github.ciurlaro") }
+            filter { includeGroup("io.github.codex-agent-labs") }
         }
-        google { content { excludeGroup("io.github.ciurlaro") } }
-        mavenCentral { content { excludeGroup("io.github.ciurlaro") } }
+        google { content { excludeGroup("io.github.codex-agent-labs") } }
+        mavenCentral { content { excludeGroup("io.github.codex-agent-labs") } }
     }
 }
 

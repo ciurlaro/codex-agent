@@ -2,18 +2,6 @@ import java.io.File
 import java.util.UUID
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.gradle.api.DefaultTask
-import org.gradle.api.Project
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.OutputFile
-import org.gradle.api.tasks.PathSensitive
-import org.gradle.api.tasks.PathSensitivity
-import org.gradle.api.tasks.TaskAction
-import org.gradle.work.DisableCachingByDefault
 
 private val reusableCentralStates = setOf("PENDING", "VALIDATING", "VALIDATED", "PUBLISHING", "PUBLISHED")
 
@@ -187,69 +175,4 @@ private fun centralStatus(
         }
     }
     return deployment.copy(state = state)
-}
-
-@DisableCachingByDefault(because = "This task uploads one exact remote deployment")
-abstract class PrepareCentralDeploymentTask : CentralPortalTask() {
-    @get:Input abstract val allowNewUpload: Property<Boolean>
-    @get:OutputFile abstract override val deploymentRecord: RegularFileProperty
-    @TaskAction fun prepare() = prepareCentralDeployment(
-        bundleFile.get().asFile, candidateManifest.get().asFile, deploymentRecord.get().asFile,
-        apiBaseUrl.get(), username.orNull.orEmpty(), password.orNull.orEmpty(), allowNewUpload.get(),
-    )
-}
-
-@DisableCachingByDefault(because = "This task polls a remote deployment")
-abstract class AwaitCentralValidationTask : CentralPortalTask() {
-    @get:Internal abstract override val deploymentRecord: RegularFileProperty
-    @TaskAction fun await() = awaitCentralValidation(
-        bundleFile.get().asFile, candidateManifest.get().asFile, deploymentRecord.get().asFile,
-        apiBaseUrl.get(), username.orNull.orEmpty(), password.orNull.orEmpty(),
-    )
-}
-
-@DisableCachingByDefault(because = "This task releases and polls a remote deployment")
-abstract class ReleaseCentralDeploymentTask : CentralPortalTask() {
-    @get:Internal abstract override val deploymentRecord: RegularFileProperty
-    @TaskAction fun release() = releaseCentralDeployment(
-        bundleFile.get().asFile, candidateManifest.get().asFile, deploymentRecord.get().asFile,
-        apiBaseUrl.get(), username.orNull.orEmpty(), password.orNull.orEmpty(),
-    )
-}
-
-abstract class CentralPortalTask : DefaultTask() {
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val bundleFile: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val candidateManifest: RegularFileProperty
-    @get:Internal abstract val deploymentRecord: RegularFileProperty
-    @get:Input abstract val apiBaseUrl: Property<String>
-    @get:Internal abstract val username: Property<String>
-    @get:Internal abstract val password: Property<String>
-
-    init {
-        apiBaseUrl.convention(project.providers.environmentVariable("CENTRAL_PORTAL_API").orElse(DEFAULT_CENTRAL_PORTAL_API))
-        username.convention(project.providers.environmentVariable("MAVEN_CENTRAL_USERNAME"))
-        password.convention(project.providers.environmentVariable("MAVEN_CENTRAL_PASSWORD"))
-    }
-}
-
-fun Project.registerCentralPortalTasks() {
-    val bundle = layout.file(providers.gradleProperty("codexAgent.centralBundle").map(::file))
-    val candidate = layout.file(providers.gradleProperty("codexAgent.candidateManifest").map(::file))
-    val record = layout.file(providers.gradleProperty("codexAgent.centralDeploymentRecord").map(::file))
-    tasks.register("prepareCentralDeployment", PrepareCentralDeploymentTask::class.java) {
-        group = "publishing"
-        description = "Uploads the exact candidate bundle once as USER_MANAGED and records its deployment ID."
-        bundleFile.set(bundle); candidateManifest.set(candidate); deploymentRecord.set(record)
-        allowNewUpload.set(providers.gradleProperty("codexAgent.allowCentralUpload").map(String::toBoolean).orElse(false))
-    }
-    tasks.register("awaitCentralValidation", AwaitCentralValidationTask::class.java) {
-        group = "publishing"
-        description = "Waits for the recorded exact Central deployment to validate."
-        bundleFile.set(bundle); candidateManifest.set(candidate); deploymentRecord.set(record)
-    }
-    tasks.register("releaseCentralDeployment", ReleaseCentralDeploymentTask::class.java) {
-        group = "publishing"
-        description = "Releases the recorded validated Central deployment and waits for PUBLISHED."
-        bundleFile.set(bundle); candidateManifest.set(candidate); deploymentRecord.set(record)
-    }
 }

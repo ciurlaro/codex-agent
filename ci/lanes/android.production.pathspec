@@ -1,0 +1,9 @@
+codex-agent-runtime-android/build.gradle.kts
+codex-agent-runtime-android/src/main/**
+codex-agent-client/src/androidMain/**
+tooling/android-runtime-evidence/build.gradle.kts
+tooling/android-runtime-evidence/src/androidTest/**
+gradle/build-logic/src/main/kotlin/*Android*.kt
+gradle/build-logic/src/main/kotlin/FirebaseAndroid*.kt
+gradle/build-logic/src/main/kotlin/PrepareCodexRuntimeTask.kt
+gradle/build-logic/src/main/kotlin/codexagent.android-runtime-evidence.gradle.kts

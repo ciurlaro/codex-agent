@@ -11,7 +11,7 @@ internal const val PINNED_NODE_VERSION = "24.18.0"
 internal const val NODE_RUNTIME_JS_BACKEND = "js"
 internal const val NODE_RUNTIME_WASM_BACKEND = "wasm"
 internal const val NODE_RUNTIME_TEST_CLASS =
-    "io.github.ciurlaro.codexmobile.appserver.runtime.NodeCodexRuntimeTest"
+    "io.github.codex_agent_labs.codexmobile.appserver.runtime.NodeCodexRuntimeTest"
 internal const val NODE_RUNTIME_RUNNER_ARCHIVE = "codex-agent-node-runtime-evidence-runner.zip"
 internal const val NODE_RUNTIME_RUNNER_ENTRY = "codex-agent-codex-agent-runtime-node.js"
 internal const val NODE_WASM_RUNTIME_RUNNER_ARCHIVE = "codex-agent-node-wasm-runtime-evidence-runner.zip"
@@ -127,10 +127,30 @@ internal fun validateNodeRuntimeEvidence(
     distributionManifest: File,
     classifierArchives: List<File>,
     compiledNodeTestRuntime: File,
+): List<String> = validateNodeRuntimeEvidence(
+    evidenceFiles,
+    desktopRuntimeEvidenceTargets.keys.associateWith { expectedCommit },
+    runtimeBackend,
+    distributionManifest,
+    classifierArchives,
+    compiledNodeTestRuntime,
+)
+
+internal fun validateNodeRuntimeEvidence(
+    evidenceFiles: List<File>,
+    expectedCommits: Map<String, String>,
+    runtimeBackend: String,
+    distributionManifest: File,
+    classifierArchives: List<File>,
+    compiledNodeTestRuntime: File,
 ): List<String> = buildList {
     runCatching { requireNodeRuntimeBackend(runtimeBackend) }
         .exceptionOrNull()?.let { add(it.message ?: "runtime backend is invalid"); return@buildList }
-    if (!expectedCommit.matches(Regex("[0-9a-f]{40}"))) add("candidate commit is not immutable")
+    if (expectedCommits.keys != desktopRuntimeEvidenceTargets.keys ||
+        expectedCommits.values.any { !it.matches(Regex("[0-9a-f]{40}")) }
+    ) {
+        add("candidate commit map is incomplete or non-immutable")
+    }
     val manifest = runCatching { readDesktopCodexManifest(distributionManifest) }
         .getOrElse { add("distribution manifest: ${it.message}"); return@buildList }
     if (manifest.distributions.map(DesktopCodexDistributionSpec::target).toSet() !=
@@ -165,7 +185,7 @@ internal fun validateNodeRuntimeEvidence(
             val report = file.readReleaseObject()
             check(report.keys == NODE_RUNTIME_EVIDENCE_KEYS) { "schema fields mismatch" }
             check(report.releaseInt("schemaVersion") == 2) { "schema version mismatch" }
-            check(report.releaseString("candidateCommit") == expectedCommit) { "commit mismatch" }
+            check(report.releaseString("candidateCommit") == expectedCommits[target]) { "commit mismatch" }
             check(report.releaseString("target") == target) { "target mismatch" }
             check(report.releaseString("runtimeBackend") == runtimeBackend) { "runtime backend mismatch" }
             check(report.releaseString("classifier") == expected.classifier) { "classifier mismatch" }
