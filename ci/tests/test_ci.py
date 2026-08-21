@@ -703,7 +703,8 @@ class ReceiptTest(GitFixture):
         self.receipt_root = self.root / "artifacts/android"
         self.receipt_root.mkdir(parents=True)
         self.write("artifacts/android/product.bin", "product\n")
-        self.write("artifacts/android/test-report.json", "{}\n")
+        evidence_path = "data.0~token=="
+        self.write(f"artifacts/android/{evidence_path}", "{}\n")
         create_receipt(Namespace(
             plan=self.plan_path,
             lane="android",
@@ -715,7 +716,7 @@ class ReceiptTest(GitFixture):
             runner=["os=Linux", "arch=X64"],
             toolchain=["java=25", "gradle=9.4.1", "validationActions=build,test"],
             artifact=["product.bin=binary"],
-            evidence=["test-report.json=test-report"],
+            evidence=[f"{evidence_path}=xctest-result"],
         ))
 
     def test_exact_receipt_and_aggregate(self) -> None:
@@ -726,6 +727,7 @@ class ReceiptTest(GitFixture):
             "android",
         )
         self.assertNotIn("bytes", receipt["evidence"][0])
+        self.assertEqual("data.0~token==", receipt["evidence"][0]["relativePath"])
         self.assertEqual(64, len(receipt["evidence"][0]["sha256"]))
         output = self.root / "build/ci/validation-receipt.json"
         aggregate(Namespace(plan=self.plan_path, receipts=self.receipt_root.parent, output=output))

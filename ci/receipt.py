@@ -65,7 +65,7 @@ def parse_files(values: list[str], root: Path, include_bytes: bool) -> list[dict
     result: list[dict[str, object]] = []
     seen: set[str] = set()
     for value in values:
-        relative, separator, kind = value.partition("=")
+        relative, separator, kind = value.rpartition("=")
         candidate = PurePosixPath(relative)
         if not separator or not kind or candidate.is_absolute() or ".." in candidate.parts or relative in seen:
             raise ValueError(f"Expected one safe unique RELATIVE_PATH=KIND entry, got {value!r}")
