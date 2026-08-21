@@ -305,6 +305,7 @@ jobs:
           plan-artifact: ${{ inputs.planArtifact }}
           validation-commit: ${{ inputs.validationCommit }}
           validation-tree: ${{ inputs.validationTree }}
+          rust-version: "1.95.0"
           xcode-version: "26.6"
 
   package:

@@ -40,6 +40,14 @@ class ReleaseWorkflowContractTest {
     }
 
     @Test
+    fun `Swift authentication lane installs the pinned Rust toolchain`() {
+        val swiftTests = workflows.getValue("apple-runtime-evidence.yml")
+            .substringAfter("\n  swift-tests:")
+            .substringBefore("\n\n  package:")
+        assertTrue("rust-version: \"1.95.0\"" in swiftTests)
+    }
+
+    @Test
     fun `external actions are immutable and artifact transport is strict`() {
         val combined = (workflows.values + actions.values).joinToString("\n")
         val uses = combined.lineSequence().map { it.trim().removePrefix("- ") }
