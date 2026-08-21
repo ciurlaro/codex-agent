@@ -1,0 +1,7 @@
+gradle/build-logic/src/main/kotlin/ImportedAppleFrameworkTasks.kt
+gradle/build-logic/src/main/kotlin/ProtectedRuntimeCandidateRegistration.kt
+gradle/build-logic/src/main/kotlin/ReleaseToolingGradleTasks.kt
+gradle/build-logic/src/test/**
+codex-agent-client/src/commonTest/**
+codex-agent-client/src/jvmTest/**
+tooling/protocol-generator/src/test/**

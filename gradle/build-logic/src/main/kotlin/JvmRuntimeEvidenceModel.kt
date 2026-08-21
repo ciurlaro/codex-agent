@@ -9,7 +9,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 internal const val JVM_RUNTIME_RUNNER_ARCHIVE = "codex-agent-jvm-runtime-evidence-runner.zip"
 internal const val JVM_RUNTIME_RUNNER_ENTRYPOINT =
-    "io.github.ciurlaro.codexmobile.appserver.runtime.JvmRuntimeEvidenceMain"
+    "io.github.codex_agent_labs.codexmobile.appserver.runtime.JvmRuntimeEvidenceMain"
 internal const val JVM_RUNTIME_TEST_TASK = ":codex-agent-runtime-desktop:jvmTest"
 
 internal fun jvmRuntimeEvidenceTestTask(target: String) = if (target == "linuxArm64") {
@@ -66,8 +66,26 @@ internal fun validateJvmRuntimeEvidence(
     distributionManifest: File,
     classifierArchives: List<File>,
     compiledJvmTestRuntime: File,
+): List<String> = validateJvmRuntimeEvidence(
+    evidenceFiles,
+    desktopRuntimeEvidenceTargets.keys.associateWith { expectedCommit },
+    distributionManifest,
+    classifierArchives,
+    compiledJvmTestRuntime,
+)
+
+internal fun validateJvmRuntimeEvidence(
+    evidenceFiles: List<File>,
+    expectedCommits: Map<String, String>,
+    distributionManifest: File,
+    classifierArchives: List<File>,
+    compiledJvmTestRuntime: File,
 ): List<String> = buildList {
-    if (!expectedCommit.matches(Regex("[0-9a-f]{40}"))) add("candidate commit is not immutable")
+    if (expectedCommits.keys != desktopRuntimeEvidenceTargets.keys ||
+        expectedCommits.values.any { !it.matches(Regex("[0-9a-f]{40}")) }
+    ) {
+        add("candidate commit map is incomplete or non-immutable")
+    }
     val manifest = runCatching { readDesktopCodexManifest(distributionManifest) }
         .getOrElse { add("distribution manifest: ${it.message}"); return@buildList }
     if (classifierArchives.size != desktopRuntimeEvidenceTargets.size) add("classifier archive set mismatch")
@@ -98,7 +116,7 @@ internal fun validateJvmRuntimeEvidence(
             val report = file.readReleaseObject()
             check(report.keys == JVM_RUNTIME_EVIDENCE_KEYS) { "schema fields mismatch" }
             check(report.releaseInt("schemaVersion") == 1) { "schema version mismatch" }
-            check(report.releaseString("candidateCommit") == expectedCommit) { "commit mismatch" }
+            check(report.releaseString("candidateCommit") == expectedCommits[target]) { "commit mismatch" }
             check(report.releaseString("target") == target) { "target mismatch" }
             check(report.releaseString("classifier") == expected.classifier) { "classifier mismatch" }
             check(report.releaseString("runnerOs") == expected.runnerOs) { "runner OS mismatch" }

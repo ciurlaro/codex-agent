@@ -2,8 +2,11 @@ name: Setup sccache
 description: Install and integrity-check the pinned Rust compiler cache.
 inputs:
   write:
-    description: Permit this trusted main job to write the GHA cache.
+    description: Request a write from the one elected authoritative PR merge-ref lane.
     default: "false"
+outputs:
+  cargo-main-cache-key:
+    value: ${{ steps.policy.outputs.cargo-main-key }}
 runs:
   using: composite
   steps:
@@ -13,6 +16,7 @@ runs:
     - name: Verify the pinned binary and configure its GHA backend
       env:
         ALLOW_WRITE: ${{ inputs.write }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       shell: bash
       run: |
         expected=""
@@ -25,7 +29,10 @@ runs:
           test "$actual" = "$expected"
         fi
         mode=READ_ONLY
-        [ "$ALLOW_WRITE" = true ] && mode=READ_WRITE
+        if [ "$ALLOW_WRITE" = true ] && [ "$GITHUB_EVENT_NAME" = pull_request ] && \
+          [ -n "$PR_NUMBER" ] && [ "$GITHUB_REF" = "refs/pull/$PR_NUMBER/merge" ]; then
+          mode=READ_WRITE
+        fi
         {
           printf 'SCCACHE_GHA_ENABLED=true\n'
           printf 'SCCACHE_GHA_VERSION=codex-agent-rust-v1\n'
@@ -33,3 +40,38 @@ runs:
           printf 'RUSTC_WRAPPER=sccache\n'
           printf 'CARGO_INCREMENTAL=0\n'
         } >> "$GITHUB_ENV"
+        dependency_hash="${{ hashFiles('codex-agent-runtime-ios/native/provenance.json', 'codex-agent-runtime-ios/native/patches/**') }}"
+        {
+          printf 'write=%s\n' "$([ "$mode" = READ_WRITE ] && printf true || printf false)"
+          printf 'cargo-main-key=cargo-main-dependencies-v1-%s-%s-%s\n' \
+            "$RUNNER_OS" "$RUNNER_ARCH" "$dependency_hash"
+          printf 'cargo-pr-key=cargo-pr-dependencies-v1-%s-%s-%s-%s\n' \
+            "$RUNNER_OS" "$RUNNER_ARCH" "$dependency_hash" "$PR_NUMBER"
+        } >> "$GITHUB_OUTPUT"
+      id: policy
+    - id: cargo-main-read
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+        key: ${{ steps.policy.outputs.cargo-main-key }}
+    - id: cargo-pr-read
+      if: steps.policy.outputs.write != 'true' && github.event_name == 'pull_request'
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+        key: ${{ steps.policy.outputs.cargo-pr-key }}
+    - id: cargo-pr-write
+      if: steps.policy.outputs.write == 'true'
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+        key: ${{ steps.policy.outputs.cargo-pr-key }}

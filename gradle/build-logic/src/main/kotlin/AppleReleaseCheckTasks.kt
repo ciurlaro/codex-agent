@@ -1,24 +1,5 @@
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
-import javax.inject.Inject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import org.gradle.api.DefaultTask
-import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.OutputFile
-import org.gradle.api.tasks.PathSensitive
-import org.gradle.api.tasks.PathSensitivity
-import org.gradle.api.tasks.TaskAction
-import org.gradle.process.ExecOperations
-import org.gradle.work.DisableCachingByDefault
 
 internal data class DeploymentTargetRecord(val member: String, val platform: Int, val minimum: String)
 
@@ -28,7 +9,7 @@ internal data class AppleArtifactMetrics(
     val sampleAppInstallBytes: Long,
 )
 
-private const val IOS_GIBIBYTE_BYTES = 1024L * 1024L * 1024L
+internal const val IOS_GIBIBYTE_BYTES = 1024L * 1024L * 1024L
 
 internal fun requireIosFreeDiskSpace(availableBytes: Long, minimumFreeGiB: Long): Long {
     require(minimumFreeGiB > 0) { "Minimum iOS free disk space must be positive" }
@@ -134,134 +115,4 @@ internal fun requireSuccessfulReleaseProcess(
     val details = listOf(output.trim(), errors.trim()).filter(String::isNotEmpty).joinToString("\n")
     check(exitCode == 0) { "${command.joinToString(" ")} failed ($exitCode): $details" }
     return output
-}
-
-internal fun ExecOperations.captureReleaseProcess(
-    command: List<String>,
-    workingDirectory: File? = null,
-    environmentVariables: Map<String, String> = mapOf("LC_ALL" to "C", "LANG" to "C"),
-): String {
-    val output = ByteArrayOutputStream()
-    val errors = ByteArrayOutputStream()
-    val result = exec {
-        commandLine(command)
-        workingDirectory?.let(::workingDir)
-        environment(environmentVariables)
-        standardOutput = output
-        errorOutput = errors
-        isIgnoreExitValue = true
-    }
-    return requireSuccessfulReleaseProcess(
-        command,
-        result.exitValue,
-        output.toString(Charsets.UTF_8.name()),
-        errors.toString(Charsets.UTF_8.name()),
-    )
-}
-
-@DisableCachingByDefault(because = "Verifies the installed Apple toolchain")
-abstract class VerifyAppleToolchainTask @Inject constructor(private val processes: ExecOperations) : DefaultTask() {
-    @get:Input abstract val expectedXcodeVersion: Property<String>
-    @get:Input abstract val expectedXcodeBuild: Property<String>
-    @get:Input abstract val expectedSwiftVersion: Property<String>
-    @get:OutputDirectory abstract val reportDirectory: DirectoryProperty
-
-    init { outputs.upToDateWhen { false } }
-
-    @TaskAction fun verify() {
-        val xcode = processes.captureReleaseProcess(listOf("xcodebuild", "-version"))
-        val swift = processes.captureReleaseProcess(listOf("swift", "--version"))
-        verifyAppleToolchainOutput(
-            xcode, swift, expectedXcodeVersion.get(), expectedXcodeBuild.get(), expectedSwiftVersion.get(),
-        )
-        reportDirectory.file("xcode.txt").get().asFile.apply { parentFile.mkdirs(); writeText(xcode) }
-        reportDirectory.file("swift.txt").get().asFile.writeText(swift)
-    }
-}
-
-@DisableCachingByDefault(because = "Available disk space is live host state")
-abstract class VerifyIosFreeDiskSpaceTask : DefaultTask() {
-    @get:Input abstract val minimumFreeGiB: Property<Long>
-    @get:Internal abstract val workspaceDirectory: DirectoryProperty
-    @get:OutputFile abstract val reportFile: RegularFileProperty
-
-    init { outputs.upToDateWhen { false } }
-
-    @TaskAction fun verify() {
-        val availableBytes = Files.getFileStore(workspaceDirectory.get().asFile.toPath()).usableSpace
-        val minimum = minimumFreeGiB.get()
-        val requiredBytes = Math.multiplyExact(minimum, IOS_GIBIBYTE_BYTES)
-        reportFile.get().asFile.atomicWriteJson(buildJsonObject {
-            put("schemaVersion", JsonPrimitive(1))
-            put("availableBytes", JsonPrimitive(availableBytes))
-            put("requiredBytes", JsonPrimitive(requiredBytes))
-        })
-        requireIosFreeDiskSpace(availableBytes, minimum)
-        logger.lifecycle(
-            "iOS preflight passed: ${availableBytes / IOS_GIBIBYTE_BYTES} GiB free; $minimum GiB required",
-        )
-    }
-}
-
-@DisableCachingByDefault(because = "Inspects binary metadata with the selected Xcode toolchain")
-abstract class VerifyIosDeploymentTargetsTask @Inject constructor(private val processes: ExecOperations) : DefaultTask() {
-    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val xcframeworkDirectory: DirectoryProperty
-    @get:Input abstract val minimumIosVersion: Property<String>
-    @get:OutputFile abstract val reportFile: RegularFileProperty
-
-    @TaskAction fun verify() {
-        val root = xcframeworkDirectory.get().asFile
-        val binaries = Files.walk(root.toPath()).use { paths ->
-            paths.filter(Files::isRegularFile)
-                .filter { it.fileName.toString() == "CodexAgent" && it.parent.fileName.toString() == "CodexAgent.framework" }
-                .map { it.toFile() }.sorted().toList()
-        }
-        check(binaries.size == 2) { "Expected exactly two XCFramework binaries, found ${binaries.size}" }
-        val report = buildString {
-            binaries.forEach { binary ->
-                val path = binary.invariantSeparatorsPath
-                val expectedPlatform = when {
-                    "/ios-arm64-simulator/" in path -> 7
-                    "/ios-arm64/" in path -> 2
-                    else -> error("Unexpected XCFramework slice: $path")
-                }
-                val records = parseDeploymentTargets(
-                    processes.captureReleaseProcess(listOf("/usr/bin/xcrun", "otool", "-l", binary.absolutePath)),
-                )
-                verifyDeploymentTargets(records, expectedPlatform, minimumIosVersion.get())
-                val plist = binary.parentFile.resolve("Info.plist")
-                val plistMinimum = processes.captureReleaseProcess(
-                    listOf("/usr/bin/xcrun", "plutil", "-extract", "MinimumOSVersion", "raw", "-o", "-", plist.absolutePath),
-                ).trim()
-                check(plistMinimum == minimumIosVersion.get()) { "Framework Info.plist deployment target mismatch" }
-                append("== ${binary.absolutePath} ==\n")
-                records.map { "${it.platform}:${it.minimum}" }.toSortedSet().forEach { append(it).append('\n') }
-            }
-        }
-        check("2:${minimumIosVersion.get()}" in report && "7:${minimumIosVersion.get()}" in report) {
-            "Device and simulator deployment targets were not both verified"
-        }
-        reportFile.get().asFile.apply { parentFile.mkdirs(); writeText(report) }
-    }
-}
-
-@DisableCachingByDefault(because = "Measures release artifacts produced by Xcode and Gradle")
-abstract class VerifyIosReleaseBudgetsTask : DefaultTask() {
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val policyFile: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val archiveFile: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val deviceBinary: RegularFileProperty
-    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val applicationDirectory: DirectoryProperty
-    @get:OutputFile abstract val reportFile: RegularFileProperty
-
-    @TaskAction fun verify() {
-        val metrics = measureAppleArtifacts(
-            archiveFile.get().asFile, deviceBinary.get().asFile, applicationDirectory.get().asFile,
-        )
-        verifyAppleArtifactBudgets(metrics, policyFile.get().asFile)
-        reportFile.get().asFile.atomicWriteJson(buildJsonObject {
-            put("compressedXcframeworkBytes", JsonPrimitive(metrics.compressedXcframeworkBytes))
-            put("deviceFrameworkBytes", JsonPrimitive(metrics.deviceFrameworkBytes))
-            put("sampleAppInstallBytes", JsonPrimitive(metrics.sampleAppInstallBytes))
-        })
-    }
 }

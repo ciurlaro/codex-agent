@@ -98,7 +98,7 @@ internal fun verifyCandidateCentralAndroidRuntimeBinding(
     check(expectedRuntime == evidence.releaseString("aarBundledRuntimeSha256")) {
         "Firebase Android runtime hashes differ"
     }
-    val aarPath = "io/github/ciurlaro/codex-agent-runtime-android/$version/" +
+    val aarPath = "${CodexAgentBuild.MAVEN_GROUP.replace('.', '/')}/codex-agent-runtime-android/$version/" +
         "codex-agent-runtime-android-$version.aar"
     val (stagedAar, stagedRuntime) = ZipFile(centralBundle).use { central ->
         val entries = central.entries().asSequence().filter { !it.isDirectory && it.name == aarPath }.toList()

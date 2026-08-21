@@ -10,7 +10,7 @@ tasks.register<GenerateProtocolTask>("generateProtocol") {
     description = "Extracts exact stable-v2 route descriptors from pinned upstream sources."
     dependsOn(tasks.named("classes"))
     generatorClasspath.from(mainRuntimeClasspath)
-    generatorMainClass.set("io.github.ciurlaro.codexmobile.appserver.generator.ProtocolGeneratorKt")
+    generatorMainClass.set("io.github.codex_agent_labs.codexmobile.appserver.generator.ProtocolGeneratorKt")
     commonSource.set(layout.file(providers.gradleProperty("codexProtocolCommon").map(::File)))
     schemaSource.set(layout.file(providers.gradleProperty("codexProtocolSchema").map(::File)))
     threadSource.set(layout.file(providers.gradleProperty("codexProtocolThread").map(::File)))
@@ -20,7 +20,7 @@ tasks.register<GenerateProtocolTask>("generateProtocol") {
     descriptorOutput.set(protocolRoot.file("protocol/schema/descriptors.json"))
     generatedSources.set(
         protocolRoot.dir(
-            "src/commonMain/kotlin/io/github/ciurlaro/codexmobile/appserver/protocol/generated",
+            "src/commonMain/kotlin/io/github/codex_agent_labs/codexmobile/appserver/protocol/generated",
         ),
     )
     provenanceOutput.set(protocolRoot.file("protocol/schema/provenance.json"))

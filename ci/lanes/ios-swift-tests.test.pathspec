@@ -1,0 +1,4 @@
+codex-agent-runtime-ios/apple/Tests/**
+codex-agent-runtime-ios/apple/Sources/**
+codex-agent-runtime-ios/apple/Package.swift
+gradle/build-logic/src/main/kotlin/SwiftAuthenticationTestTask.kt

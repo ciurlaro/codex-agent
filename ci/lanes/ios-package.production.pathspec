@@ -1,0 +1,16 @@
+codex-agent-runtime-ios/apple/Package.swift
+codex-agent-runtime-ios/apple/TestApp/**
+codex-agent-runtime-ios/apple/Sources/**
+codex-agent-runtime-ios/apple/Tests/**
+LICENSE
+THIRD_PARTY_NOTICES.md
+codex-agent-runtime-android/src/main/assets/openai-codex-LICENSE.txt
+codex-agent-runtime-android/src/main/assets/openai-codex-NOTICE.txt
+gradle/build-logic/src/main/kotlin/AppleDistributionFileTasks.kt
+gradle/build-logic/src/main/kotlin/AppleVerifiedDistribution*.kt
+gradle/build-logic/src/main/kotlin/ImportedAppleFrameworkTasks.kt
+gradle/build-logic/src/main/kotlin/IosAppleDistributionTasks.kt
+gradle/build-logic/src/main/kotlin/IosVerifiedDistributionRegistration.kt
+gradle/build-logic/src/main/kotlin/NativeReleaseVerificationTasks.kt
+gradle/build-logic/src/main/kotlin/SwiftPackageProofTask.kt
+gradle/build-logic/src/main/kotlin/SwiftReleaseMetadataTasks.kt

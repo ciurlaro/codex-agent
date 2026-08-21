@@ -1,0 +1,11 @@
+codex-agent-runtime-node/build.gradle.kts
+codex-agent-runtime-node/src/webMain/**
+codex-agent-runtime-node/src/wasmJsMain/**
+codex-agent-client/build.gradle.kts
+codex-agent-client/src/commonMain/**
+codex-agent-client/src/wasmJsMain/**
+runtime-host-shared/src/commonMain/**
+codex-agent-runtime-desktop/codex-app-server-distributions.json
+gradle/build-logic/src/main/kotlin/GenerateNodeDistributionSourceTask.kt
+gradle/build-logic/src/main/kotlin/NodeRuntimeEvidence*.kt
+gradle/build-logic/src/main/kotlin/codexagent.node-runtime.gradle.kts

@@ -16,6 +16,7 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.LocalState
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -89,6 +90,7 @@ internal fun swiftAuthenticationXcodebuildCommand(
     simulatorId: String,
     derivedData: File,
     resultBundle: File,
+    withoutBuilding: Boolean = false,
 ) = listOf(
     "xcodebuild",
     "-scheme", "CodexAgent-Package",
@@ -96,7 +98,7 @@ internal fun swiftAuthenticationXcodebuildCommand(
     "-derivedDataPath", derivedData.absolutePath,
     "-resultBundlePath", resultBundle.absolutePath,
     "CODE_SIGNING_ALLOWED=NO",
-    "test",
+    if (withoutBuilding) "test-without-building" else "test",
 )
 
 internal fun swiftSimulatorXCFrameworkCommand(framework: File, output: File) = listOf(
@@ -128,6 +130,7 @@ abstract class VerifySwiftSimulatorCompilationTask @Inject constructor(
     @get:Input abstract val expectedXcodeBuild: Property<String>
     @get:Input abstract val expectedSwiftVersion: Property<String>
     @get:LocalState abstract val derivedDataDirectory: DirectoryProperty
+    @get:OutputDirectory abstract val compiledProductsDirectory: DirectoryProperty
     @get:OutputFile abstract val reportFile: RegularFileProperty
 
     @TaskAction fun verify() {
@@ -147,6 +150,11 @@ abstract class VerifySwiftSimulatorCompilationTask @Inject constructor(
                 swiftSimulatorBuildForTestingCommand(derivedDataDirectory.get().asFile),
                 packageRoot,
             )
+            val products = derivedDataDirectory.get().asFile.resolve("Build/Products")
+            check(products.isDirectory) { "Swift build-for-testing produced no Build/Products directory" }
+            val exported = compiledProductsDirectory.get().asFile
+            deleteReleaseTree(exported)
+            copyReleaseTree(products, exported)
             reportFile.get().asFile.atomicWriteJson(buildJsonObject {
                 put("schemaVersion", JsonPrimitive(1))
                 put("result", JsonPrimitive("passed"))
@@ -166,6 +174,8 @@ abstract class VerifySwiftAuthenticationTestsTask @Inject constructor(
     private val processes: ExecOperations,
 ) : DefaultTask() {
     @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val packageDirectory: DirectoryProperty
+    @get:Optional @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val compiledProductsDirectory: DirectoryProperty
     @get:Input abstract val runtimeName: Property<String>
     @get:Input abstract val deviceTypeIdentifier: Property<String>
     @get:Input abstract val expectedTestCount: Property<Int>
@@ -176,6 +186,13 @@ abstract class VerifySwiftAuthenticationTestsTask @Inject constructor(
 
     @TaskAction fun verify() {
         val resultBundle = resultBundleDirectory.get().asFile
+        val importedProducts = compiledProductsDirectory.orNull?.asFile
+        if (importedProducts != null) {
+            check(importedProducts.isDirectory) { "Imported Swift compilation products are missing" }
+            val products = derivedDataDirectory.get().asFile.resolve("Build/Products")
+            deleteReleaseTree(products)
+            copyReleaseTree(importedProducts, products)
+        }
         var lastFailure: Throwable? = null
         repeat(2) { attempt ->
             val runtimes = processes.captureReleaseProcess(
@@ -207,6 +224,7 @@ abstract class VerifySwiftAuthenticationTestsTask @Inject constructor(
                         simulator.udid,
                         derivedDataDirectory.get().asFile,
                         resultBundle,
+                        importedProducts != null,
                     ),
                     packageDirectory.get().asFile,
                 )

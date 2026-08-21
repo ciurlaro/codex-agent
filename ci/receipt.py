@@ -22,6 +22,9 @@ INPUT_NAMES = {
     "test": "test-inputs.git-tree",
     "metadata": "metadata-inputs.git-tree",
 }
+ACTION_BY_CATEGORY = {"production": "build", "test": "test", "metadata": "metadata"}
+VALIDATION_ACTIONS_KEY = "validationActions"
+VALIDATION_ACTIONS = frozenset(("build", "test", "metadata"))
 
 
 def read_json(path: Path) -> dict[str, object]:
@@ -46,11 +49,23 @@ def parse_mapping(values: list[str]) -> dict[str, str]:
     return result
 
 
+def parse_validation_actions(toolchain: dict[str, str]) -> frozenset[str]:
+    raw = toolchain.get(VALIDATION_ACTIONS_KEY, "")
+    actions = raw.split(",")
+    if (
+        not raw
+        or actions != sorted(set(actions))
+        or not set(actions).issubset(VALIDATION_ACTIONS)
+    ):
+        raise ValueError("Lane receipt validation action coverage is missing or malformed")
+    return frozenset(actions)
+
+
 def parse_files(values: list[str], root: Path, include_bytes: bool) -> list[dict[str, object]]:
     result: list[dict[str, object]] = []
     seen: set[str] = set()
     for value in values:
-        relative, separator, kind = value.partition("=")
+        relative, separator, kind = value.rpartition("=")
         candidate = PurePosixPath(relative)
         if not separator or not kind or candidate.is_absolute() or ".." in candidate.parts or relative in seen:
             raise ValueError(f"Expected one safe unique RELATIVE_PATH=KIND entry, got {value!r}")
@@ -93,7 +108,8 @@ def create_receipt(arguments: argparse.Namespace) -> None:
         input_files[category] = filename
     runner = parse_mapping(arguments.runner)
     toolchain = parse_mapping(arguments.toolchain)
-    if not runner or not toolchain:
+    parse_validation_actions(toolchain)
+    if not runner or not (set(toolchain) - {VALIDATION_ACTIONS_KEY}):
         raise ValueError("Runner and toolchain identities must be explicit and non-empty")
     receipt = {
         "schemaVersion": LANE_RECEIPT_SCHEMA_VERSION,
@@ -163,20 +179,63 @@ def validate_receipt(
         or any(character in receipt["artifactName"] for character in "/\\")
     ):
         raise ValueError("Lane receipt artifact name mismatch")
-    for field, expected in (("runner", runner), ("toolchain", toolchain)):
-        value = receipt[field]
-        if (
-            not isinstance(value, dict)
-            or not value
-            or not all(isinstance(key, str) and key and isinstance(item, str) and item for key, item in value.items())
-            or expected is not None and value != expected
-        ):
-            raise ValueError(f"Lane receipt {field} identity mismatch")
+    receipt_runner = receipt["runner"]
+    if (
+        not isinstance(receipt_runner, dict)
+        or not receipt_runner
+        or not all(isinstance(key, str) and key and isinstance(item, str) and item for key, item in receipt_runner.items())
+        or runner is not None and receipt_runner != runner
+    ):
+        raise ValueError("Lane receipt runner identity mismatch")
+    receipt_toolchain = receipt["toolchain"]
+    if (
+        not isinstance(receipt_toolchain, dict)
+        or not receipt_toolchain
+        or not all(
+            isinstance(key, str)
+            and key
+            and isinstance(item, str)
+            and (item or key == VALIDATION_ACTIONS_KEY)
+            for key, item in receipt_toolchain.items()
+        )
+    ):
+        raise ValueError("Lane receipt toolchain identity mismatch")
+    actions = parse_validation_actions(receipt_toolchain)
+    real_toolchain = {
+        key: value for key, value in receipt_toolchain.items()
+        if key != VALIDATION_ACTIONS_KEY
+    }
+    if not real_toolchain or (
+        toolchain is not None
+        and (VALIDATION_ACTIONS_KEY in toolchain or real_toolchain != toolchain)
+    ):
+        raise ValueError("Lane receipt toolchain identity mismatch")
     input_files = receipt["inputFiles"]
     if input_files != INPUT_NAMES:
         raise ValueError("Lane receipt inventory set mismatch")
     if not categories or not set(categories).issubset(INPUT_NAMES):
         raise ValueError("Unsupported lane inventory category selection")
+    lanes = plan.get("lanes")
+    lane_state = lanes.get(receipt_lane) if isinstance(lanes, dict) else None
+    if not isinstance(lane_state, dict):
+        raise ValueError("Impact plan lane state is malformed")
+    if set(categories) == set(INPUT_NAMES):
+        required_actions = {
+            action for action in VALIDATION_ACTIONS if bool(lane_state.get(action))
+        }
+    elif set(categories) == {"production"}:
+        required_actions = {"build"}
+    else:
+        required_actions = {
+            ACTION_BY_CATEGORY[category]
+            for category in categories
+            if bool(lane_state.get(ACTION_BY_CATEGORY[category]))
+        }
+    if not required_actions.issubset(actions):
+        raise ValueError(
+            f"Lane validation action coverage mismatch: required={sorted(required_actions)} "
+            f"actual={sorted(actions)}"
+        )
     for category in categories:
         filename = INPUT_NAMES[category]
         actual = root / filename

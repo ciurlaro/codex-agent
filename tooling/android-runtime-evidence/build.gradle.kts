@@ -6,10 +6,10 @@ plugins {
 }
 
 extensions.configure<ApplicationExtension> {
-    namespace = "io.github.ciurlaro.codexagent.androidruntimeevidence"
+    namespace = "io.github.codex_agent_labs.codexagent.androidruntimeevidence"
     compileSdk = 37
     defaultConfig {
-        applicationId = "io.github.ciurlaro.codexagent.androidruntimeevidence"
+        applicationId = "io.github.codex_agent_labs.codexagent.androidruntimeevidence"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

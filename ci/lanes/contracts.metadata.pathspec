@@ -1,0 +1,6 @@
+.github/workflows/release-candidate.yml
+.github/workflows/publish.yml
+.github/workflows/promote.yml
+.github/dependabot.yml
+gradle/release/**
+Package.swift

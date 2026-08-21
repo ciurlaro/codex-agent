@@ -1,4 +1,4 @@
-import io.github.ciurlaro.codexmobile.agent.runtime.NodeCodexPlatform
+import io.github.codex_agent_labs.codexmobile.agent.runtime.NodeCodexPlatform
 import okio.Path
 
 fun nodePlatform(bundleDirectory: Path, dataDirectory: Path) =

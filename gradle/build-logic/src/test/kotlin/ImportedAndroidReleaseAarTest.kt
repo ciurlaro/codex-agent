@@ -60,7 +60,7 @@ class ImportedAndroidReleaseAarTest {
     fun `Central binding rejects a different AAR containing the same runtime`() = withDirectory { root ->
         val fixture = fixture(root)
         val central = root.resolve("central.zip")
-        val path = "io/github/ciurlaro/codex-agent-runtime-android/0.2.0/" +
+        val path = "io/github/codex-agent-labs/codex-agent-runtime-android/0.2.0/" +
             "codex-agent-runtime-android-0.2.0.aar"
         writeZip(central, mapOf(path to fixture.aar.readBytes()))
         verifyCandidateCentralAndroidRuntimeBinding(listOf(fixture.evidence), central, "0.2.0")

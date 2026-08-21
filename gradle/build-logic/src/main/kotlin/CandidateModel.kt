@@ -203,7 +203,8 @@ private fun verifySwiftPackageProof(input: CandidateInputFiles, swiftHash: Strin
     check(proof.releaseString("checksumFileSha256") == input.swiftChecksum.releaseDigest()) {
         "SwiftPM candidate proof does not bind the checksum file"
     }
-    val expectedUrl = "https://github.com/ciurlaro/codex-agent/releases/download/v${input.version}/${input.swiftZip.name}"
+    val expectedUrl =
+        "https://github.com/${CodexAgentBuild.REPOSITORY}/releases/download/v${input.version}/${input.swiftZip.name}"
     check(proof.releaseString("packageSwiftUrl") == expectedUrl &&
         proof.releaseString("packageSwiftSha256") == input.packageSwift.releaseDigest() &&
         proof.releaseString("packageSwiftChecksum") == swiftHash) {

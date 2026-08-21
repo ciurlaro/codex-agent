@@ -12,7 +12,7 @@ internal fun verifyCandidateCiProvenance(file: File, expectedCommit: String) {
         "event", "headBranch", "headSha", "conclusion",
     )) { "CI provenance receipt fields are invalid" }
     check(receipt.releaseInt("schemaVersion") == 1) { "CI provenance schema must be 1" }
-    check(receipt.releaseString("repository") == "ciurlaro/codex-agent") { "CI repository mismatch" }
+    check(receipt.releaseString("repository") == CodexAgentBuild.REPOSITORY) { "CI repository mismatch" }
     check(receipt.releaseString("workflowPath") == ".github/workflows/ci.yml") { "CI workflow mismatch" }
     check(receipt.releaseLong("runId") > 0 && receipt.releaseInt("runAttempt") > 0) {
         "CI run identity is invalid"

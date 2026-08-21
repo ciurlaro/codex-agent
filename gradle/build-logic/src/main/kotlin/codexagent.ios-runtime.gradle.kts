@@ -96,11 +96,12 @@ extensions.configure<KotlinMultiplatformExtension> {
 val iosRuntimeMetrics = layout.buildDirectory.file("reports/ios-release/runtime-metrics.json")
 iosRuntimeMetrics.get().asFile.parentFile.mkdirs()
 tasks.named<KotlinNativeTest>("iosSimulatorArm64Test") {
-    environment("CODEX_AGENT_IOS_METRICS_PATH", iosRuntimeMetrics.get().asFile.absolutePath)
-    environment("SIMCTL_CHILD_CODEX_AGENT_IOS_METRICS_PATH", iosRuntimeMetrics.get().asFile.absolutePath)
-    outputs.file(iosRuntimeMetrics)
+    val metricsFile = iosRuntimeMetrics.get().asFile
+    environment("CODEX_AGENT_IOS_METRICS_PATH", metricsFile.absolutePath)
+    environment("SIMCTL_CHILD_CODEX_AGENT_IOS_METRICS_PATH", metricsFile.absolutePath)
+    outputs.file(metricsFile)
     doLast("verifyIosRuntimeMetrics") {
-        check(iosRuntimeMetrics.get().asFile.isFile) { "iOS runtime metrics were not recorded" }
+        check(metricsFile.isFile) { "iOS runtime metrics were not recorded" }
     }
 }
 
@@ -109,6 +110,20 @@ val verifyAppleToolchain = registerAppleToolchainVerificationTask(
     pinnedXcodeBuild,
     pinnedSwiftVersion,
 )
+val importedDeviceFramework = providers.gradleProperty("codexAgent.iosDeviceFrameworkDirectory").orNull?.let {
+    tasks.register<ImportCodexAgentFrameworkTask>("importCodexAgentIosDeviceFramework") {
+        frameworkDirectory.set(layout.dir(providers.provider { file(it) }))
+        platformName.set("iphoneos")
+        importedFrameworkDirectory.set(layout.buildDirectory.dir("imported-frameworks/device/CodexAgent.framework"))
+    }
+}
+val importedSimulatorFramework = providers.gradleProperty("codexAgent.iosSimulatorFrameworkDirectory").orNull?.let {
+    tasks.register<ImportCodexAgentFrameworkTask>("importCodexAgentIosSimulatorFramework") {
+        frameworkDirectory.set(layout.dir(providers.provider { file(it) }))
+        platformName.set("iphonesimulator")
+        importedFrameworkDirectory.set(layout.buildDirectory.dir("imported-frameworks/simulator/CodexAgent.framework"))
+    }
+}
 tasks.register<VerifyIosFreeDiskSpaceTask>("preflightIosRuntime") {
     group = "verification"
     description = "Requires enough free disk and the pinned Apple toolchain before the full iOS gate."
@@ -122,20 +137,29 @@ tasks.register<VerifyIosFreeDiskSpaceTask>("preflightIosRuntime") {
 tasks.register<VerifySwiftSimulatorCompilationTask>("verifyCodexAgentSwiftSimulatorCompilation") {
     group = "verification"
     description = "Compiles the Swift package and tests against only the simulator framework."
-    dependsOn(verifyAppleToolchain, "linkDebugFrameworkIosSimulatorArm64")
+    dependsOn(verifyAppleToolchain)
+    if (importedSimulatorFramework != null) dependsOn(importedSimulatorFramework)
+    else dependsOn("linkDebugFrameworkIosSimulatorArm64")
     packageManifest.set(layout.projectDirectory.file("apple/Package.swift"))
     sourcesDirectory.set(layout.projectDirectory.dir("apple/Sources"))
     testsDirectory.set(layout.projectDirectory.dir("apple/Tests"))
     simulatorFrameworkDirectory.set(
-        layout.buildDirectory.dir("bin/iosSimulatorArm64/debugFramework/CodexAgent.framework"),
+        importedSimulatorFramework?.flatMap { it.importedFrameworkDirectory }
+            ?: layout.buildDirectory.dir("bin/iosSimulatorArm64/debugFramework/CodexAgent.framework"),
     )
     this.expectedXcodeVersion.set(pinnedXcodeVersion)
     this.expectedXcodeBuild.set(pinnedXcodeBuild)
     this.expectedSwiftVersion.set(pinnedSwiftVersion)
     derivedDataDirectory.set(layout.buildDirectory.dir("swift-simulator-compilation-derived-data"))
+    compiledProductsDirectory.set(layout.buildDirectory.dir("swift-simulator-compilation-products"))
     reportFile.set(layout.buildDirectory.file("reports/ios-development/swift-simulator-compilation.json"))
 }
-val appleDistributionTasks = registerIosAppleDistributionTasks(expectedSwiftTestCount, pinnedRustToolchain)
+val appleDistributionTasks = registerIosAppleDistributionTasks(
+    expectedSwiftTestCount,
+    pinnedRustToolchain,
+    importedDeviceFramework,
+    importedSimulatorFramework,
+)
 val appleReleaseTasks = registerIosAppleReleaseVerificationTasks(
     appleDistributionTasks,
     minimumIosVersion,

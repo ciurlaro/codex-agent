@@ -45,26 +45,9 @@ LANES = (
 CATEGORIES = ("production", "test", "metadata")
 
 DEPENDENCIES = {
-    "contracts": tuple(lane for lane in LANES if lane != "contracts"),
-    "portable": (
-        "android",
-        "node-js",
-        "node-wasm",
-        "desktop-macos-arm64",
-        "desktop-macos-x64",
-        "desktop-linux-arm64",
-        "desktop-linux-x64",
-        "desktop-windows-x64",
-    ),
     "android": ("consumer-android",),
-    "node-js": (
-        "desktop-macos-arm64", "desktop-macos-x64", "desktop-linux-arm64",
-        "desktop-linux-x64", "desktop-windows-x64", "consumer-node-js",
-    ),
-    "node-wasm": (
-        "desktop-macos-arm64", "desktop-macos-x64", "desktop-linux-arm64",
-        "desktop-linux-x64", "desktop-windows-x64", "consumer-node-wasm",
-    ),
+    "node-js": ("consumer-node-js",),
+    "node-wasm": ("consumer-node-wasm",),
     "desktop-macos-arm64": ("consumer-desktop",),
     "desktop-macos-x64": ("consumer-desktop",),
     "desktop-linux-arm64": ("consumer-desktop",),
@@ -72,7 +55,7 @@ DEPENDENCIES = {
     "desktop-windows-x64": ("consumer-desktop",),
     "ios-rust-device": ("ios-framework-device",),
     "ios-rust-simulator": ("ios-framework-simulator",),
-    "ios-framework-device": ("ios-package", "consumer-ios-device"),
+    "ios-framework-device": ("ios-swift-tests", "ios-package", "consumer-ios-device"),
     "ios-framework-simulator": (
         "ios-kotlin-tests",
         "ios-swift-build",
@@ -82,7 +65,6 @@ DEPENDENCIES = {
     "ios-swift-build": ("ios-swift-tests",),
     "ios-swift-tests": ("ios-privacy-metrics",),
     "ios-package": ("ios-privacy-metrics",),
-    "consumer-common": tuple(lane for lane in LANES if lane.startswith("consumer-") and lane != "consumer-common"),
 }
 
 SUPPORT_DEPENDENCIES = {
@@ -107,7 +89,11 @@ SUPPORT_DEPENDENCIES = {
     ),
     "ios-kotlin-tests": (("ios-rust-simulator", "build"),),
     "ios-swift-build": (("ios-framework-simulator", "build"),),
-    "ios-swift-tests": (("ios-framework-simulator", "build"), ("ios-swift-build", "build")),
+    "ios-swift-tests": (
+        ("ios-framework-device", "build"),
+        ("ios-framework-simulator", "build"),
+        ("ios-swift-build", "build"),
+    ),
     "ios-package": (("ios-framework-device", "build"), ("ios-framework-simulator", "build")),
     "ios-privacy-metrics": (
         ("ios-kotlin-tests", "test"), ("ios-swift-tests", "test"),
@@ -144,6 +130,10 @@ PRODUCT_MATRIX_LANES = ("contracts", "portable", "node-js", "node-wasm")
 CONSUMER_MATRIX_LANES = (
     "consumer-android", "consumer-desktop", "consumer-node-js", "consumer-node-wasm",
 )
+CONSUMER_RUNNERS = {
+    lane: "macos-26" if lane == "consumer-desktop" else "ubuntu-24.04"
+    for lane in CONSUMER_MATRIX_LANES
+}
 DESKTOP_LANES = tuple(lane for lane in LANES if lane.startswith("desktop-")) + ("consumer-desktop",)
 APPLE_LANES = tuple(lane for lane in LANES if lane.startswith("ios-")) + (
     "consumer-common", "consumer-ios-device", "consumer-ios-simulator",
@@ -181,6 +171,9 @@ def read_pathspecs(root: Path, lane: str, category: str) -> tuple[str, ...]:
 def effective_pathspecs(root: Path, lane: str, category: str) -> tuple[str, ...]:
     specs = set(read_pathspecs(root, lane, category))
     if category == "production":
+        specs.update(read_pathspecs(root, "shared", category))
+        specs.update(FULL_VALIDATION_PATHS)
+        specs.update(f"{prefix}**" for prefix in FULL_VALIDATION_PREFIXES)
         pending = [upstream for upstream, downstreams in DEPENDENCIES.items() if lane in downstreams]
         seen: set[str] = set()
         while pending:
@@ -339,7 +332,7 @@ def plan(
         reason = "ci-full-label" if force_full else "planner-core-changed" if core_change else "unknown-path"
         for lane in LANES:
             require_production(root, lanes, lane, reason)
-            lanes[lane]["reuseAllowed"] = False
+            lanes[lane]["reuseAllowed"] = not bool(unknown)
     else:
         propagated = True
         while propagated:
@@ -413,7 +406,11 @@ def write_github_outputs(path: Path, result: dict[str, object]) -> None:
         ("consumer_matrix", CONSUMER_MATRIX_LANES),
     ):
         matrix = [
-            {"lane": lane, **{action: bool(result["lanes"][lane][action]) for action in ("build", "test", "metadata")}}
+            {
+                "lane": lane,
+                **({"runner": CONSUMER_RUNNERS[lane]} if name == "consumer_matrix" else {}),
+                **{action: bool(result["lanes"][lane][action]) for action in ("build", "test", "metadata")},
+            }
             for lane in selected
             if any(result["lanes"][lane][action] for action in ("build", "test", "metadata"))
         ]

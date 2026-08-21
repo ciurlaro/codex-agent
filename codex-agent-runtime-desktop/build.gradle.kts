@@ -8,6 +8,8 @@ plugins {
     id("codexagent.desktop-runtime")
 }
 
+val codexAgentRepositoryUrl = rootProject.extra["codexAgent.repositoryUrl"].toString()
+
 kotlin {
     explicitApi()
     sourceSets {
@@ -30,7 +32,7 @@ mavenPublishing {
             sourcesJar = SourcesJar.Sources(),
         ),
     )
-    coordinates("io.github.ciurlaro", "codex-agent-runtime-desktop", project.version.toString())
+    coordinates(project.group.toString(), "codex-agent-runtime-desktop", project.version.toString())
     if (
         providers.gradleProperty("signingInMemoryKey").isPresent ||
         providers.gradleProperty("signing.secretKeyRingFile").isPresent
@@ -41,7 +43,7 @@ mavenPublishing {
         name.set("Codex Agent Runtime for Desktop")
         description.set("Native desktop process runtime for the Codex App Server.")
         inceptionYear.set("2026")
-        url.set("https://github.com/ciurlaro/codex-agent")
+        url.set(codexAgentRepositoryUrl)
         licenses {
             license {
                 name.set("GNU General Public License v3.0 or later")
@@ -57,9 +59,9 @@ mavenPublishing {
             }
         }
         scm {
-            url.set("https://github.com/ciurlaro/codex-agent")
-            connection.set("scm:git:https://github.com/ciurlaro/codex-agent.git")
-            developerConnection.set("scm:git:ssh://git@github.com/ciurlaro/codex-agent.git")
+            url.set(codexAgentRepositoryUrl)
+            connection.set("scm:git:$codexAgentRepositoryUrl.git")
+            developerConnection.set("scm:git:ssh://git@github.com/${codexAgentRepositoryUrl.substringAfter("github.com/")}.git")
         }
     }
 }

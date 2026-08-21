@@ -80,6 +80,36 @@ internal fun Project.registerAppleRustSliceReuse(inputs: AppleRustSliceRegistrat
 
     val prepareDevice = tasks.register("prepareCodexAgentIosArm64RustSlice")
     val prepareSimulator = tasks.register("prepareCodexAgentIosSimulatorArm64RustSlice")
+    val sliceEvidence = mapOf(
+        IOS_DEVICE_RUST_TARGET to providers.gradleProperty("codexAgent.iosDeviceRustEvidenceDirectory"),
+        IOS_SIMULATOR_RUST_TARGET to providers.gradleProperty("codexAgent.iosSimulatorRustEvidenceDirectory"),
+    ).mapValues { (_, path) -> path.map { rootProject.file(it) }.let(layout::dir).takeIf { it.isPresent } }
+    if (inputs.evidenceDirectory == null && sliceEvidence.values.any { it != null }) {
+        fun importSlice(spec: AppleRustSliceSpec): Pair<Provider<RegularFile>, TaskProvider<out Task>> {
+            val evidence = sliceEvidence.getValue(spec.target)
+            if (evidence == null) {
+                return if (spec.target == IOS_DEVICE_RUST_TARGET) inputs.deviceArchive to inputs.deviceBuild
+                else inputs.simulatorArchive to inputs.simulatorBuild
+            }
+            val output = layout.buildDirectory.file("imported-rust-slices/${spec.target}/release/$IOS_RUST_LIBRARY")
+            val title = if (spec.target == IOS_DEVICE_RUST_TARGET) "IosArm64" else "IosSimulatorArm64"
+            val task = tasks.register<ImportAppleRustSliceTask>("importCodexAgent${title}RustSlice") {
+                dependsOn("verifyAppleToolchain")
+                candidateCommit.set(inputs.candidateCommit); target.set(spec.target)
+                compilerSettings.putAll(inputs.compilerSettings); rustCompilerIdentity.set(inputs.rustCompilerIdentity)
+                appleToolchainIdentity.set(inputs.appleToolchainIdentities.getValue(spec.target))
+                evidenceDirectory.set(evidence); provenanceFile.set(provenance)
+                xcodeVersionFile.set(xcode); swiftVersionFile.set(swift); nativeInputs.from(inputs.nativeInputs)
+                repositoryDirectory.set(repository); importedArchive.set(output)
+            }
+            return output to task
+        }
+        val device = importSlice(appleRustSliceSpecs.single { it.target == IOS_DEVICE_RUST_TARGET })
+        val simulator = importSlice(appleRustSliceSpecs.single { it.target == IOS_SIMULATOR_RUST_TARGET })
+        prepareDevice.configure { dependsOn(device.second) }
+        prepareSimulator.configure { dependsOn(simulator.second) }
+        return AppleRustSliceSelection(device.first, simulator.first, prepareDevice, prepareSimulator)
+    }
     if (inputs.evidenceDirectory == null) {
         prepareDevice.configure { dependsOn(inputs.deviceBuild) }
         prepareSimulator.configure { dependsOn(inputs.simulatorBuild) }

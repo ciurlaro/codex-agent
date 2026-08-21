@@ -146,7 +146,7 @@ class NativeReleaseVerificationTasksTest {
                 outputFile.set(checksum)
                 generate()
             }
-            val url = "https://github.com/ciurlaro/codex-agent/releases/download/v0.2.0/${archive.name}"
+            val url = "https://github.com/codex-agent-labs/codex-agent/releases/download/v0.2.0/${archive.name}"
             val manifest = directory.resolve("Package.swift").apply {
                 writeText(".binaryTarget(name: \"CodexAgent\", url: \"$url\", checksum: \"${checksum.readText().trim()}\")")
             }
@@ -220,7 +220,7 @@ class NativeReleaseVerificationTasksTest {
             """
             .binaryTarget(
                 name: "CodexAgent",
-                url: "https://github.com/ciurlaro/codex-agent/releases/download/v$urlVersion/CodexAgent-$filenameVersion.xcframework.zip",
+                url: "https://github.com/codex-agent-labs/codex-agent/releases/download/v$urlVersion/CodexAgent-$filenameVersion.xcframework.zip",
                 checksum: "${"0".repeat(64)}"
             )
             """.trimIndent(),
@@ -228,7 +228,7 @@ class NativeReleaseVerificationTasksTest {
         directory.resolve("RemoteConsumer.swift").writeText(
             """
             .package(
-                url: "https://github.com/ciurlaro/codex-agent.git",
+                url: "https://github.com/codex-agent-labs/codex-agent.git",
                 exact: "$consumerVersion"
             )
             """.trimIndent(),

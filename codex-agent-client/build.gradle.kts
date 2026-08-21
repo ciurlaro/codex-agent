@@ -15,12 +15,14 @@ plugins {
     id("codexagent.client-verification")
 }
 
+val codexAgentRepositoryUrl = rootProject.extra["codexAgent.repositoryUrl"].toString()
+
 kotlin {
     explicitApi()
     jvmToolchain(17)
 
     android {
-        namespace = "io.github.ciurlaro.codexmobile.agent"
+        namespace = "io.github.codex_agent_labs.codexmobile.agent"
         compileSdk = 37
         minSdk = 26
         compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
@@ -67,7 +69,7 @@ mavenPublishing {
             sourcesJar = SourcesJar.Sources(),
         ),
     )
-    coordinates("io.github.ciurlaro", "codex-agent-client", project.version.toString())
+    coordinates(project.group.toString(), "codex-agent-client", project.version.toString())
     if (
         providers.gradleProperty("signingInMemoryKey").isPresent ||
         providers.gradleProperty("signing.secretKeyRingFile").isPresent
@@ -78,7 +80,7 @@ mavenPublishing {
         name.set("Codex Agent Client")
         description.set("Portable Kotlin Multiplatform client for the Codex App Server.")
         inceptionYear.set("2026")
-        url.set("https://github.com/ciurlaro/codex-agent")
+        url.set(codexAgentRepositoryUrl)
         licenses {
             license {
                 name.set("GNU General Public License v3.0 or later")
@@ -94,9 +96,9 @@ mavenPublishing {
             }
         }
         scm {
-            url.set("https://github.com/ciurlaro/codex-agent")
-            connection.set("scm:git:https://github.com/ciurlaro/codex-agent.git")
-            developerConnection.set("scm:git:ssh://git@github.com/ciurlaro/codex-agent.git")
+            url.set(codexAgentRepositoryUrl)
+            connection.set("scm:git:$codexAgentRepositoryUrl.git")
+            developerConnection.set("scm:git:ssh://git@github.com/${codexAgentRepositoryUrl.substringAfter("github.com/")}.git")
         }
     }
 }

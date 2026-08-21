@@ -2,13 +2,16 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, labeled, unlabeled]
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-merge-group-{0}', github.ref) }}
   cancel-in-progress: true
 
 jobs:
@@ -29,97 +32,267 @@ jobs:
           key: actionlint-v1-${{ runner.os }}-${{ runner.arch }}-v1.7.12
       - if: steps.actionlint-cache.outputs.cache-hit != 'true'
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - run: |
-          "$HOME/go/bin/actionlint"
-      - if: >-
-          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-          steps.actionlint-cache.outputs.cache-hit != 'true'
+      - run: '"$HOME/go/bin/actionlint"'
+      - run: python3 -m unittest discover -s ci/tests -v
+      - if: github.event_name == 'pull_request' && steps.actionlint-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/go/bin/actionlint
           key: ${{ steps.actionlint-cache.outputs.cache-primary-key }}
 
-  android-jvm:
-    needs: workflow-lint
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      merge_ready: ${{ steps.impact.outputs.merge_ready }}
+      validation_commit: ${{ steps.impact.outputs.validation_commit }}
+      validation_tree: ${{ steps.impact.outputs.validation_tree }}
+      android_evidence_required: ${{ steps.impact.outputs.android_evidence_required }}
+      plan_artifact: codex-agent-ci-plan-${{ steps.impact.outputs.validation_tree }}
+      product_matrix: ${{ steps.impact.outputs.product_matrix }}
+      consumer_matrix: ${{ steps.impact.outputs.consumer_matrix }}
+      desktop_matrix: ${{ steps.impact.outputs.desktop_matrix }}
+      any_desktop: ${{ steps.impact.outputs.any_desktop }}
+      any_apple: ${{ steps.impact.outputs.any_apple }}
+      lane_android: ${{ steps.impact.outputs.lane_android }}
+      lane_android_build: ${{ steps.impact.outputs.lane_android_build }}
+      lane_android_test: ${{ steps.impact.outputs.lane_android_test }}
+      lane_android_metadata: ${{ steps.impact.outputs.lane_android_metadata }}
+      lane_desktop_linux_arm64: ${{ steps.impact.outputs.lane_desktop_linux_arm64 }}
+      lane_desktop_linux_arm64_build: ${{ steps.impact.outputs.lane_desktop_linux_arm64_build }}
+      lane_desktop_linux_arm64_test: ${{ steps.impact.outputs.lane_desktop_linux_arm64_test }}
+      lane_desktop_linux_arm64_metadata: ${{ steps.impact.outputs.lane_desktop_linux_arm64_metadata }}
+      validation_reused: ${{ steps.validation-reuse.outputs.reused }}
+      validation_source_run_id: ${{ steps.validation-reuse.outputs.source_run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: impact
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_READY: ${{ github.event_name == 'merge_group' || (!github.event.pull_request.draft && contains(github.event.pull_request.labels.*.name, 'merge-ready')) }}
+          FORCE_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+          QUEUE_ENABLED: ${{ vars.CI_MERGE_QUEUE_ENABLED }}
+        run: |
+          pr="$PR_NUMBER"
+          if [ -z "$pr" ]; then
+            pr=${GITHUB_REF#*pr-}
+            pr=${pr%%-*}
+          fi
+          flags=()
+          [ "$MERGE_READY" != true ] || flags+=(--merge-ready)
+          if [ "$FORCE_FULL" = true ] || { [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$QUEUE_ENABLED" != true ]; }; then
+            flags+=(--full)
+          fi
+          flags+=(--require-android-evidence)
+          python3 ci/impact.py --base "$BASE_SHA" --target HEAD --head "$HEAD_SHA" \
+            --event "$GITHUB_EVENT_NAME" --pull-request "$pr" --output build/ci/impact-plan.json \
+            --github-output "$GITHUB_OUTPUT" "${flags[@]}"
+      - id: validation-reuse
+        if: github.event_name == 'merge_group'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python3 ci/validation_reuse.py discover --plan build/ci/impact-plan.json
+          --destination build/ci/reused-validation --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: codex-agent-ci-plan-${{ steps.impact.outputs.validation_tree }}
+          path: build/ci
+          compression-level: 0
+          retention-days: 90
+
+  product:
+    if: needs.plan.outputs.validation_reused != 'true' && needs.plan.outputs.product_matrix != '[]'
+    needs: [workflow-lint, plan]
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.product_matrix) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: build
-        uses: ./.github/actions/setup-kmp
+          ref: ${{ needs.plan.outputs.validation_commit }}
+      - uses: ./.github/actions/run-ci-lane
         with:
-          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
-          cache-encryption-key: >-
-            ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-            secrets.GRADLE_ENCRYPTION_KEY || '' }}
-          node-version: "24.18.0"
+          lane: ${{ matrix.lane }}
+          plan-artifact: ${{ needs.plan.outputs.plan_artifact }}
+          validation-commit: ${{ needs.plan.outputs.validation_commit }}
+          validation-tree: ${{ needs.plan.outputs.validation_tree }}
+          build: ${{ matrix.build }}
+          test: ${{ matrix.test }}
+          metadata: ${{ matrix.metadata }}
+          node-version: ${{ contains(matrix.lane, 'node') && '24.18.0' || 'none' }}
+
+  android:
+    if: needs.plan.outputs.validation_reused != 'true' && needs.plan.outputs.lane_android == 'true'
+    needs: [workflow-lint, plan]
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact_name: ${{ steps.lane.outputs.artifact_name }}
+      reused: ${{ steps.lane.outputs.reused }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.validation_commit }}
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
-      - run: ./gradlew -p gradle/build-logic test --parallel --stacktrace
-      - run: ./gradlew verifyRepository --parallel --stacktrace
-      - name: Package exact reusable runners and Android binaries
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: >-
-          ./gradlew
-          :codex-agent-runtime-desktop:packageJvmRuntimeEvidenceRunner
-          :codex-agent-runtime-node:packageNodeRuntimeEvidenceRunner
-          :codex-agent-runtime-node:packageNodeWasmRuntimeEvidenceRunner
-          :tooling:android-runtime-evidence:assembleDebug
-          :tooling:android-runtime-evidence:assembleDebugAndroidTest
-          :codex-agent-runtime-android:testDebugUnitTest
-          :codex-agent-runtime-android:lintRelease
-          :codex-agent-runtime-android:assembleRelease
-          --parallel --stacktrace
-      - name: Stage the three portable runners as one flat import
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          mkdir -p build/ci-portable-runtime-artifacts
-          cp codex-agent-runtime-desktop/build/distributions/codex-agent-jvm-runtime-evidence-runner.zip \
-            codex-agent-runtime-node/build/distributions/codex-agent-node-runtime-evidence-runner.zip \
-            codex-agent-runtime-node/build/distributions/codex-agent-node-wasm-runtime-evidence-runner.zip \
-            build/ci-portable-runtime-artifacts/
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - id: lane
+        uses: ./.github/actions/run-ci-lane
         with:
-          if-no-files-found: error
-          overwrite: true
-          name: codex-agent-ci-portable-runtime-artifacts-${{ github.sha }}
-          path: build/ci-portable-runtime-artifacts/*
-          compression-level: 0
-          retention-days: 30
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          if-no-files-found: error
-          overwrite: true
-          name: codex-agent-ci-android-binaries-${{ github.sha }}
-          path: |
-            tooling/android-runtime-evidence/build/outputs/apk/debug/android-runtime-evidence-debug.apk
-            tooling/android-runtime-evidence/build/outputs/apk/androidTest/debug/android-runtime-evidence-debug-androidTest.apk
-            codex-agent-runtime-android/build/outputs/aar/codex-agent-runtime-android-release.aar
-          compression-level: 0
-          retention-days: 30
-      - if: >-
-          github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-          steps.build.outputs.konan-cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.konan
-          key: ${{ steps.build.outputs.konan-cache-primary-key }}
+          lane: android
+          plan-artifact: ${{ needs.plan.outputs.plan_artifact }}
+          validation-commit: ${{ needs.plan.outputs.validation_commit }}
+          validation-tree: ${{ needs.plan.outputs.validation_tree }}
+          build: ${{ needs.plan.outputs.lane_android_build }}
+          test: ${{ needs.plan.outputs.lane_android_test }}
+          metadata: ${{ needs.plan.outputs.lane_android_metadata }}
 
-  apple-runtime-evidence:
-    needs: workflow-lint
-    uses: ./.github/workflows/apple-runtime-evidence.yml
+  android-runtime-evidence:
+    if: >-
+      needs.plan.outputs.validation_reused != 'true' &&
+      needs.plan.outputs.android_evidence_required == 'true'
+    needs: [plan, android]
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    uses: codex-agent-labs/codex-agent/.github/workflows/android-runtime-evidence.yml@main
     with:
-      candidateCommit: ${{ github.sha }}
-      trustedCacheWriter: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    secrets: inherit
+      candidateCommit: ${{ needs.plan.outputs.validation_commit }}
+      ciRunId: ${{ github.run_id }}
+      artifactName: ${{ needs.android.outputs.artifact_name }}
+      planArtifact: ${{ needs.plan.outputs.plan_artifact }}
 
-  desktop-runtime-evidence:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [workflow-lint, android-jvm]
+  desktop:
+    if: always() && needs.plan.outputs.validation_reused != 'true' && needs.plan.outputs.any_desktop == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    needs: [workflow-lint, plan, product]
     uses: ./.github/workflows/desktop-runtime-evidence.yml
     with:
-      candidateCommit: ${{ github.sha }}
-      trustedCacheWriter: true
-    secrets: inherit
+      planArtifact: ${{ needs.plan.outputs.plan_artifact }}
+      validationCommit: ${{ needs.plan.outputs.validation_commit }}
+      validationTree: ${{ needs.plan.outputs.validation_tree }}
+      matrix: ${{ needs.plan.outputs.desktop_matrix }}
+      linuxArm64: ${{ fromJSON(needs.plan.outputs.lane_desktop_linux_arm64) }}
+      linuxArm64Build: ${{ fromJSON(needs.plan.outputs.lane_desktop_linux_arm64_build) }}
+      linuxArm64Test: ${{ fromJSON(needs.plan.outputs.lane_desktop_linux_arm64_test) }}
+      linuxArm64Metadata: ${{ fromJSON(needs.plan.outputs.lane_desktop_linux_arm64_metadata) }}
+
+  apple:
+    if: needs.plan.outputs.validation_reused != 'true' && needs.plan.outputs.any_apple == 'true'
+    needs: [workflow-lint, plan]
+    uses: ./.github/workflows/apple-runtime-evidence.yml
+    with:
+      planArtifact: ${{ needs.plan.outputs.plan_artifact }}
+      validationCommit: ${{ needs.plan.outputs.validation_commit }}
+      validationTree: ${{ needs.plan.outputs.validation_tree }}
+
+  consumers:
+    if: always() && needs.plan.outputs.validation_reused != 'true' && needs.plan.outputs.consumer_matrix != '[]' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    needs: [workflow-lint, plan, product, android, android-runtime-evidence, desktop, apple]
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.consumer_matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.validation_commit }}
+      - if: matrix.lane == 'consumer-desktop'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: codex-agent-ci-desktop-*-${{ needs.plan.outputs.validation_tree }}
+          path: build/ci/desktop-lanes
+      - if: matrix.lane == 'consumer-desktop'
+        shell: bash
+        run: |
+          mkdir -p build/ci/desktop-classifiers
+          while IFS= read -r archive; do cp "$archive" build/ci/desktop-classifiers/; done < <(
+            find build/ci/desktop-lanes -type f -name '*-app-server-*.zip' -print
+          )
+          test "$(find build/ci/desktop-classifiers -type f -name '*-app-server-*.zip' | wc -l | tr -d ' ')" -eq 5
+          printf 'DESKTOP_CLASSIFIERS=%s/build/ci/desktop-classifiers\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - if: matrix.lane == 'consumer-android'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codex-agent-ci-android-${{ needs.plan.outputs.validation_tree }}
+          path: build/ci/android-lane
+      - if: matrix.lane == 'consumer-android'
+        shell: bash
+        run: |
+          aar=$(find build/ci/android-lane/payload -type f -name codex-agent-runtime-android-release.aar -print -quit)
+          evidence=$(find build/ci/android-lane/payload -type f -name android-runtime-evidence.json -print -quit)
+          test -n "$aar"
+          if [ -n "$evidence" ]; then
+            printf 'ANDROID_RELEASE_AAR=%s/%s\nANDROID_EVIDENCE=%s/%s\n' \
+              "$GITHUB_WORKSPACE" "$aar" "$GITHUB_WORKSPACE" "$(dirname "$evidence")" >> "$GITHUB_ENV"
+          fi
+      - uses: ./.github/actions/run-ci-lane
+        with:
+          lane: ${{ matrix.lane }}
+          plan-artifact: ${{ needs.plan.outputs.plan_artifact }}
+          validation-commit: ${{ needs.plan.outputs.validation_commit }}
+          validation-tree: ${{ needs.plan.outputs.validation_tree }}
+          build: ${{ matrix.build }}
+          test: ${{ matrix.test }}
+          metadata: ${{ matrix.metadata }}
+          node-version: ${{ contains(matrix.lane, 'node') && '24.18.0' || 'none' }}
+
+  merge-gate:
+    name: CI / merge-gate
+    if: always()
+    needs: [workflow-lint, plan, product, android, android-runtime-evidence, desktop, apple, consumers]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.plan.outputs.validation_commit }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.plan.outputs.plan_artifact }}
+          path: build/ci/plan
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: codex-agent-ci-*
+          path: build/ci/receipts
+      - name: Require readiness, successful prerequisites, and an exact receipt set
+        env:
+          MERGE_READY: ${{ needs.plan.outputs.merge_ready }}
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          VALIDATION_REUSED: ${{ needs.plan.outputs.validation_reused }}
+        run: |
+          if [ "$MERGE_READY" != true ]; then
+            echo 'The merge-ready label is required before product CI can pass.' >&2
+            exit 1
+          fi
+          if grep -Eq 'failure|cancelled' <<<"$RESULTS"; then
+            exit 1
+          fi
+          if [ "$VALIDATION_REUSED" = true ]; then
+            python3 ci/validation_reuse.py materialize --plan build/ci/plan/impact-plan.json \
+              --destination build/ci/plan/reused-validation \
+              --output build/ci/validation-receipt.json
+          else
+            python3 ci/receipt.py aggregate --plan build/ci/plan/impact-plan.json \
+              --receipts build/ci/receipts --output build/ci/validation-receipt.json
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          overwrite: true
+          name: codex-agent-ci-validation-${{ needs.plan.outputs.validation_tree }}
+          path: |
+            build/ci/plan/impact-plan.json
+            build/ci/validation-receipt.json
+          compression-level: 0
+          retention-days: 90

@@ -46,7 +46,7 @@ abstract class GenerateDesktopDistributionSourceTask : DefaultTask() {
             }
 
         val source = buildString {
-            appendLine("package io.github.ciurlaro.codexmobile.appserver.runtime")
+            appendLine("package io.github.codex_agent_labs.codexmobile.appserver.runtime")
             appendLine()
             appendLine("internal data class DesktopCodexDistribution(")
             appendLine("    val libraryVersion: String,")
@@ -74,7 +74,7 @@ abstract class GenerateDesktopDistributionSourceTask : DefaultTask() {
             appendLine("}")
         }
         val output = outputDirectory.file(
-            "io/github/ciurlaro/codexmobile/appserver/runtime/DesktopCodexDistribution.generated.kt",
+            "io/github/codex_agent_labs/codexmobile/appserver/runtime/DesktopCodexDistribution.generated.kt",
         ).get().asFile
         output.parentFile.mkdirs()
         output.writeText(source)

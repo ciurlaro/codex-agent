@@ -1,53 +1,89 @@
 # Releasing
 
 Version `0.2.0` has not yet been tagged or published. The release process is
-designed to promote one verified commit and its existing evidence without
-performing the same expensive work twice.
+designed to validate before merge, promote the exact validated bytes, and never
+rebuild them during candidate assembly or publication.
 
 No API key or stored ChatGPT credential is used by automated verification. A
 real-model check uses interactive ChatGPT sign-in in the iOS Simulator test app.
 
+## Merge gate and promotion
+
+An unlabeled pull request is cheap: it runs workflow lint and impact planning,
+but no product build or platform test. A non-draft pull request labeled
+`merge-ready` validates its prospective merge tree and runs only the affected
+lanes. Successful same-PR lanes and artifacts may be reused after a later
+commit. The `ci:full` label only expands execution; it cannot narrow or skip a
+required lane. Unknown impact fails closed to full validation.
+
+The required `CI / merge-gate` check accepts an exact, complete receipt set. A
+merge group whose Git tree is identical to the validated PR tree reuses that
+validation without product work. If the target branch changes the tree, impact
+is reevaluated and only the newly affected work runs.
+
+After merge, the `Promote` workflow binds the landed commit's Git tree to the
+equal validated merge-group tree and forwards the exact stored lane artifacts,
+validation receipts, inventories, and selected cache seeds into `main` scope.
+It never invokes Gradle, Cargo, Xcode, a compiler, a simulator, or a product
+test, and it never falls back to rebuilding.
+
+## Required GitHub configuration
+
+The public organization is `codex-agent-labs`, `ciurlaro` is an owner, and the
+canonical repository is `codex-agent-labs/codex-agent`. Configure them as
+follows:
+
+- Enable GitHub Actions, allow the already pinned third-party actions, keep the
+  default workflow token read-only, give fork PRs read-only access, and expose
+  no organization secret to PR or merge-group code.
+- Retain CI and promoted artifacts for at least 90 days. Keep automatic branch
+  deletion enabled and routine direct pushes or bypasses to `main` disabled.
+- Protect `main` with required pull requests, merge queue, the merge-commit
+  method rather than squash/rebase, a maximum merge-group size of one PR, and
+  required check `CI / merge-gate`. Allow enough status-check time for full
+  Apple validation, and protect `candidate/v*-rc.*` tags.
+- Protect `merge-validation`, `release-candidate`, and `release-publication`.
+  Keep Firebase OIDC configuration in `merge-validation`; keep signing and
+  Maven Central credentials only in the candidate/publication environments,
+  with required reviewers.
+- Set `CI_MERGE_QUEUE_ENABLED=true` only after the trusted Android bootstrap
+  described below is on `main` and the queue rules are ready.
+
 ## Candidate identity
 
 A candidate tag must match `candidate/v<version>-rc.N`. It must identify an
-exact commit on `main` with a successful same-repository CI run for that commit.
-The workflow derives the release version from the tag instead of accepting an
-unrelated version input.
+exact commit on `main` whose Git tree has a complete promoted validation. The
+workflow derives the release version from the tag instead of accepting an
+unrelated version input, and fails if the promoted and candidate trees differ.
 
-The protected candidate environment contains only the signing material needed
-to assemble the release payload. Its configured reviewers approve access to
-those credentials. The protected release environment separately controls Maven
-Central publication credentials and approval. `GRADLE_ENCRYPTION_KEY` is a
-repository CI secret used only to encrypt reusable Gradle configuration-cache
-entries; it is not publication authority.
+The protected `release-candidate` environment contains only the signing
+material needed to assemble the payload. Its configured reviewers approve
+access to those credentials. `release-publication` separately controls Maven
+Central publication credentials and approval. `GRADLE_ENCRYPTION_KEY` is a CI
+secret used only to encrypt reusable Gradle configuration-cache entries; it is
+not publication authority.
 
 ## Evidence is produced once
 
-1. The successful exact-commit `main` CI run completes the repository gates,
-   packages the three portable evidence runners once, and builds the Android
-   application APK, test APK, and release AAR once.
-2. That same CI run calls the Desktop Runtime Evidence workflow. Its five-host
-   matrix covers macOS Arm64/x64, Linux Arm64/x64, and Windows x64. Each host
-   runs native desktop, JVM desktop, JS-on-Node, and WasmJS-on-Node lifecycle
-   checks through the platform bundle installer against its exact matching
-   classifier. Linux Arm64 transports one combined evidence bundle.
-3. Apple host-native tests run independently on Linux while the device and
-   simulator slices build in parallel on macOS. One downstream Apple job
-   verifies those five evidence files and exports the complete verified Apple
-   distribution once.
-4. The protected candidate runs Firebase Test Lab `SmallPhone.arm` API 35
-   against the imported exact-main Android APKs. It downloads only the exact
-   test XML, records the tested binaries and AAR, and requires no connected
-   physical phone.
-5. Candidate assembly imports the attempt-bound portable runners, five
-   classifiers, five-host evidence, Android evidence/AAR, Apple native evidence,
-   and whole verified Apple distribution. It runs only aggregate packaging and
-   consumer gates; none of those expensive platform artifacts is rebuilt.
+1. Merge-ready validation builds each affected portable, Android, desktop,
+   Node, and Apple slice and records its Git inputs, toolchain identity,
+   artifacts, tests, and evidence in a lane receipt.
+2. Desktop runtime evidence covers macOS Arm64/x64, Linux Arm64/x64, and
+   Windows x64. Apple host, device, simulator, framework, Swift, privacy, and
+   package stages remain independently reusable.
+3. Firebase Test Lab evidence runs before merge against the exact Android APKs
+   and AAR through the trusted workflow pinned to `main`; a candidate never
+   repeats it and no connected physical phone is required.
+4. Main promotion forwards equal-tree receipts and the exact bytes uploaded by
+   the producing jobs. Candidate assembly verifies those promoted inputs,
+   signs the unsigned Maven primaries, generates mandated sidecars, and
+   assembles the Central bundle and release manifest without compiling,
+   linking, or running platform tests.
 
-Retries reuse a logically matching successful run or artifact when one exists.
-Two independent builds are not required to have identical bytes or hashes.
-Hashes, signatures, commit bindings, and platform-required checks still verify
-each specific artifact that enters the candidate.
+Git commit, tree, blob, and explicit toolchain identity decide reuse. Checksums
+remain for SwiftPM, Maven Central, signatures, pinned external inputs, GitHub
+transport, and security-sensitive archive integrity. They never decide whether
+source changed, key a lane, or compare independently rebuilt ZIP files.
 
 ## Protected candidate
 
@@ -59,10 +95,10 @@ build/protected-candidate/<candidate-commit>/payload/
 ```
 
 The aggregate verifies the imported evidence, iOS runtime, Swift package,
-privacy declarations, Maven publications, clean consumer, Central bundle, and
-canonical candidate manifest once. The clean consumer compiles the published
-surface for Android, iOS, five native desktop targets, JVM desktop, JS-on-Node,
-and WasmJS-on-Node.
+privacy declarations, Maven inventories, pre-merge consumer receipts, Central
+bundle, and canonical candidate manifest. Candidate tasks may inspect,
+inventory, sign, and assemble promoted files; they may not compile, link, run
+Xcode, boot a simulator, or execute a platform test.
 
 Candidate output is immutable. A rerun reuses an already successful candidate;
 it never silently deletes or replaces one with the same identity.
@@ -84,6 +120,26 @@ Follow the [iOS development verification order](RUNTIME_IOS.md#verification)
 before starting the expensive Apple gate; it includes the scoped clean,
 simulator-only Swift typecheck, source freeze, disk budget, and exact-evidence
 reuse rules.
+
+## Trusted Android rollout
+
+The Firebase job has OIDC authority and deliberately executes workflow code
+pinned to `main`, so the modernization must be enabled in three ordered steps:
+
+1. Freeze candidate tags, then land the new trusted
+   `android-runtime-evidence.yml` interface and its pinned-main dependencies on
+   `main`: `ci/impact.py`, `ci/receipt.py`, `ci/evidence.py`, the Firebase
+   evidence model/task/plugin files, and `setup-kmp`. The old candidate caller
+   is intentionally unavailable during this short bootstrap window.
+2. In a later change, land the CI caller and the remaining modernization that
+   passes those exact bindings. Do not weaken the pin to `main` and do not give
+   OIDC or release secrets to PR-controlled workflow code.
+3. Confirm the trusted pre-merge evidence path, then set
+   `CI_MERGE_QUEUE_ENABLED=true` and enable the one-PR merge queue ruleset.
+
+Attempting the trusted workflow interface change and its new caller in one PR
+fails closed because GitHub resolves reusable-workflow inputs from `main`.
+Do not create a candidate tag until step 2 has landed.
 
 ## Manual ChatGPT acceptance
 
@@ -107,7 +163,7 @@ out of CI.
 
    ```shell
    APP_DATA=$(xcrun simctl get_app_container booted \
-     io.github.ciurlaro.CodexAgentTestApp data)
+     io.github.codex_agent_labs.CodexAgentTestApp data)
    cmp "$APP_DATA/Documents/CodexWorkspace/acceptance-input.txt" \
      "$APP_DATA/Documents/CodexWorkspace/acceptance-output.txt"
    ```
@@ -131,7 +187,7 @@ approving protected environments remain external account-owner actions.
 ## Protected publication
 
 The Publish Verified Release workflow consumes the exact successful candidate
-artifact and never rebuilds Maven, native, or runtime evidence artifacts. It:
+bytes and never rebuilds Maven, native, or runtime artifacts. It:
 
 1. Resolves the candidate workflow and release tag from the candidate identity.
 2. Revalidates every artifact, evidence record, policy decision, commit, tag,

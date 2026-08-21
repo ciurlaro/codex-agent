@@ -2,17 +2,6 @@ import java.io.File
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import org.gradle.api.DefaultTask
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.OutputFile
-import org.gradle.api.tasks.PathSensitive
-import org.gradle.api.tasks.PathSensitivity
-import org.gradle.api.tasks.TaskAction
-import org.gradle.work.DisableCachingByDefault
 
 data class DesktopRuntimeEvidenceTarget(
     val classifier: String,
@@ -29,7 +18,7 @@ val desktopRuntimeEvidenceTargets = linkedMapOf(
 )
 
 internal const val DESKTOP_RUNTIME_TEST_CLASS =
-    "io.github.ciurlaro.codexmobile.appserver.runtime.DesktopCodexRuntimeTest"
+    "io.github.codex_agent_labs.codexmobile.appserver.runtime.DesktopCodexRuntimeTest"
 internal val desktopRuntimeTestMethods = sortedSetOf(
     "closeDuringStartClosesNewProcessExactlyOnce",
     "initializesAndShutsDownOfficialAppServerWhenProvided",
@@ -74,48 +63,6 @@ internal fun buildDesktopRuntimeEvidence(values: DesktopRuntimeEvidenceValues) =
     put("result", JsonPrimitive("passed"))
 }
 
-@DisableCachingByDefault(because = "Platform smoke evidence must execute for every immutable candidate")
-abstract class RecordDesktopRuntimeEvidenceTask : DefaultTask() {
-    @get:Input abstract val target: Property<String>
-    @get:Input abstract val classifier: Property<String>
-    @get:Input abstract val binarySha256: Property<String>
-    @get:Input abstract val candidateCommit: Property<String>
-    @get:Input abstract val runnerOs: Property<String>
-    @get:Input abstract val runnerArch: Property<String>
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val classifierArchive: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val distributionManifest: RegularFileProperty
-    @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val testReport: RegularFileProperty
-    @get:OutputFile abstract val evidenceFile: RegularFileProperty
-
-    init { outputs.upToDateWhen { false } }
-
-    @TaskAction
-    fun record() {
-        val targetName = target.get()
-        val commit = candidateCommit.get()
-        check(commit.matches(Regex("[0-9a-f]{40}"))) { "Desktop evidence commit is not immutable" }
-        verifyDesktopRuntimeTestReport(testReport.get().asFile, targetName)
-        val expected = desktopRuntimeEvidenceTargets.getValue(targetName)
-        check(classifier.get() == expected.classifier) { "Desktop evidence classifier mismatch" }
-        check(runnerOs.get() == expected.runnerOs && runnerArch.get() == expected.runnerArch) {
-            "Desktop evidence runner does not match $targetName"
-        }
-        val proof = inspectDesktopClassifier(
-            targetName,
-            readDesktopCodexManifest(distributionManifest.get().asFile),
-            classifierArchive.get().asFile,
-        )
-        check(binarySha256.get() == proof.binarySha256) { "Desktop evidence App Server hash mismatch" }
-        evidenceFile.get().asFile.atomicWriteJson(buildDesktopRuntimeEvidence(DesktopRuntimeEvidenceValues(
-            commit,
-            targetName,
-            proof.binarySha256,
-            proof.supervisorSha256,
-            proof.archiveSha256,
-        )))
-    }
-}
-
 internal fun validateDesktopRuntimeEvidence(
     files: List<File>,
     expectedCommit: String,
@@ -123,7 +70,28 @@ internal fun validateDesktopRuntimeEvidence(
     mavenInventory: File? = null,
     distributionManifest: File? = null,
     classifierArchives: List<File> = emptyList(),
+): List<String> = validateDesktopRuntimeEvidence(
+    files,
+    desktopRuntimeEvidenceTargets.keys.associateWith { expectedCommit },
+    version,
+    mavenInventory,
+    distributionManifest,
+    classifierArchives,
+)
+
+internal fun validateDesktopRuntimeEvidence(
+    files: List<File>,
+    expectedCommits: Map<String, String>,
+    version: String? = null,
+    mavenInventory: File? = null,
+    distributionManifest: File? = null,
+    classifierArchives: List<File> = emptyList(),
 ): List<String> = buildList {
+    if (expectedCommits.keys != desktopRuntimeEvidenceTargets.keys ||
+        expectedCommits.values.any { !it.matches(Regex("[0-9a-f]{40}")) }
+    ) {
+        add("candidate commit map is incomplete or non-immutable")
+    }
     val byName = files.associateBy(File::getName)
     val expectedNames = desktopRuntimeEvidenceTargets.keys.map(::desktopRuntimeEvidenceFileName).toSet()
     if (byName.keys != expectedNames) add("file set mismatch")
@@ -159,7 +127,7 @@ internal fun validateDesktopRuntimeEvidence(
                 "supervisorSha256", "classifierArchiveSha256", "result",
             )) { "schema fields mismatch" }
             check(report.releaseInt("schemaVersion") == 3) { "schema version mismatch" }
-            check(report.releaseString("candidateCommit") == expectedCommit) { "commit mismatch" }
+            check(report.releaseString("candidateCommit") == expectedCommits[target]) { "commit mismatch" }
             check(report.releaseString("target") == target) { "target mismatch" }
             check(report.releaseString("classifier") == expected.classifier) { "classifier mismatch" }
             check(report.releaseString("runnerOs") == expected.runnerOs) { "runner OS mismatch" }
@@ -192,7 +160,7 @@ internal fun validateDesktopRuntimeEvidence(
                 check(proof.archiveSha256 == archiveHash) { "classifier archive hash mismatch" }
             }
             if (version != null && mavenInventory != null) {
-                val path = "io/github/ciurlaro/codex-agent-runtime-desktop/$version/" +
+                val path = "${CodexAgentBuild.MAVEN_GROUP.replace('.', '/')}/codex-agent-runtime-desktop/$version/" +
                     "codex-agent-runtime-desktop-$version-${expected.classifier}.zip"
                 check(inventoryFiles[path] == archiveHash) { "classifier hash is not bound to Maven inventory" }
             }

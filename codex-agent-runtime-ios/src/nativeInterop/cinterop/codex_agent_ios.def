@@ -1,3 +1,3 @@
 headers = codex_agent_ios.h
-package = io.github.ciurlaro.codexmobile.agent.runtime.ios.native
+package = io.github.codex_agent_labs.codexmobile.agent.runtime.ios.native
 linkerOpts = -framework Security

@@ -30,7 +30,7 @@ class DesktopClassifierImportFunctionalTest {
                     id("maven-publish")
                     id("codexagent.desktop-runtime")
                 }
-                group = "io.github.ciurlaro"
+                group = "io.github.codex-agent-labs"
                 version = "0.2.0"
                 """.trimIndent(),
             )

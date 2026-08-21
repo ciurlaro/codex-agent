@@ -1,0 +1,3 @@
+.github/workflows/android-runtime-evidence.yml
+codex-agent-runtime-android/src/main/AndroidManifest.xml
+gradle/release/privacy-required-reason-review.json
