@@ -36,7 +36,7 @@ from reuse import (  # noqa: E402
     promoted_artifacts,
     restore,
 )
-from stage import archive_tree, restore_production_files, safe_extract_tar  # noqa: E402
+from stage import OUTPUTS, archive_tree, restore_production_files, safe_extract_tar  # noqa: E402
 from validation_reuse import (  # noqa: E402
     discover as discover_validation,
     materialize,
@@ -568,6 +568,14 @@ class RealImpactPlanTest(unittest.TestCase):
 
 
 class StageArchiveTest(unittest.TestCase):
+    def test_recursive_output_globs_are_python_312_compatible(self) -> None:
+        self.assertFalse([
+            pattern
+            for outputs in OUTPUTS.values()
+            for _, pattern, _ in outputs
+            if pattern.endswith("/**")
+        ])
+
     def test_swift_products_archive_preserves_modes_and_rejects_unsafe_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

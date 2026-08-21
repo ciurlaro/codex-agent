@@ -78,8 +78,8 @@ OUTPUTS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("build", "codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-simulator-arm64.a", "rust-archive"),
         ("build", "codex-agent-runtime-ios/build/apple-slice-exports/codex-agent-ios-simulator-arm64-proof.json", "rust-proof"),
     ),
-    "ios-framework-device": (("build", "codex-agent-runtime-ios/build/bin/iosArm64/releaseFramework/CodexAgent.framework/**", "framework-member"),),
-    "ios-framework-simulator": (("build", "codex-agent-runtime-ios/build/bin/iosSimulatorArm64/releaseFramework/CodexAgent.framework/**", "framework-member"),),
+    "ios-framework-device": (("build", "codex-agent-runtime-ios/build/bin/iosArm64/releaseFramework/CodexAgent.framework/**/*", "framework-member"),),
+    "ios-framework-simulator": (("build", "codex-agent-runtime-ios/build/bin/iosSimulatorArm64/releaseFramework/CodexAgent.framework/**/*", "framework-member"),),
     "ios-kotlin-tests": (
         ("test", "codex-agent-runtime-ios/build/test-results/**/*.xml", "test-report"),
         ("test", "codex-agent-runtime-ios/build/reports/ios-release/runtime-metrics.json", "runtime-metrics-evidence"),
@@ -90,7 +90,7 @@ OUTPUTS: dict[str, tuple[tuple[str, str, str], ...]] = {
     ),
     "ios-swift-tests": (
         ("test", "codex-agent-runtime-ios/build/swift-authentication-tests-summary.json", "xctest-summary"),
-        ("test", "codex-agent-runtime-ios/build/swift-authentication-tests.xcresult/**", "xctest-result"),
+        ("test", "codex-agent-runtime-ios/build/swift-authentication-tests.xcresult/**/*", "xctest-result"),
     ),
     "ios-package": (
         ("build", "codex-agent-runtime-ios/build/distributions/CodexAgent-*.xcframework.zip", "swift-package-binary"),
@@ -106,13 +106,13 @@ OUTPUTS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "consumer-common": (
         ("build", "build/protected-candidate/*/reports/kmp-consumer-common.json", "consumer-report"),
         ("build", "build/protected-candidate/*/reports/maven-inventory-common.json", "maven-inventory"),
-        ("build", "build/protected-candidate/*/payload/maven/**", "maven-primary"),
+        ("build", "build/protected-candidate/*/payload/maven/**/*", "maven-primary"),
     ),
     **{
         f"consumer-{target}": (
             ("build", f"build/protected-candidate/*/reports/kmp-consumer-{target}.json", "consumer-report"),
             ("build", f"build/protected-candidate/*/reports/maven-inventory-{target}.json", "maven-inventory"),
-            ("build", f"build/protected-candidate/*/consumer-maven/{target}/**", "maven-primary"),
+            ("build", f"build/protected-candidate/*/consumer-maven/{target}/**/*", "maven-primary"),
         )
         for target in ("android", "desktop", "ios-device", "ios-simulator", "node-js", "node-wasm")
     },
