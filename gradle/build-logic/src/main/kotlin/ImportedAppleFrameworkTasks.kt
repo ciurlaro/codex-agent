@@ -1,4 +1,5 @@
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import javax.inject.Inject
@@ -14,6 +15,17 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import org.gradle.work.DisableCachingByDefault
+
+internal fun importedFrameworkPlatformCommand(infoPlist: File) = listOf(
+    "/usr/bin/plutil", "-extract", "CFBundleSupportedPlatforms.0", "raw", "-o", "-", infoPlist.absolutePath,
+)
+
+internal fun verifyImportedFrameworkPlatform(expected: String, actual: String) {
+    val normalized = actual.trim()
+    check(normalized.equals(expected, ignoreCase = true)) {
+        "Imported framework platform mismatch: expected=$expected actual=$normalized"
+    }
+}
 
 @CacheableTask
 abstract class ImportCodexAgentFrameworkTask @Inject constructor(
@@ -37,13 +49,8 @@ abstract class ImportCodexAgentFrameworkTask @Inject constructor(
         Files.walk(source.toPath()).use { paths ->
             check(paths.noneMatch(Files::isSymbolicLink)) { "Imported framework contains a symbolic link" }
         }
-        val actualPlatform = capture(
-            "/usr/bin/plutil", "-extract", "DTPlatformName", "raw", "-o", "-",
-            source.resolve("Info.plist").absolutePath,
-        ).trim()
-        check(actualPlatform == platformName.get()) {
-            "Imported framework platform mismatch: expected=${platformName.get()} actual=$actualPlatform"
-        }
+        val actualPlatform = capture(*importedFrameworkPlatformCommand(source.resolve("Info.plist")).toTypedArray())
+        verifyImportedFrameworkPlatform(platformName.get(), actualPlatform)
         check("arm64" in capture("/usr/bin/xcrun", "lipo", "-info", source.resolve("CodexAgent").absolutePath)) {
             "Imported framework does not contain arm64"
         }

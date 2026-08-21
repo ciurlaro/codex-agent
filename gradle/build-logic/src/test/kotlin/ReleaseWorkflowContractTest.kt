@@ -26,6 +26,20 @@ class ReleaseWorkflowContractTest {
     private val actions = ReleaseWorkflowFixture.actions
 
     @Test
+    fun `Kotlin simulator test action captures only its resolved metrics file`() {
+        val iosRuntime = repository.resolve(
+            "gradle/build-logic/src/main/kotlin/codexagent.ios-runtime.gradle.kts",
+        ).readText()
+        val taskMarker = "tasks.named<KotlinNativeTest>(\"iosSimulatorArm64Test\") {"
+        assertTrue(taskMarker in iosRuntime)
+        val simulatorTest = iosRuntime.substringAfter(taskMarker).substringBefore("\n}")
+        assertTrue("val metricsFile = iosRuntimeMetrics.get().asFile" in simulatorTest)
+        assertTrue("check(metricsFile.isFile)" in simulatorTest)
+        assertFalse("notCompatibleWithConfigurationCache" in simulatorTest)
+        assertTrue("org.gradle.configuration-cache=true" in repository.resolve("gradle.properties").readLines())
+    }
+
+    @Test
     fun `external actions are immutable and artifact transport is strict`() {
         val combined = (workflows.values + actions.values).joinToString("\n")
         val uses = combined.lineSequence().map { it.trim().removePrefix("- ") }

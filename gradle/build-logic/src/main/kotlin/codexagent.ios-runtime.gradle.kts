@@ -96,11 +96,12 @@ extensions.configure<KotlinMultiplatformExtension> {
 val iosRuntimeMetrics = layout.buildDirectory.file("reports/ios-release/runtime-metrics.json")
 iosRuntimeMetrics.get().asFile.parentFile.mkdirs()
 tasks.named<KotlinNativeTest>("iosSimulatorArm64Test") {
-    environment("CODEX_AGENT_IOS_METRICS_PATH", iosRuntimeMetrics.get().asFile.absolutePath)
-    environment("SIMCTL_CHILD_CODEX_AGENT_IOS_METRICS_PATH", iosRuntimeMetrics.get().asFile.absolutePath)
-    outputs.file(iosRuntimeMetrics)
+    val metricsFile = iosRuntimeMetrics.get().asFile
+    environment("CODEX_AGENT_IOS_METRICS_PATH", metricsFile.absolutePath)
+    environment("SIMCTL_CHILD_CODEX_AGENT_IOS_METRICS_PATH", metricsFile.absolutePath)
+    outputs.file(metricsFile)
     doLast("verifyIosRuntimeMetrics") {
-        check(iosRuntimeMetrics.get().asFile.isFile) { "iOS runtime metrics were not recorded" }
+        check(metricsFile.isFile) { "iOS runtime metrics were not recorded" }
     }
 }
 
