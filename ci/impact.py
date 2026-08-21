@@ -55,7 +55,7 @@ DEPENDENCIES = {
     "desktop-windows-x64": ("consumer-desktop",),
     "ios-rust-device": ("ios-framework-device",),
     "ios-rust-simulator": ("ios-framework-simulator",),
-    "ios-framework-device": ("ios-package", "consumer-ios-device"),
+    "ios-framework-device": ("ios-swift-tests", "ios-package", "consumer-ios-device"),
     "ios-framework-simulator": (
         "ios-kotlin-tests",
         "ios-swift-build",
@@ -89,7 +89,11 @@ SUPPORT_DEPENDENCIES = {
     ),
     "ios-kotlin-tests": (("ios-rust-simulator", "build"),),
     "ios-swift-build": (("ios-framework-simulator", "build"),),
-    "ios-swift-tests": (("ios-framework-simulator", "build"), ("ios-swift-build", "build")),
+    "ios-swift-tests": (
+        ("ios-framework-device", "build"),
+        ("ios-framework-simulator", "build"),
+        ("ios-swift-build", "build"),
+    ),
     "ios-package": (("ios-framework-device", "build"), ("ios-framework-simulator", "build")),
     "ios-privacy-metrics": (
         ("ios-kotlin-tests", "test"), ("ios-swift-tests", "test"),

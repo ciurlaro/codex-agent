@@ -267,7 +267,7 @@ jobs:
 
   swift-tests:
     if: always() && needs.select.outputs.swift_tests == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    needs: [select, framework-simulator, swift-build]
+    needs: [select, framework-device, framework-simulator, swift-build]
     runs-on: macos-26
     timeout-minutes: 90
     outputs:
@@ -280,8 +280,13 @@ jobs:
       - if: needs.select.outputs.swift_tests_test == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
+          name: ${{ needs.framework-device.outputs.artifact_name }}
+          path: build/ci/device-framework
+      - if: needs.select.outputs.swift_tests_test == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
           name: ${{ needs.framework-simulator.outputs.artifact_name }}
-          path: build/ci/framework
+          path: build/ci/simulator-framework
       - if: needs.select.outputs.swift_tests_test == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -289,15 +294,18 @@ jobs:
           path: build/ci/swift-compilation
       - if: needs.select.outputs.swift_tests_test == 'true'
         run: |
-          framework=$(find build/ci/framework/payload -type d -name CodexAgent.framework -print -quit)
+          device=$(find build/ci/device-framework/payload -type d -name CodexAgent.framework -print -quit)
+          simulator=$(find build/ci/simulator-framework/payload -type d -name CodexAgent.framework -print -quit)
           compilation_archive=$(find build/ci/swift-compilation/payload -type f -name swift-simulator-compilation-products.tar -print -quit)
-          test -n "$framework"
+          test -n "$device"
+          test -n "$simulator"
           test -n "$compilation_archive"
           python3 ci/stage.py extract-tar --archive "$compilation_archive" --output build/ci/swift-products
           compilation=$(find build/ci/swift-products -type d -name swift-simulator-compilation-products -print -quit)
           test -n "$compilation"
-          printf 'IOS_SIMULATOR_FRAMEWORK=%s/%s\nCODEX_AGENT_SWIFT_COMPILATION_DIRECTORY=%s/%s\n' \
-            "$GITHUB_WORKSPACE" "$framework" "$GITHUB_WORKSPACE" "$compilation" >> "$GITHUB_ENV"
+          printf 'IOS_DEVICE_FRAMEWORK=%s/%s\nIOS_SIMULATOR_FRAMEWORK=%s/%s\nCODEX_AGENT_SWIFT_COMPILATION_DIRECTORY=%s/%s\n' \
+            "$GITHUB_WORKSPACE" "$device" "$GITHUB_WORKSPACE" "$simulator" \
+            "$GITHUB_WORKSPACE" "$compilation" >> "$GITHUB_ENV"
       - id: lane
         uses: ./.github/actions/run-ci-lane
         with:
@@ -334,7 +342,8 @@ jobs:
         run: |
           device=$(find build/ci/device-framework/payload -type d -name CodexAgent.framework -print -quit)
           simulator=$(find build/ci/simulator-framework/payload -type d -name CodexAgent.framework -print -quit)
-          test -n "$device" && test -n "$simulator"
+          test -n "$device"
+          test -n "$simulator"
           printf 'IOS_DEVICE_FRAMEWORK=%s/%s\nIOS_SIMULATOR_FRAMEWORK=%s/%s\n' \
             "$GITHUB_WORKSPACE" "$device" "$GITHUB_WORKSPACE" "$simulator" >> "$GITHUB_ENV"
       - id: lane
@@ -387,7 +396,8 @@ jobs:
           done
           device=$(find build/ci/privacy-inputs/device/payload -type d -name CodexAgent.framework -print -quit)
           simulator=$(find build/ci/privacy-inputs/simulator/payload -type d -name CodexAgent.framework -print -quit)
-          test -n "$device" && test -n "$simulator"
+          test -n "$device"
+          test -n "$simulator"
           printf 'IOS_DEVICE_FRAMEWORK=%s/%s\nIOS_SIMULATOR_FRAMEWORK=%s/%s\n' \
             "$GITHUB_WORKSPACE" "$device" "$GITHUB_WORKSPACE" "$simulator" >> "$GITHUB_ENV"
       - uses: ./.github/actions/run-ci-lane
@@ -444,7 +454,8 @@ jobs:
         run: |
           device=$(find build/ci/consumer-rust/device/payload -type f -name codex-agent-ios-arm64.a -print -quit)
           simulator=$(find build/ci/consumer-rust/simulator/payload -type f -name codex-agent-ios-simulator-arm64.a -print -quit)
-          test -n "$device" && test -n "$simulator"
+          test -n "$device"
+          test -n "$simulator"
           printf 'IOS_DEVICE_RUST_EVIDENCE=%s/%s\nIOS_SIMULATOR_RUST_EVIDENCE=%s/%s\n' \
             "$GITHUB_WORKSPACE" "$(dirname "$device")" "$GITHUB_WORKSPACE" "$(dirname "$simulator")" >> "$GITHUB_ENV"
       - uses: ./.github/actions/run-ci-lane
@@ -478,7 +489,8 @@ jobs:
         run: |
           device=$(find build/ci/consumer-rust/device/payload -type f -name codex-agent-ios-arm64.a -print -quit)
           simulator=$(find build/ci/consumer-rust/simulator/payload -type f -name codex-agent-ios-simulator-arm64.a -print -quit)
-          test -n "$device" && test -n "$simulator"
+          test -n "$device"
+          test -n "$simulator"
           printf 'IOS_DEVICE_RUST_EVIDENCE=%s/%s\nIOS_SIMULATOR_RUST_EVIDENCE=%s/%s\n' \
             "$GITHUB_WORKSPACE" "$(dirname "$device")" "$GITHUB_WORKSPACE" "$(dirname "$simulator")" >> "$GITHUB_ENV"
       - uses: ./.github/actions/run-ci-lane

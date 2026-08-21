@@ -40,10 +40,18 @@ class ReleaseWorkflowContractTest {
     }
 
     @Test
-    fun `Swift authentication lane installs the pinned Rust toolchain`() {
+    fun `Swift authentication lane imports both frameworks and installs the pinned Rust toolchain`() {
         val swiftTests = workflows.getValue("apple-runtime-evidence.yml")
             .substringAfter("\n  swift-tests:")
             .substringBefore("\n\n  package:")
+        assertTrue("needs: [select, framework-device, framework-simulator, swift-build]" in swiftTests)
+        assertTrue("name: ${'$'}{{ needs.framework-device.outputs.artifact_name }}" in swiftTests)
+        assertTrue("path: build/ci/device-framework" in swiftTests)
+        assertTrue("name: ${'$'}{{ needs.framework-simulator.outputs.artifact_name }}" in swiftTests)
+        assertTrue("path: build/ci/simulator-framework" in swiftTests)
+        assertTrue("IOS_DEVICE_FRAMEWORK=" in swiftTests)
+        assertTrue("IOS_SIMULATOR_FRAMEWORK=" in swiftTests)
+        assertTrue("CODEX_AGENT_SWIFT_COMPILATION_DIRECTORY=" in swiftTests)
         assertTrue("rust-version: \"1.95.0\"" in swiftTests)
     }
 
@@ -71,6 +79,7 @@ class ReleaseWorkflowContractTest {
         val lane = actions.getValue("run-ci-lane")
         assertTrue("name: codex-agent-diagnostics-" in lane)
         assertTrue(lane.indexOf("PYTHONDONTWRITEBYTECODE=1") in 0 until lane.indexOf("python3 "))
+        assertFalse(" && test -n " in combined)
         assertTrue("name: codex-agent-protected-candidate-diagnostics-" in workflows.getValue("release-candidate.yml"))
         assertEquals(uploads, Regex("(?m)^\\s+overwrite: (?:true|false)$").findAll(combined).count())
     }

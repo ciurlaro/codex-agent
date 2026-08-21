@@ -203,7 +203,8 @@ runs:
         fi
         producer_toolchain=()
         if [ -n "$ARM_PRODUCER_IDENTITY$X64_PRODUCER_IDENTITY" ]; then
-          test -n "$ARM_PRODUCER_IDENTITY" && test -n "$X64_PRODUCER_IDENTITY"
+          test -n "$ARM_PRODUCER_IDENTITY"
+          test -n "$X64_PRODUCER_IDENTITY"
           producer_toolchain=(
             --toolchain "producerLinuxArm64Supervisor=$ARM_PRODUCER_IDENTITY"
             --toolchain "producerLinuxX64CrossBuilder=$X64_PRODUCER_IDENTITY"
@@ -260,7 +261,8 @@ runs:
         fi
         producer_toolchain=()
         if [ -n "$ARM_PRODUCER_IDENTITY$X64_PRODUCER_IDENTITY" ]; then
-          test -n "$ARM_PRODUCER_IDENTITY" && test -n "$X64_PRODUCER_IDENTITY"
+          test -n "$ARM_PRODUCER_IDENTITY"
+          test -n "$X64_PRODUCER_IDENTITY"
           producer_toolchain=(
             --toolchain "producerLinuxArm64Supervisor=$ARM_PRODUCER_IDENTITY"
             --toolchain "producerLinuxX64CrossBuilder=$X64_PRODUCER_IDENTITY"

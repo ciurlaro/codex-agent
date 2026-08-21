@@ -78,6 +78,7 @@ class GitFixture(unittest.TestCase):
             "ios-package.metadata": "Package.swift\n",
             "ios-privacy-metrics.metadata": "privacy-policy/**\n",
             "ios-kotlin-tests.test": "ios-sim-tests/**\n",
+            "ios-swift-tests.test": "ios-swift-auth-tests/**\n",
         }
         for name, contents in inventories.items():
             self.write(f"ci/lanes/{name}.pathspec", contents)
@@ -237,6 +238,19 @@ class ImpactPlanTest(GitFixture):
         result, _, _ = self.make_plan("ios-sim-tests/Test.kt")
         self.assertTrue(result["lanes"]["ios-kotlin-tests"]["test"])
         self.assertFalse(result["lanes"]["ios-framework-device"]["build"])
+
+    def test_swift_test_selects_both_frameworks(self) -> None:
+        result, _, _ = self.make_plan("ios-swift-auth-tests/Test.swift")
+        self.assertTrue(result["lanes"]["ios-swift-tests"]["test"])
+        for lane in ("ios-framework-device", "ios-framework-simulator", "ios-swift-build"):
+            self.assertTrue(result["lanes"][lane]["build"])
+
+    def test_device_framework_change_invalidates_swift_tests(self) -> None:
+        result, plan_path, _ = self.make_plan("configured/ios-framework-device.txt", "device changed\n")
+        self.assertTrue(result["lanes"]["ios-framework-device"]["build"])
+        self.assertTrue(result["lanes"]["ios-swift-tests"]["test"])
+        inventory = plan_path.parent / "inventories/ios-swift-tests/production-inputs.git-tree"
+        self.assertIn("\tconfigured/ios-framework-device.txt\n", inventory.read_text(encoding="utf-8"))
 
     def test_checksum_only_change_selects_metadata_without_product_builds(self) -> None:
         result, _, _ = self.make_plan("Package.swift", "// checksum only\n")
