@@ -4,6 +4,7 @@ gradle/build-logic/src/main/kotlin/CandidateManifestValidation.kt
 gradle/build-logic/src/main/kotlin/CandidateModel.kt
 gradle/build-logic/src/main/kotlin/CandidatePayloadTasks.kt
 gradle/build-logic/src/main/kotlin/CandidateRuntimeEvidence.kt
+gradle/build-logic/src/main/kotlin/CentralBundleTasks.kt
 gradle/build-logic/src/main/kotlin/CentralPortalTask.kt
 gradle/build-logic/src/main/kotlin/MavenRepositoryTasks.kt
 gradle/build-logic/src/main/kotlin/PromotedCandidateTasks.kt
