@@ -4,6 +4,7 @@ import io.github.codex_agent_labs.codexmobile.appserver.client.AppServerRpcExcep
 import io.github.codex_agent_labs.codexmobile.appserver.client.AppServerTimeoutException
 import kotlinx.coroutines.CancellationException
 
+// R062 disposable common-source CI fixture; this branch is never merged.
 public data class CodexFailure(
     public val code: String,
     public val message: String,

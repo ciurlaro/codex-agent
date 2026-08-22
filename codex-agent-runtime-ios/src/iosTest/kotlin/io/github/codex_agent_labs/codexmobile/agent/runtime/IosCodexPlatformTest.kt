@@ -4,7 +4,6 @@ import io.github.codex_agent_labs.codexmobile.agent.CodexRuntimeFeature
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-// R062 disposable simulator-test-only CI fixture; this branch is never merged.
 class IosCodexPlatformTest {
     @Test
     fun supportsOnlyFilesystemSkills() {
