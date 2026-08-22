@@ -58,8 +58,8 @@ runs:
           fingerprint=$(xcodebuild -version | openssl dgst -sha256 | awk '{print $NF}')
         fi
         gradle="gradle-main-dependencies-v1-$RUNNER_OS-$RUNNER_ARCH-${{ hashFiles('**/*.gradle.kts', 'gradle/**/*.toml', 'gradle/wrapper/gradle-wrapper.properties', 'gradle.properties') }}"
-        konan="konan-main-v1-$RUNNER_OS-$RUNNER_ARCH-$fingerprint-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', 'gradle.properties') }}"
-        printf 'fingerprint=%s\ngradle-main-key=%s\nkonan-main-key=%s\nkonan-pr-key=konan-pr-v1-%s-%s-%s-%s-%s\n' \
+        konan="konan-main-v2-$RUNNER_OS-$RUNNER_ARCH-$fingerprint-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', 'gradle.properties') }}"
+        printf 'fingerprint=%s\ngradle-main-key=%s\nkonan-main-key=%s\nkonan-pr-key=konan-pr-v2-%s-%s-%s-%s-%s\n' \
           "$fingerprint" "$gradle" "$konan" "$RUNNER_OS" "$RUNNER_ARCH" "$fingerprint" \
           "${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', 'gradle.properties') }}" \
           "$PR_NUMBER" >> "$GITHUB_OUTPUT"

@@ -9,7 +9,7 @@ import json
 import os
 import re
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 OID = re.compile(r"[0-9a-f]{40}")
@@ -254,6 +254,14 @@ def tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
+def executable_modes(root: Path) -> dict[str, int]:
+    return {
+        path.relative_to(root).as_posix(): path.stat().st_mode & 0o111
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and not path.is_symlink() and path.stat().st_mode & 0o111
+    }
+
+
 def parse_keys(values: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for value in values:
@@ -303,6 +311,7 @@ def create(arguments: argparse.Namespace) -> dict[str, object]:
                 "key": keys[name],
                 "paths": copied_paths,
                 "sha256": tree_digest(cache_root),
+                "executableModes": executable_modes(cache_root),
             }
         elif cache_root.exists():
             shutil.rmtree(cache_root)
@@ -310,7 +319,7 @@ def create(arguments: argparse.Namespace) -> dict[str, object]:
         raise ValueError("No dependency cache files exist for the elected seed")
 
     manifest: dict[str, object] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "artifactName": expected_name,
         "repository": arguments.repository,
         "event": arguments.event,
@@ -431,7 +440,7 @@ def install(arguments: argparse.Namespace) -> dict[str, object]:
     tree = require_oid(expected.get("tree"), "seed source tree")
     elected = active_lanes(plan, arguments.runner_os, arguments.runner_arch, str(kind))
     if (
-        manifest.get("schemaVersion") != 1
+        manifest.get("schemaVersion") != 2
         or manifest.get("artifactName") != expected.get("artifact-name")
         or manifest.get("repository") != plan.get("repository")
         or manifest.get("event") not in {"pull_request", "merge_group"}
@@ -451,12 +460,12 @@ def install(arguments: argparse.Namespace) -> dict[str, object]:
 
     output_names = {"gradle": "gradle", "konan": "konan", "cargo": "rust-dependencies"}
     outputs: dict[str, object] = {name: False for name in output_names.values()}
-    validated: list[tuple[str, dict[str, object], Path]] = []
+    validated: list[tuple[str, dict[str, object], Path, dict[str, int]]] = []
     for name, value in caches.items():
         allowed_paths = CACHE_PATHS[str(kind)][name]
         if (
             not isinstance(value, dict)
-            or set(value) != {"key", "paths", "sha256"}
+            or set(value) != {"key", "paths", "sha256", "executableModes"}
             or not isinstance(value["paths"], list)
             or not value["paths"]
             or not set(value["paths"]) <= set(allowed_paths)
@@ -475,15 +484,39 @@ def install(arguments: argparse.Namespace) -> dict[str, object]:
             source = source_root / relative
             if not source.is_dir() or source.is_symlink():
                 raise ValueError(f"Missing {name} cache seed path: {relative}")
-        validated.append((name, value, source_root))
+        modes = value["executableModes"]
+        if not isinstance(modes, dict):
+            raise ValueError(f"Invalid {name} cache seed executable modes")
+        roots = [PurePosixPath(relative) for relative in value["paths"]]
+        for relative, mode in modes.items():
+            path = PurePosixPath(relative) if isinstance(relative, str) else PurePosixPath()
+            source = source_root.joinpath(*path.parts)
+            if (
+                not isinstance(relative, str)
+                or path.is_absolute()
+                or path.as_posix() != relative
+                or ".." in path.parts
+                or not any(path == root or root in path.parents for root in roots)
+                or not isinstance(mode, int)
+                or isinstance(mode, bool)
+                or mode == 0
+                or mode & ~0o111
+                or source.is_symlink()
+                or not source.is_file()
+            ):
+                raise ValueError(f"Invalid {name} cache seed executable mode: {relative!r}")
+        validated.append((name, value, source_root, modes))
 
-    for name, value, source_root in validated:
+    for name, value, source_root, modes in validated:
         for relative in value["paths"]:
             source = source_root / relative
             destination = arguments.home / relative
             if destination.exists():
                 shutil.rmtree(destination)
             copy_regular_tree(source, destination)
+        for relative, mode in modes.items():
+            destination = arguments.home.joinpath(*PurePosixPath(relative).parts)
+            destination.chmod((destination.stat().st_mode & ~0o111) | mode)
         outputs[output_names[name]] = True
         outputs[f"{name}-key"] = value["key"]
     write_outputs(arguments.github_output, outputs)

@@ -125,7 +125,7 @@ class CacheSeedTest(unittest.TestCase):
             runner_arch="X64",
             cache_key=[
                 "gradle=gradle-main-dependencies-v1-Linux-X64-abc",
-                "konan=konan-main-v1-Linux-X64-none-abc",
+                "konan=konan-main-v2-Linux-X64-none-abc",
             ],
         ))
 
@@ -163,12 +163,14 @@ class CacheSeedTest(unittest.TestCase):
         clang = source / "llvm-19-aarch64-macos-essentials-79/bin"
         clang.mkdir(parents=True)
         (clang / "clang-19").write_bytes(b"clang")
+        (clang / "clang-19").chmod(0o740)
         (clang / "clang").symlink_to("clang-19")
         destination = self.root / "payload"
         self.assertTrue(copy_regular_tree(source, destination))
         copied = destination / "llvm-19-aarch64-macos-essentials-79/bin/clang"
         self.assertFalse(copied.is_symlink())
         self.assertEqual(b"clang", copied.read_bytes())
+        self.assertEqual(0o100, copied.stat().st_mode & 0o111)
         self.assertEqual(
             b"clang",
             (destination / "llvm-19-aarch64-macos-essentials-79/bin/clang-19").read_bytes(),
@@ -187,6 +189,39 @@ class CacheSeedTest(unittest.TestCase):
                 (unsafe / "clang").symlink_to(target)
                 with self.assertRaisesRegex(ValueError, message):
                     copy_regular_tree(unsafe, self.root / f"rejected-{name}")
+
+    def test_install_restores_exact_executable_modes_lost_by_artifact_transport(self) -> None:
+        clang = self.home / ".konan/dependencies/llvm-19-aarch64-macos-essentials-79/bin"
+        clang.mkdir(parents=True)
+        (clang / "clang-19").write_bytes(b"clang")
+        (clang / "clang-19").chmod(0o740)
+        (clang / "clang").symlink_to("clang-19")
+        seed = self.root / "seed"
+        manifest = self.create_kmp(seed)
+        modes = manifest["caches"]["konan"]["executableModes"]
+        expected = {
+            ".konan/dependencies/llvm-19-aarch64-macos-essentials-79/bin/clang": 0o100,
+            ".konan/dependencies/llvm-19-aarch64-macos-essentials-79/bin/clang-19": 0o100,
+        }
+        self.assertEqual(expected, {path: modes[path] for path in expected})
+        for path in (seed / "payload").rglob("*"):
+            if path.is_file():
+                path.chmod(path.stat().st_mode & ~0o111)
+
+        destination = self.root / "consumer-home"
+        install(Namespace(
+            plan=self.plan_path,
+            promotion_plan=self.promotion_path,
+            aggregate=self.aggregate_path,
+            root=seed,
+            home=destination,
+            kind="kmp",
+            runner_os="Linux",
+            runner_arch="X64",
+            github_output=None,
+        ))
+        for relative, mode in expected.items():
+            self.assertEqual(mode, (destination / relative).stat().st_mode & 0o111)
 
         if hasattr(os, "mkfifo"):
             special = self.root / "unsafe-special"
@@ -264,6 +299,29 @@ class CacheSeedTest(unittest.TestCase):
         self.assertEqual(b"existing-konan", konan.read_bytes())
 
         (llvm.parent / "lib64").unlink()
+        manifest_path = seed / "cache-seed.json"
+        original_manifest = manifest_path.read_text(encoding="utf-8")
+        manifest = json.loads(original_manifest)
+        manifest["caches"]["konan"]["executableModes"] = {"../escape": 0o100}
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "executable mode"):
+            install(arguments)
+        self.assertEqual(b"existing-gradle", gradle.read_bytes())
+        self.assertEqual(b"existing-konan", konan.read_bytes())
+        manifest_path.write_text(original_manifest, encoding="utf-8")
+
+        outside_root = konan_payload / "outside"
+        outside_root.write_bytes(b"executable")
+        manifest = json.loads(original_manifest)
+        manifest["caches"]["konan"]["sha256"] = tree_digest(konan_payload)
+        manifest["caches"]["konan"]["executableModes"] = {"outside": 0o100}
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "executable mode"):
+            install(arguments)
+        self.assertEqual(b"existing-gradle", gradle.read_bytes())
+        self.assertEqual(b"existing-konan", konan.read_bytes())
+        outside_root.unlink()
+        manifest_path.write_text(original_manifest, encoding="utf-8")
         if hasattr(os, "mkfifo"):
             os.mkfifo(llvm / "pipe")
             with self.assertRaisesRegex(ValueError, "special file"):
@@ -351,7 +409,7 @@ class CacheSeedTest(unittest.TestCase):
         self.assertIn("ci/cache_seed.py policy", lane)
         self.assertIn("GITHUB_EVENT_NAME", lane)
         self.assertIn("gradle-main-dependencies-v1", kmp)
-        self.assertIn("konan-main-v1", kmp)
+        self.assertIn("konan-main-v2", kmp)
         self.assertIn("cargo-main-dependencies-v1", sccache)
         self.assertIn("actions/cache/save@", promotion)
         for path in (
