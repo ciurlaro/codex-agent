@@ -12,7 +12,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-// R062 disposable Android-test-only CI fixture; this branch is never merged.
 class RuntimeLogPrivacyGuardTest {
     @Test
     fun deletesExistingLogsRejectsLaterInsertsAndEnablesSecureDeletion() {
