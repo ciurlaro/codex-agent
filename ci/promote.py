@@ -292,7 +292,10 @@ def selected_validation_run(
             positive_int(run.get("id"), "validation run ID")
             positive_int(run.get("run_attempt"), "validation run attempt")
             return run
-    raise ValueError(f"No successful merge-group validation has Git tree {final_tree}")
+    raise ValueError(
+        f"No successful merge-group validation has Git tree {final_tree}; "
+        "the first queue-enabled promotion must follow a full merge-group validation"
+    )
 
 
 def commit_tree(api_url: str, repository: str, commit: str, token: str) -> str:
