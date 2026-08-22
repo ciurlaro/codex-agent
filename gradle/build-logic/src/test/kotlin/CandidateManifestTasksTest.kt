@@ -5,9 +5,43 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import org.gradle.testfixtures.ProjectBuilder
 
 class CandidateManifestTasksTest {
+    @Test
+    fun `promoted candidate traverses and emits every Central bundle`() {
+        fun record(name: String) = buildJsonObject {
+            put("fileName", JsonPrimitive(name))
+            put("bytes", JsonPrimitive(1))
+            put("sha256", JsonPrimitive("a".repeat(64)))
+        }
+        val bundles = centralBundleShardNames.map { centralBundleFileName("0.2.0", it) }
+        val manifest = buildJsonObject {
+            put("artifacts", buildJsonObject {
+                put("swiftPackage", record("swift.zip"))
+                put("centralBundles", buildJsonArray { bundles.forEach { add(record(it)) } })
+            })
+            put("evidence", buildJsonObject {})
+            put("policies", buildJsonObject {})
+        }
+        assertEquals(
+            listOf("swift.zip") + bundles,
+            candidatePayloadRecords(manifest).map { it.releaseString("fileName") },
+        )
+        val result = buildJsonObject {
+            put("releaseTag", JsonPrimitive("v0.2.0"))
+            put("swiftAsset", JsonPrimitive("swift.zip"))
+            put("centralBundles", buildJsonArray { bundles.forEach { add(JsonPrimitive(it)) } })
+        }
+        assertEquals(
+            "releaseTag=v0.2.0\nswiftAsset=swift.zip\ncentralBundles=${result.releaseArray("centralBundles")}\n",
+            candidateGithubOutputs(result),
+        )
+    }
+
     @Test
     fun `payload transport traverses every schema-declared evidence array generically`() {
         val repository = generateSequence(File(System.getProperty("user.dir")).canonicalFile) { it.parentFile }

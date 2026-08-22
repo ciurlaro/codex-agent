@@ -83,6 +83,16 @@ private fun verifyLegacyCandidateManifestStructure(manifest: JsonObject) {
     policies.values.forEach { verifyRecordShape(it as? JsonObject ?: error("Invalid candidate policy record")) }
 }
 
+internal fun promotedCentralBundleRecords(manifest: JsonObject): List<JsonObject> =
+    manifest.releaseObject("artifacts").releaseArray("centralBundles").map { value ->
+        value as? JsonObject ?: error("Invalid promoted Central bundle record")
+    }
+
+internal fun promotedCentralBundleRecord(manifest: JsonObject, shard: String): JsonObject {
+    val fileName = centralBundleFileName(manifest.releaseString("version"), shard)
+    return promotedCentralBundleRecords(manifest).single { it.releaseString("fileName") == fileName }
+}
+
 private fun verifyPromotedCandidateManifestStructure(manifest: JsonObject) {
     check(manifest.keys == setOf(
         "schemaVersion", "version", "releaseTag", "candidateCommit", "candidateTree", "protectedCandidate",
@@ -98,13 +108,19 @@ private fun verifyPromotedCandidateManifestStructure(manifest: JsonObject) {
     check(manifest.releaseBoolean("protectedCandidate")) { "Candidate is not technically protected" }
 
     val artifacts = manifest.releaseObject("artifacts")
-    check(artifacts.keys == setOf("swiftPackage", "centralBundle")) { "Candidate artifact set is invalid" }
+    check(artifacts.keys == setOf("swiftPackage", "centralBundles")) { "Candidate artifact set is invalid" }
     val swift = artifacts.releaseObject("swiftPackage")
     verifyRecordShape(swift)
     check(swift.releaseString("swiftPmChecksum") == swift.releaseString("sha256") && swift["members"] is JsonArray) {
         "Promoted Swift package metadata is invalid"
     }
-    verifyRecordShape(artifacts.releaseObject("centralBundle"))
+    val centralBundles = promotedCentralBundleRecords(manifest)
+    check(centralBundles.size == centralBundleShardNames.size &&
+        centralBundles.map { it.releaseString("fileName") }.toSet() ==
+        centralBundleShardNames.map { centralBundleFileName(version, it) }.toSet()) {
+        "Promoted Central bundle set is invalid"
+    }
+    centralBundles.forEach(::verifyRecordShape)
 
     val evidence = manifest.releaseObject("evidence")
     val expectedEvidence = setOf(

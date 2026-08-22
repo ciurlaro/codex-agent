@@ -140,8 +140,15 @@ private fun centralIdentity(bundle: File, candidate: File): CentralIdentity {
     val version = manifest.releaseString("version")
     val commit = manifest.releaseString("candidateCommit")
     check(commit.matches(Regex("[0-9a-f]{40}"))) { "Central candidate commit is not immutable" }
-    val bundleRecord = manifest.releaseObject("artifacts").releaseObject("centralBundle")
-    check(bundleRecord.releaseString("fileName") == bundle.name) { "Central bundle file name mismatch" }
+    val artifacts = manifest.releaseObject("artifacts")
+    val bundleRecord = if ("centralBundles" in artifacts) {
+        promotedCentralBundleRecords(manifest).singleOrNull { it.releaseString("fileName") == bundle.name }
+            ?: error("Central bundle is not declared by the candidate")
+    } else {
+        artifacts.releaseObject("centralBundle").also {
+            check(it.releaseString("fileName") == bundle.name) { "Central bundle file name mismatch" }
+        }
+    }
     verifyReleaseRecord(bundle, bundleRecord)
     val bundleSha = bundle.releaseDigest()
     return CentralIdentity(

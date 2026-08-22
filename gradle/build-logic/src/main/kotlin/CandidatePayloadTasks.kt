@@ -4,6 +4,7 @@ import java.util.zip.ZipFile
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 
@@ -68,12 +69,23 @@ internal fun verifyCandidatePayload(
         put("result", JsonPrimitive("passed"))
         put("releaseTag", JsonPrimitive(expectedTag))
         put("swiftAsset", JsonPrimitive(artifacts.releaseObject("swiftPackage").releaseString("fileName")))
-        put("centralBundle", JsonPrimitive(artifacts.releaseObject("centralBundle").releaseString("fileName")))
+        if (manifest.releaseInt("schemaVersion") == PROMOTED_CANDIDATE_SCHEMA) {
+            put("centralBundles", buildJsonArray {
+                promotedCentralBundleRecords(manifest).forEach { record ->
+                    add(JsonPrimitive(record.releaseString("fileName")))
+                }
+            })
+        } else {
+            put("centralBundle", JsonPrimitive(artifacts.releaseObject("centralBundle").releaseString("fileName")))
+        }
     }
 }
 
 internal fun candidatePayloadRecords(manifest: JsonObject): List<JsonObject> = buildList {
-    manifest.releaseObject("artifacts").values.forEach { add(it as JsonObject) }
+    val artifacts = manifest.releaseObject("artifacts")
+    add(artifacts.releaseObject("swiftPackage"))
+    if ("centralBundles" in artifacts) promotedCentralBundleRecords(manifest).forEach(::add)
+    else add(artifacts.releaseObject("centralBundle"))
     val evidence = manifest.releaseObject("evidence")
     evidence.filterKeys { it !in candidateEvidenceArrayNames }.values.forEach { add(it as JsonObject) }
     candidateEvidenceArrayNames.forEach { name ->
@@ -191,12 +203,31 @@ private fun verifyPromotedCandidatePayload(
         payload, evidence.releaseObject("centralBundleInventory").releaseString("fileName"),
     )
     val central = centralFile.readReleaseObject()
-    val centralBundle = safePayloadFile(payload, artifacts.releaseObject("centralBundle").releaseString("fileName"))
-    check(central.releaseBoolean("belowCentralPortalUploadLimit") &&
-        central.releaseString("mavenInventorySha256") == mavenFile.releaseDigest()) {
+    val centralBundles = promotedCentralBundleRecords(manifest).associate { record ->
+        val file = safePayloadFile(payload, record.releaseString("fileName"))
+        verifyReleaseRecord(file, record)
+        file.name to file
+    }
+    val bundleInventory = central.releaseArray("bundles").map { it.jsonObject }
+    check(central.releaseInt("schemaVersion") == 3 &&
+        central.releaseBoolean("allBundlesBelowCentralPortalUploadLimit") &&
+        central.releaseLong("centralPortalUploadLimitBytes") == CENTRAL_PORTAL_UPLOAD_LIMIT_BYTES &&
+        central.releaseString("mavenInventorySha256") == mavenFile.releaseDigest() &&
+        bundleInventory.size == centralBundleShardNames.size &&
+        bundleInventory.map { it.releaseString("shard") }.toSet() == centralBundleShardNames.toSet() &&
+        bundleInventory.sumOf { it.releaseInt("entryCount") } == central.releaseInt("includedArtifactCount")) {
         "Transported Central inventory does not bind the signed Maven inventory"
     }
-    verifyReleaseRecord(centralBundle, central.releaseObject("bundle"))
+    bundleInventory.forEach { record ->
+        val shard = record.releaseString("shard")
+        check(record.releaseString("fileName") == centralBundleFileName(expectedVersion, shard)) {
+            "Transported Central bundle inventory file name is invalid"
+        }
+        val bundle = centralBundles.getValue(centralBundleFileName(expectedVersion, shard))
+        check(bundle.length() < CENTRAL_PORTAL_UPLOAD_LIMIT_BYTES) { "Transported Central bundle exceeds limit" }
+        verifyReleaseRecord(bundle, record)
+    }
+    val centralBundle = centralBundles.getValue(centralBundleFileName(expectedVersion, CENTRAL_MAIN_SHARD))
 
     val swift = safePayloadFile(payload, artifacts.releaseObject("swiftPackage").releaseString("fileName"))
     val swiftChecksum = safePayloadFile(
@@ -504,7 +535,11 @@ private fun extractCandidateDesktopClassifiers(
 internal fun candidateGithubOutputs(result: JsonObject): String = buildString {
     append("releaseTag=").append(result.releaseString("releaseTag")).append('\n')
     append("swiftAsset=").append(result.releaseString("swiftAsset")).append('\n')
-    append("centralBundle=").append(result.releaseString("centralBundle")).append('\n')
+    if ("centralBundles" in result) {
+        append("centralBundles=").append(result.releaseArray("centralBundles")).append('\n')
+    } else {
+        append("centralBundle=").append(result.releaseString("centralBundle")).append('\n')
+    }
 }
 
 internal fun resolveCandidatePrivacyReview(

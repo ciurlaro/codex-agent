@@ -149,46 +149,64 @@ jobs:
             --verification-output "$VERIFICATION" \
             --github-output "$CANDIDATE_OUTPUTS"
           cat "$CANDIDATE_OUTPUTS" >> "$GITHUB_OUTPUT"
-      - name: Prepare or recover the exact Central deployment
+      - name: Prepare or recover every exact Central deployment
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           PAYLOAD: ${{ steps.paths.outputs.payload }}
-          CENTRAL_BUNDLE: ${{ steps.candidate.outputs.centralBundle }}
+          CENTRAL_BUNDLES: ${{ steps.candidate.outputs.centralBundles }}
           RECORD: ${{ steps.paths.outputs.record }}
           RELEASE_TOOL: ${{ steps.identity.outputs.release_tool }}
-        run: >-
-          java -jar "$RELEASE_TOOL" central-prepare
-          --bundle "$PAYLOAD/$CENTRAL_BUNDLE"
-          --candidate "$PAYLOAD/candidate-manifest.json"
-          --record "$RECORD"
-          --allow-new-upload true
-      - name: Await validation of that exact deployment
+        run: |
+          mapfile -t bundles < <(jq -r '.[]' <<< "$CENTRAL_BUNDLES")
+          test "${#bundles[@]}" -eq 3
+          for bundle in "${bundles[@]}"; do
+            record="${RECORD%.json}-${bundle%.zip}.json"
+            java -jar "$RELEASE_TOOL" central-prepare \
+              --bundle "$PAYLOAD/$bundle" \
+              --candidate "$PAYLOAD/candidate-manifest.json" \
+              --record "$record" \
+              --allow-new-upload true
+          done
+      - name: Await validation of every exact deployment
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           PAYLOAD: ${{ steps.paths.outputs.payload }}
-          CENTRAL_BUNDLE: ${{ steps.candidate.outputs.centralBundle }}
+          CENTRAL_BUNDLES: ${{ steps.candidate.outputs.centralBundles }}
           RECORD: ${{ steps.paths.outputs.record }}
           RELEASE_TOOL: ${{ steps.identity.outputs.release_tool }}
-        run: >-
-          java -jar "$RELEASE_TOOL" central-await
-          --bundle "$PAYLOAD/$CENTRAL_BUNDLE"
-          --candidate "$PAYLOAD/candidate-manifest.json"
-          --record "$RECORD"
-      - name: Publish Central first and await PUBLISHED
+        run: |
+          mapfile -t bundles < <(jq -r '.[]' <<< "$CENTRAL_BUNDLES")
+          test "${#bundles[@]}" -eq 3
+          for bundle in "${bundles[@]}"; do
+            record="${RECORD%.json}-${bundle%.zip}.json"
+            java -jar "$RELEASE_TOOL" central-await \
+              --bundle "$PAYLOAD/$bundle" \
+              --candidate "$PAYLOAD/candidate-manifest.json" \
+              --record "$record"
+          done
+      - name: Publish every Central deployment first and await PUBLISHED
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           PAYLOAD: ${{ steps.paths.outputs.payload }}
-          CENTRAL_BUNDLE: ${{ steps.candidate.outputs.centralBundle }}
+          CENTRAL_BUNDLES: ${{ steps.candidate.outputs.centralBundles }}
           RECORD: ${{ steps.paths.outputs.record }}
           RELEASE_TOOL: ${{ steps.identity.outputs.release_tool }}
-        run: >-
-          java -jar "$RELEASE_TOOL" central-release
-          --bundle "$PAYLOAD/$CENTRAL_BUNDLE"
-          --candidate "$PAYLOAD/candidate-manifest.json"
-          --record "$RECORD"
+        run: |
+          mapfile -t bundles < <(jq -r '.[]' <<< "$CENTRAL_BUNDLES")
+          test "${#bundles[@]}" -eq 3
+          records=()
+          for bundle in "${bundles[@]}"; do
+            record="${RECORD%.json}-${bundle%.zip}.json"
+            java -jar "$RELEASE_TOOL" central-release \
+              --bundle "$PAYLOAD/$bundle" \
+              --candidate "$PAYLOAD/candidate-manifest.json" \
+              --record "$record"
+            records+=("$record")
+          done
+          jq -s '.' "${records[@]}" > "$RECORD"
       - name: Create or reuse the exact GitHub release after Central
         id: release
         env:

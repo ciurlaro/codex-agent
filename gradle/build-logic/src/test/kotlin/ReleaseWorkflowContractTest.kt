@@ -354,7 +354,7 @@ class ReleaseWorkflowContractTest {
         assertTrue("environment: release-publication" in core)
         assertTrue("test \"${'$'}(git rev-parse 'HEAD^{tree}')\" = \"${'$'}candidate_tree\"" in core)
         val verification = core.indexOf("Revalidate every transported candidate byte and policy")
-        val central = core.indexOf("Prepare or recover the exact Central deployment")
+        val central = core.indexOf("Prepare or recover every exact Central deployment")
         val github = core.indexOf("Create or reuse the exact GitHub release after Central")
         assertTrue(verification in 0 until central && central < github)
         assertFalse("gh release download" in publish)
@@ -382,6 +382,10 @@ class ReleaseWorkflowContractTest {
         val publish = workflows.getValue("publish.yml")
         assertEquals(1, Regex("central-prepare").findAll(publish).count())
         assertEquals(1, Regex("central-release").findAll(publish).count())
+        assertEquals(3, Regex("mapfile -t bundles").findAll(publish).count())
+        assertEquals(3, publish.lineSequence().count { "test \"${'$'}{#bundles[@]}\" -eq 3" in it })
+        assertEquals(3, Regex("for bundle in").findAll(publish).count())
+        assertTrue("jq -s '.' \"${'$'}{records[@]}\" > \"${'$'}RECORD\"" in publish)
         assertEquals(
             "self-hosted-runner:\n  labels:\n    - android\n",
             repository.resolve(".github/actionlint.yaml").readText(),

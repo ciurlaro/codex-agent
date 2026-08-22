@@ -9,7 +9,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 
-internal const val PROMOTED_CANDIDATE_SCHEMA = 11
+internal const val PROMOTED_CANDIDATE_SCHEMA = 12
 internal const val RELEASE_TOOLING_FILE_NAME = "codex-agent-release-tooling.jar"
 
 private val promotedReceiptKeys = setOf(
@@ -235,9 +235,10 @@ internal fun assemblePromotedCandidate(inputs: PromotedCandidateInputs) {
         verifyPromotedPublicationBytes(lanes, signedRepository, version)
         verifyPromotedConsumers(lanes, version)
 
-        val centralBundle = payload.resolve("codex-agent-$version-central.zip")
         val centralInventory = payload.resolve("central-bundle.json")
-        buildCentralBundle(signedRepository, mavenInventory, centralBundle, centralInventory, 1_000_000_000L)
+        val centralBundles = buildCentralBundles(
+            signedRepository, mavenInventory, payload, version, centralInventory,
+        )
         val runtimeEvidence = copyPromotedRuntimeEvidence(lanes, payload)
 
         val swiftSource = lanes.getValue("ios-package").one("swift-package-binary")
@@ -313,7 +314,9 @@ internal fun assemblePromotedCandidate(inputs: PromotedCandidateInputs) {
                     put("swiftPmChecksum", JsonPrimitive(swiftArchive.releaseDigest()))
                     put("members", swiftArchive.zipMemberRecords())
                 })
-                put("centralBundle", centralBundle.releaseRecord())
+                put("centralBundles", buildJsonArray {
+                    centralBundles.forEach { add(it.releaseRecord()) }
+                })
             })
             put("evidence", buildJsonObject {
                 put("swiftPackageChecksum", swiftChecksum.releaseRecord())
