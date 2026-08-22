@@ -362,6 +362,33 @@ class CacheSeedTest(unittest.TestCase):
         self.assertTrue(result["write"])
         self.assertTrue(result["seed"])
 
+    def test_policy_elects_cargo_writer_from_producer_lanes(self) -> None:
+        self.plan["event"] = "pull_request"
+        self.plan["lanes"] = {
+            "ios-kotlin-tests": {"build": False, "test": True, "metadata": False},
+            "ios-rust-simulator": {"build": True, "test": False, "metadata": False},
+        }
+        self.write_plan()
+        environment = {
+            "GITHUB_EVENT_NAME": "pull_request",
+            "GITHUB_REPOSITORY": REPO,
+            "GITHUB_SHA": COMMIT,
+            "GITHUB_REF": "refs/pull/7/merge",
+            "PR_NUMBER": "7",
+        }
+        arguments = Namespace(
+            plan=self.plan_path,
+            lane="ios-rust-simulator",
+            validation_commit=COMMIT,
+            runner_os="macOS",
+            runner_arch="ARM64",
+            github_output=None,
+        )
+        with patch.dict(os.environ, environment, clear=True):
+            result = policy(arguments)
+        self.assertTrue(result["rust-write"])
+        self.assertTrue(result["rust-seed"])
+
     def test_identical_tree_merge_group_promotes_pr_source_seed_without_product_job(self) -> None:
         pr_commit = "3" * 40
         self.plan["event"] = "pull_request"

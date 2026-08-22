@@ -14,11 +14,7 @@ from pathlib import Path, PurePosixPath
 
 OID = re.compile(r"[0-9a-f]{40}")
 KEY = re.compile(r"[A-Za-z0-9_.-]+")
-RUST_LANES = {
-    "ios-native-tests", "ios-rust-device", "ios-rust-simulator", "ios-framework-device",
-    "ios-framework-simulator", "ios-kotlin-tests", "ios-package", "ios-privacy-metrics",
-    "consumer-common", "consumer-ios-device", "consumer-ios-simulator",
-}
+CARGO_PRODUCER_LANES = {"ios-native-tests", "ios-rust-device", "ios-rust-simulator"}
 CACHE_PATHS = {
     "kmp": {
         "gradle": (".gradle/caches/modules-2",),
@@ -81,7 +77,7 @@ def active_lanes(
         and platform(lane) == runner_os
         and runner_arch(lane) == expected_arch
         and any(state.get(action) is True for action in ("build", "test", "metadata"))
-        and (kind != "cargo" or lane in RUST_LANES)
+        and (kind != "cargo" or lane in CARGO_PRODUCER_LANES)
     ]
     return sorted(active)
 
