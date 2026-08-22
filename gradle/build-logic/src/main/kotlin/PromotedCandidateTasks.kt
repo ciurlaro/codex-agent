@@ -712,10 +712,7 @@ internal fun canonicalPromotedMavenPrimarySources(
     val relocationPrefix = "${OLD_MAVEN_GROUP.replace('.', '/')}/"
     val sources = linkedMapOf<String, File>()
     repositories.forEach { (target, repository) -> safeRegularFiles(repository).forEach { file ->
-        check(file.name.startsWith("maven-metadata.xml") ||
-            promotedSidecarSuffixes.none(file.name::endsWith)) {
-            "Promoted $target Maven repository contains a release sidecar"
-        }
+        if (promotedSidecarSuffixes.any(file.name::endsWith)) return@forEach
         if (centralExclusion(file) != null) return@forEach
         val relative = file.relativeTo(repository).invariantSeparatorsPath
         check(relative.isSafeRelativePath()) { "Unsafe promoted $target Maven path: $relative" }

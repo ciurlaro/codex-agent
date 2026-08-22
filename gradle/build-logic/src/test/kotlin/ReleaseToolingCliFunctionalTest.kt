@@ -69,6 +69,7 @@ class ReleaseToolingCliFunctionalTest {
                     .resolve("$group/$relative")
                 source.parentFile.mkdirs()
                 source.writeText(relative)
+                source.resolveSibling(source.name + ".sha256").writeText("verification-only checksum")
             }
             expectedMavenRelocationPaths(version).forEach { relative ->
                 repositories.getValue("common").resolve(relative).apply {
